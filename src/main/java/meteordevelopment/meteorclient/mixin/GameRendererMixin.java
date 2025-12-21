@@ -123,6 +123,12 @@ public abstract class GameRendererMixin {
         RenderUtils.updateScreenCenter(projectionMatrix, correctedPosition);
         NametagUtils.onRender(modelViewMatrix);
 
+        // Call utility classes (apply bob correction when Iris shaders are active)
+
+        Matrix4f correctedPosition = MixinPlugin.isIrisPresent && RenderUtils.isShaderPackInUse() ? new Matrix4f(position).mul(inverseBob) : position;
+        RenderUtils.updateScreenCenter(projection, correctedPosition);
+        NametagUtils.onRender(position);
+
         // Render
 
         renderer.begin();
