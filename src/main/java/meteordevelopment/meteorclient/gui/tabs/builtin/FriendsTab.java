@@ -56,6 +56,7 @@ public class FriendsTab extends Tab {
             nameW.setFocused(true);
 
             WPlus add = list.add(theme.plus()).widget();
+            add.tooltip = "Add friend";
             add.action = () -> {
                 String name = nameW.get().trim();
                 Friend friend = new Friend(name);
@@ -95,6 +96,7 @@ public class FriendsTab extends Tab {
                 table.add(theme.label(friend.getName()));
 
                 WMinus remove = table.add(theme.minus()).expandCellX().right().widget();
+                remove.tooltip = "Remove";
                 remove.action = () -> {
                     Friends.get().remove(friend);
                     initTable(table);

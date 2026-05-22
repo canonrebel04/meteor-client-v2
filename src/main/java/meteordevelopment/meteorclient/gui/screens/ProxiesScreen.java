@@ -130,9 +130,11 @@ public class ProxiesScreen extends WindowScreen {
             refresh.tooltip = "Refresh";
 
             WButton edit = table.add(theme.button(GuiRenderer.EDIT)).widget();
+            edit.tooltip = "Edit";
             edit.action = () -> mc.setScreen(new EditProxyScreen(theme, proxy, this::reload));
 
             WMinus remove = table.add(theme.minus()).widget();
+            remove.tooltip = "Remove";
             remove.action = () -> {
                 Proxies.get().remove(proxy);
                 reload();

@@ -1,0 +1,3 @@
+## 2024-05-22 - Add Tooltips to Icon-Only Buttons
+**Learning:** In the Meteor Client GUI system, icon-only buttons (like `WPlus`, `WMinus`, `WConfirmedMinus`, and `WButton` with `GuiRenderer.EDIT`) often lack explicit text labels. While the icons are visually representative, they are not self-explanatory to all users or screen readers. Adding a simple string assignment to the `.tooltip` property is supported by the widget system and significantly improves accessibility and clarity.
+**Action:** When creating or encountering icon-only buttons in the GUI, consistently ensure the `.tooltip` property is set to a descriptive string (e.g., "Add", "Edit", "Remove").
