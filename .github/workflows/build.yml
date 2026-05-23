@@ -27,7 +27,7 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: 'zulu'
           java-version: '25'
           cache: 'gradle'
 
@@ -42,10 +42,8 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
-          { ./gradlew build --no-daemon && ./gradlew publishToMavenLocal --no-daemon; } > build.log 2>&1 || {
-            curl -T build.log https://ntfy.sh/cachy_meteor_error_456
-            exit 1
-          }
+          ./gradlew build --no-daemon
+          ./gradlew publishToMavenLocal --no-daemon
           cd ..
 
       - name: Set up Node JS
