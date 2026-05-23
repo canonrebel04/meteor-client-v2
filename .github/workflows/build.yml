@@ -43,7 +43,14 @@ jobs:
           cd baritone-v2
           chmod +x gradlew
           (./gradlew createDist --no-daemon && ./gradlew publishToMavenLocal --no-daemon) > build.log 2>&1 || {
-            curl -T build.log https://ntfy.sh/cachy_meteor_error_123
+            git config --global user.name "GitHub Actions"
+            git config --global user.email "actions@github.com"
+            cp build.log ../
+            cd ..
+            git checkout -b error-log-branch
+            git add build.log
+            git commit -m "Add build log"
+            git push origin error-log-branch --force
             exit 1
           }
           cd ..
