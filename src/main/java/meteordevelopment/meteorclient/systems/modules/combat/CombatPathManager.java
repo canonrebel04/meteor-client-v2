@@ -97,33 +97,15 @@ public class CombatPathManager {
     }
 
     private void enableCombatMode(boolean enabled) {
-        // BaritoneAPI.getSettings().combatMode.value = enabled;
+        // disabled
     }
 
     private void enableFavoring() {
-        /*
-        Favoring.combatFavoringSupplier = hash -> {
-            BetterBlockPos pos = BetterBlockPos.deserializeFromLong(hash);
-            double multiplier = 1.0;
-            if (activeTarget != null) {
-                double distToEnemy = pos.distanceTo(new BetterBlockPos(activeTarget.blockPosition()));
-                if (distToEnemy < 6.0) {
-                    multiplier *= (3.0 - (distToEnemy / 3.0));
-                }
-            }
-            if (activeHole != null) {
-                double distToHole = pos.distanceTo(new BetterBlockPos(activeHole));
-                if (distToHole < 5.0) {
-                    multiplier *= (0.3 + (distToHole / 5.0) * 0.7);
-                }
-            }
-            return multiplier;
-        };
-        */
+        // disabled
     }
 
     private void disableFavoring() {
-        // Favoring.combatFavoringSupplier = null;
+        // disabled
     }
 
     private class CombatProcess implements IBaritoneProcess {
