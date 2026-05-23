@@ -45,7 +45,7 @@ jobs:
           ./gradlew fabric:build -x fabric:proguard -x fabric:createDist --no-daemon
           mkdir -p dist
           cp fabric/build/libs/baritone-fabric-26.1-SNAPSHOT.jar dist/baritone-api-fabric-26.1-SNAPSHOT.jar
-          ./gradlew publishToMavenLocal --no-daemon
+          ./gradlew publishToMavenLocal -x fabric:publishMavenPublicationToMavenLocal --no-daemon
           cd ..
 
       - name: Set up Node JS
