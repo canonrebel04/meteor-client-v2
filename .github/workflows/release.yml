@@ -40,7 +40,7 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
-          ./gradlew createDist --no-daemon
+          ./gradlew build --no-daemon
           ./gradlew publishToMavenLocal --no-daemon
           cd ..
 
