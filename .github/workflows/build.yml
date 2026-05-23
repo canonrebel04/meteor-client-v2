@@ -42,7 +42,8 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
-          ./gradlew publishToMavenLocal --no-daemon
+          sed -i 's/artifact "..\/dist\/baritone-api-fabric-" + version + ".jar"/artifact "build\/libs\/baritone-fabric-" + version + ".jar"/g' fabric/build.gradle
+          ./gradlew jar publishToMavenLocal -x proguard --no-daemon
           cd ..
 
       - name: Set up Node JS
