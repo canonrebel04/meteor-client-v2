@@ -1,0 +1,82 @@
+name: Release
+
+# This workflow runs when a tag is pushed (e.g., v26.1.2)
+# It builds the release jar and creates a GitHub release with the JAR attached
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: Checkout Baritone Dependency
+        uses: actions/checkout@v4
+        with:
+          repository: canonrebel04/baritone-v2
+          ref: 26.1
+          path: baritone-v2
+
+      - name: Build and Publish Baritone to MavenLocal
+        run: |
+          cd baritone-v2
+          chmod +x gradlew
+          ./gradlew publishToMavenLocal --no-daemon
+          cd ..
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Build
+        run: ./gradlew build -Pcommit=${{ github.sha }} -Pbuild_number=${{ steps.version.outputs.VERSION }}
+
+      - name: Collect release artifacts
+        id: collect
+        run: |
+          mkdir release_artifacts
+          # Copy the remapped release jar (exclude -dev.jar)
+          find build/libs/ -name "*.jar" ! -name "*-dev.jar" -exec cp {} release_artifacts/ \;
+          echo "=== Collected Release Artifacts ==="
+          ls -la release_artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Meteor Client v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## Meteor Client v${{ steps.version.outputs.VERSION }} Release
+            
+            📦 The built mod JAR is attached as a release asset.
+            
+            ### 🔧 Installation
+            1. Download the release JAR.
+            2. Place it in your `mods` folder along with the Fabric API.
+            3. Launch Minecraft.
+          draft: false
+          prerelease: false
+          files: release_artifacts/*.jar
+          fail_on_unmatched_files: true
+          make_latest: true
