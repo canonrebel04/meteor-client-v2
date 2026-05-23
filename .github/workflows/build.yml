@@ -41,6 +41,7 @@ jobs:
       - name: Build and Publish Baritone to MavenLocal
         run: |
           cd baritone-v2
+          sed -i 's/task createDist(type: CreateDistTask, dependsOn: proguard)/task createDist(type: CreateDistTask, dependsOn: remapJar)/g' fabric/build.gradle
           chmod +x gradlew
           ./gradlew publishToMavenLocal --no-daemon
           cd ..
