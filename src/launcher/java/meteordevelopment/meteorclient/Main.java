@@ -81,6 +81,11 @@ public class Main {
         UNKNOWN;
 
         public void open(URL url) {
+            String protocol = url.getProtocol();
+            if (!"http".equals(protocol) && !"https".equals(protocol) && !"file".equals(protocol)) {
+                throw new IllegalArgumentException("Invalid URL protocol: " + protocol);
+            }
+
             try {
                 Runtime.getRuntime().exec(getURLOpenCommand(url));
             } catch (IOException e) {
