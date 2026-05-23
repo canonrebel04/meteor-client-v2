@@ -12,6 +12,7 @@ base {
 }
 
 repositories {
+    mavenLocal()
     maven {
         name = "meteor-maven"
         url = uri("https://maven.meteordev.org/releases")
@@ -81,7 +82,7 @@ dependencies {
     compileOnly(libs.viafabricplus) { isTransitive = false }
     compileOnly(libs.viafabricplus.api) { isTransitive = false }
 
-    compileOnly(libs.baritone)
+    compileOnly(libs.baritone) { isTransitive = false }
     compileOnly(libs.modmenu)
 
     // Libraries (JAR-in-JAR)

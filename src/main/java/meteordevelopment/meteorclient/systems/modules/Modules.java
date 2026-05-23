@@ -420,6 +420,7 @@ public class Modules extends System<Modules> {
         add(new SelfTrap());
         add(new SelfWeb());
         add(new Surround());
+        add(new TacticalBrain());
     }
 
     private void initPlayer() {
@@ -453,6 +454,7 @@ public class Modules extends System<Modules> {
         add(new PotionSaver());
         add(new Reach());
         add(new Rotation());
+        add(new RotationFilter());
         add(new SpeedMine());
     }
 
