@@ -1,0 +1,3 @@
+## 2023-10-27 - AutoShearer N+1 Loop Optimization
+**Learning:** Pre-computing static requirements (like having shears) before an entity loop can completely avoid O(N) operations. In AutoShearer, checking for shears *before* iterating over entities not only prevents redundant `findInHotbar` checks, but also allows an early return, bypassing the `instanceof` and distance checks for all `entitiesForRendering` when no shears are available.
+**Action:** When iterating over entities or items, extract required inventory lookups or state checks outside the loop. If the requirement is not met, return early to save CPU cycles.
