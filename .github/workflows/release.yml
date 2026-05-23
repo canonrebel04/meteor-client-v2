@@ -40,7 +40,7 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
-          ./gradlew publishToMavenLocal --no-daemon
+          ./gradlew build publishToMavenLocal --no-daemon
           cd ..
 
       - name: Get version from tag
