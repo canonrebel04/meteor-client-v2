@@ -97,10 +97,11 @@ public class CombatPathManager {
     }
 
     private void enableCombatMode(boolean enabled) {
-        BaritoneAPI.getSettings().combatMode.value = enabled;
+        // BaritoneAPI.getSettings().combatMode.value = enabled;
     }
 
     private void enableFavoring() {
+        /*
         Favoring.combatFavoringSupplier = hash -> {
             BetterBlockPos pos = BetterBlockPos.deserializeFromLong(hash);
             double multiplier = 1.0;
@@ -118,10 +119,11 @@ public class CombatPathManager {
             }
             return multiplier;
         };
+        */
     }
 
     private void disableFavoring() {
-        Favoring.combatFavoringSupplier = null;
+        // Favoring.combatFavoringSupplier = null;
     }
 
     private class CombatProcess implements IBaritoneProcess {
