@@ -19,7 +19,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
 
       - name: Checkout Baritone Dependency
         uses: actions/checkout@v4
@@ -32,6 +32,7 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
+          sed -i 's/java_version=25/java_version=21/' gradle.properties
           ./gradlew publishToMavenLocal --no-daemon
           cd ..
 
