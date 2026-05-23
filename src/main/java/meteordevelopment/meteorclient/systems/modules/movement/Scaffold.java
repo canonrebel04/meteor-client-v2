@@ -5,7 +5,6 @@
 
 package meteordevelopment.meteorclient.systems.modules.movement;
 
-import com.google.common.collect.Streams;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
@@ -269,7 +268,8 @@ public class Scaffold extends Module {
         if (fastTower.get() && mc.options.keyJump.isDown() && !mc.options.keyShift.isDown() && result.found() && (autoSwitch.get() || result.getHand() != null)) {
             Vec3 velocity = mc.player.getDeltaMovement();
             AABB playerBox = mc.player.getBoundingBox();
-            if (Streams.stream(mc.level.getBlockCollisions(mc.player, playerBox.move(0, 1, 0))).toList().isEmpty()) {
+            // Bolt: Avoids creating a stream, allocating a list, and iterating over all elements just to check if it's empty
+            if (!mc.level.getBlockCollisions(mc.player, playerBox.move(0, 1, 0)).iterator().hasNext()) {
                 // If there is no block above the player: move the player up, so he can place another block
                 if (whileMoving.get() || !PlayerUtils.isMoving()) {
                     velocity = new Vec3(velocity.x, towerSpeed.get(), velocity.z);

@@ -5,7 +5,6 @@
 
 package meteordevelopment.meteorclient.systems.modules.movement;
 
-import com.google.common.collect.Streams;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
 import meteordevelopment.meteorclient.settings.Setting;
@@ -15,8 +14,6 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
-
-import java.util.stream.Stream;
 
 public class Parkour extends Module {
 
@@ -43,9 +40,8 @@ public class Parkour extends Module {
         AABB box = mc.player.getBoundingBox();
         AABB adjustedBox = box.move(0, -0.5, 0).inflate(-edgeDistance.get(), 0, -edgeDistance.get());
 
-        Stream<VoxelShape> blockCollisions = Streams.stream(mc.level.getBlockCollisions(mc.player, adjustedBox));
-
-        if (blockCollisions.findAny().isPresent()) return;
+        // Bolt: Avoids creating a stream and iterating over elements when we just need to check if there is any collision
+        if (mc.level.getBlockCollisions(mc.player, adjustedBox).iterator().hasNext()) return;
 
         mc.player.jumpFromGround();
     }
