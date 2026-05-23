@@ -42,7 +42,8 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
-          ./gradlew build publishToMavenLocal --no-daemon
+          ./gradlew createDist --no-daemon
+          ./gradlew publishToMavenLocal --no-daemon
           cd ..
 
       - name: Set up Node JS
