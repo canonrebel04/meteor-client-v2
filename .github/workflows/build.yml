@@ -13,6 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
       MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
       DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -41,6 +42,7 @@ jobs:
       - name: Build and Publish Baritone to MavenLocal
         run: |
           cd baritone-v2
+          sed -i 's/java_version=25/java_version=21/g' gradle.properties
           chmod +x gradlew
           ./gradlew publishToMavenLocal --no-daemon
           cd ..
