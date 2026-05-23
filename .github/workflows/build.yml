@@ -12,6 +12,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
+      MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      SERVER_TOKEN: ${{ secrets.SERVER_TOKEN }}
 
     steps:
       - name: Checkout Repository
@@ -65,25 +70,17 @@ jobs:
           retention-days: 30
 
       - name: Webhook Failure
-        if: ${{ failure() && secrets.DISCORD_WEBHOOK != '' }}
+        if: ${{ failure() && env.DISCORD_WEBHOOK != '' }}
         run: |
           cd .github/builds
           npm run webhook -- ${{ steps.build-number.outputs.number }} ${{ github.ref_name }} https://api.github.com/repos/MeteorDevelopment/meteor-client/compare/${{ github.event.before }}...${{ github.event.after }} false
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 
       - name: Publish
-        if: ${{ secrets.MAVEN_METEOR_ALIAS != '' && secrets.MAVEN_METEOR_TOKEN != '' }}
+        if: ${{ env.MAVEN_METEOR_ALIAS != '' && env.MAVEN_METEOR_TOKEN != '' }}
         run: ./gradlew publish -Pcommit=${{ github.sha }} -Pbuild_number=${{ steps.build-number.outputs.number }}
-        env:
-          MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
-          MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
 
       - name: Discord webhook
-        if: ${{ secrets.DISCORD_WEBHOOK != '' }}
+        if: ${{ env.DISCORD_WEBHOOK != '' }}
         run: |
           cd .github/builds
           npm run webhook -- ${{ steps.build-number.outputs.number }} ${{ github.ref_name }} https://api.github.com/repos/MeteorDevelopment/meteor-client/compare/${{ github.event.before }}...${{ github.event.after }} true
-        env:
-          SERVER_TOKEN: ${{ secrets.SERVER_TOKEN }}
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
