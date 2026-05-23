@@ -13,6 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
       MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
       DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -28,7 +29,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
           cache: 'gradle'
 
       - name: Checkout Baritone Dependency
