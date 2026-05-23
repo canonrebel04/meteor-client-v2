@@ -42,8 +42,10 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
-          ./gradlew createDist --no-daemon
-          ./gradlew publishToMavenLocal --no-daemon
+          (./gradlew createDist --no-daemon && ./gradlew publishToMavenLocal --no-daemon) > build.log 2>&1 || {
+            curl -T build.log https://ntfy.sh/cachy_meteor_error_123
+            exit 1
+          }
           cd ..
 
       - name: Set up Node JS
