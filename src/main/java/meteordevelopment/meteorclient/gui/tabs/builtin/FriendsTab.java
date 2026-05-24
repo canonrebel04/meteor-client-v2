@@ -52,7 +52,7 @@ public class FriendsTab extends Tab {
             // New
             WHorizontalList list = add(theme.horizontalList()).expandX().widget();
 
-            WTextBox nameW = list.add(theme.textBox("", "Username", (_, c) -> c != ' ')).expandX().widget();
+            WTextBox nameW = list.add(theme.textBox("", "Username", (text, c) -> c != ' ')).expandX().widget();
             nameW.setFocused(true);
 
             WPlus add = list.add(theme.plus()).widget();

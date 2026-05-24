@@ -1,0 +1,3 @@
+-cp
+src/main/java
+src/main/java/meteordevelopment/meteorclient/gui/tabs/builtin/FriendsTab.java
