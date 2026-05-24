@@ -52,10 +52,11 @@ public class FriendsTab extends Tab {
             // New
             WHorizontalList list = add(theme.horizontalList()).expandX().widget();
 
-            WTextBox nameW = list.add(theme.textBox("", (_, c) -> c != ' ')).expandX().widget();
+            WTextBox nameW = list.add(theme.textBox("", "Username", (_, c) -> c != ' ')).expandX().widget();
             nameW.setFocused(true);
 
             WPlus add = list.add(theme.plus()).widget();
+            add.tooltip = "Add";
             add.action = () -> {
                 String name = nameW.get().trim();
                 Friend friend = new Friend(name);
@@ -95,6 +96,7 @@ public class FriendsTab extends Tab {
                 table.add(theme.label(friend.getName()));
 
                 WMinus remove = table.add(theme.minus()).expandCellX().right().widget();
+                remove.tooltip = "Remove";
                 remove.action = () -> {
                     Friends.get().remove(friend);
                     initTable(table);
