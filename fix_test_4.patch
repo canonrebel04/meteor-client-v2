@@ -1,0 +1,11 @@
+--- .github/workflows/build.yml
++++ .github/workflows/build.yml
+@@ -28,7 +28,7 @@
+         uses: actions/setup-java@v4
+         with:
+           distribution: 'zulu'
+-          java-version: '25'
++          java-version: '21'
+           cache: 'gradle'
+
+       - name: Checkout Baritone Dependency
