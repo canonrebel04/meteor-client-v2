@@ -42,10 +42,10 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
-          ./gradlew build -x proguard -x createDist --no-daemon
+          ./gradlew fabric:build -x fabric:proguard -x fabric:createDist --no-daemon
           mkdir -p dist
           cp fabric/build/libs/baritone-fabric-*-SNAPSHOT.jar dist/baritone-api-fabric-26.1-SNAPSHOT.jar
-          ./gradlew publishToMavenLocal --no-daemon
+          ./gradlew fabric:publishToMavenLocal --no-daemon
           cd ..
 
       - name: Set up Node JS
