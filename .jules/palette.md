@@ -1,0 +1,3 @@
+## 2024-05-26 - Missing Accessible Names in Custom GUI Framework
+**Learning:** The custom `meteordevelopment.meteorclient.gui` framework relies heavily on icon-only widgets (`WPlus`, `WMinus`) and text inputs (`WTextBox`). These often lack explicit placeholders or tooltips by default, which creates an accessibility barrier and reduces clarity.
+**Action:** When working with the Meteor GUI framework, explicitly use the `theme.textBox` overloads that accept placeholders (e.g. `theme.textBox(text, placeholder, filter)`) and explicitly assign the `.tooltip` property on icon-only buttons like `WPlus` and `WMinus`.
