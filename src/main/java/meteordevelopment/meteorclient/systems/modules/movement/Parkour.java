@@ -43,9 +43,8 @@ public class Parkour extends Module {
         AABB box = mc.player.getBoundingBox();
         AABB adjustedBox = box.move(0, -0.5, 0).inflate(-edgeDistance.get(), 0, -edgeDistance.get());
 
-        Stream<VoxelShape> blockCollisions = Streams.stream(mc.level.getBlockCollisions(mc.player, adjustedBox));
-
-        if (blockCollisions.findAny().isPresent()) return;
+        // Optimize: avoid stream allocation overhead per tick by checking the iterator directly
+        if (mc.level.getBlockCollisions(mc.player, adjustedBox).iterator().hasNext()) return;
 
         mc.player.jumpFromGround();
     }
