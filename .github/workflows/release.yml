@@ -1,20 +1,18 @@
 name: Release
 
-# This workflow runs when a tag is pushed (e.g., v26.1.2)
-# It builds the release jar and creates a GitHub release with the JAR attached
-
 on:
   push:
     tags:
-      - 'v*'
+      - '*'
 
 jobs:
-  release:
-    name: Create Release
+  build:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
+      MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 
     steps:
       - name: Checkout Repository
@@ -44,38 +42,44 @@ jobs:
           ./gradlew publishToMavenLocal --no-daemon
           cd ..
 
-      - name: Get version from tag
+      - name: Set up Node JS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Get current version
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        run: |
+          cd .github/builds
+          npm install
+          npm run --silent get_version >> $GITHUB_OUTPUT
 
       - name: Build
-        run: ./gradlew build -Pcommit=${{ github.sha }} -Pbuild_number=${{ steps.version.outputs.VERSION }}
+        run: ./gradlew build -Pversion=${{ steps.version.outputs.version }}
 
-      - name: Collect release artifacts
-        id: collect
-        run: |
-          mkdir release_artifacts
-          # Copy the remapped release jar (exclude -dev.jar)
-          find build/libs/ -name "*.jar" ! -name "*-dev.jar" -exec cp {} release_artifacts/ \;
-          echo "=== Collected Release Artifacts ==="
-          ls -la release_artifacts
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Create Release
+        uses: ncipollo/release-action@v1.12.0
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Meteor Client v${{ steps.version.outputs.VERSION }}
-          body: |
-            ## Meteor Client v${{ steps.version.outputs.VERSION }} Release
-            
-            📦 The built mod JAR is attached as a release asset.
-            
-            ### 🔧 Installation
-            1. Download the release JAR.
-            2. Place it in your `mods` folder along with the Fabric API.
-            3. Launch Minecraft.
-          draft: false
-          prerelease: false
-          files: release_artifacts/*.jar
-          fail_on_unmatched_files: true
-          make_latest: true
+          artifacts: "build/libs/*"
+          prerelease: true
+          makeLatest: true
+          body: "This version supports Minecraft ${{ steps.version.outputs.mc_version }}."
+          name: "Meteor Client ${{ steps.version.outputs.version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Webhook Failure
+        if: ${{ failure() && env.DISCORD_WEBHOOK != '' }}
+        run: |
+          cd .github/builds
+          npm run webhook -- ${{ steps.version.outputs.version }} false false true
+
+      - name: Publish
+        if: ${{ env.MAVEN_METEOR_ALIAS != '' && env.MAVEN_METEOR_TOKEN != '' }}
+        run: ./gradlew publish -Pversion=${{ steps.version.outputs.version }}
+
+      - name: Discord webhook
+        if: ${{ env.DISCORD_WEBHOOK != '' }}
+        run: |
+          cd .github/builds
+          npm run webhook -- ${{ steps.version.outputs.version }} true false true

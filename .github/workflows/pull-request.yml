@@ -5,6 +5,8 @@ on: [ pull_request ]
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout Repository
@@ -32,6 +34,7 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
+          ./gradlew build --no-daemon
           ./gradlew publishToMavenLocal --no-daemon
           cd ..
 
