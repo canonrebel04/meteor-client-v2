@@ -79,5 +79,6 @@ public abstract class WAccount extends WHorizontalList {
             Accounts.get().remove(account);
             if (refreshScreenAction != null) refreshScreenAction.run();
         };
+        remove.tooltip = "Remove account";
     }
 }
