@@ -75,6 +75,7 @@ public abstract class WAccount extends WHorizontalList {
 
         // Remove
         WConfirmedMinus remove = add(theme.confirmedMinus()).widget();
+        remove.tooltip = "Remove";
         remove.action = () -> {
             Accounts.get().remove(account);
             if (refreshScreenAction != null) refreshScreenAction.run();
