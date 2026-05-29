@@ -14,7 +14,7 @@ import baritone.api.process.IBaritoneProcess;
 import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
 import baritone.api.utils.BetterBlockPos;
-import baritone.utils.pathing.Favoring;
+// import baritone.utils.pathing.Favoring;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Player;
 
