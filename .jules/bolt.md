@@ -1,0 +1,3 @@
+## 2026-05-30 - Avoid Stream Instantiation for Checking Emptiness
+**Learning:** Checking if an iterable (like `mc.level.getBlockCollisions()` which returns `Iterable<VoxelShape>`) is empty or contains elements is often done inefficiently in the codebase by wrapping it in a Stream via `Streams.stream(iterable)` and evaluating it using `.toList().isEmpty()` or `.findAny().isPresent()`. This causes unnecessary Stream instantiation and list allocation overhead, especially in frequently called methods like movement checks.
+**Action:** When needing to check if an Iterable is empty or has elements, use `!iterable.iterator().hasNext()` or `iterable.iterator().hasNext()` respectively, rather than wrapping it in a Stream.
