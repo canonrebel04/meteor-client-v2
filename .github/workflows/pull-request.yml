@@ -28,6 +28,9 @@ jobs:
           ref: 26.1
           path: baritone-v2
 
+      - name: Fix Baritone Java Version
+        run: sed -i 's/java_version=25/java_version=21/g' baritone-v2/gradle.properties
+
       - name: Build and Publish Baritone to MavenLocal
         run: |
           cd baritone-v2
