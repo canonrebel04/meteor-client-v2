@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.awt.Desktop;
 import java.net.URL;
 import java.util.Locale;
 
@@ -66,24 +67,21 @@ public class Main {
 
     private enum OperatingSystem {
         LINUX,
-        WINDOWS {
-            @Override
-            protected String[] getURLOpenCommand(URL url) {
-                return new String[]{"rundll32", "url.dll,FileProtocolHandler", url.toString()};
-            }
-        },
-        OSX {
-            @Override
-            protected String[] getURLOpenCommand(URL url) {
-                return new String[]{"open", url.toString()};
-            }
-        },
+        WINDOWS,
+        OSX,
         UNKNOWN;
 
         public void open(URL url) {
             try {
-                Runtime.getRuntime().exec(getURLOpenCommand(url));
-            } catch (IOException e) {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                    Desktop.getDesktop().browse(url.toURI());
+                } else {
+                    String[] cmd = getFallbackCommand(url);
+                    if (cmd != null) {
+                        Runtime.getRuntime().exec(cmd);
+                    }
+                }
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
@@ -91,27 +89,39 @@ public class Main {
         public void open(String url) {
             try {
                 open(new URI(url).toURL());
-            } catch (URISyntaxException | MalformedURLException e) {
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
 
         public void open(File file) {
             try {
-                open(file.toURI().toURL());
-            } catch (MalformedURLException e) {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                    Desktop.getDesktop().open(file);
+                } else {
+                    open(file.toURI().toURL());
+                }
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
 
-        protected String[] getURLOpenCommand(URL url) {
+        private String[] getFallbackCommand(URL url) {
             String string = url.toString();
-
             if ("file".equals(url.getProtocol())) {
                 string = string.replace("file:", "file://");
             }
 
-            return new String[]{"xdg-open", string};
+            switch (this) {
+                case WINDOWS:
+                    return new String[]{"rundll32", "url.dll,FileProtocolHandler", string};
+                case OSX:
+                    return new String[]{"open", string};
+                case LINUX:
+                    return new String[]{"xdg-open", string};
+                default:
+                    return null;
+            }
         }
     }
 }
