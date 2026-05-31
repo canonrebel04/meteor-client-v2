@@ -42,7 +42,7 @@ jobs:
         run: |
           cd baritone-v2
           chmod +x gradlew
-          ./gradlew build --no-daemon
+          ./gradlew build -x :fabric:proguard --no-daemon
           ./gradlew publishToMavenLocal --no-daemon
           cd ..
 
