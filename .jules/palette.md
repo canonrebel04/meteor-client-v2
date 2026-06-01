@@ -1,0 +1,3 @@
+## 2024-05-18 - Missing Tooltips on Icon-Only Widgets
+**Learning:** The custom GUI framework (using `theme.button(GuiRenderer.EDIT)`, `theme.minus()`, etc) relies heavily on icon-only buttons for actions like Edit or Remove. If tooltips aren't explicitly assigned (via `.tooltip = "..."`), these remain unlabelled and inaccessible to screen readers or confusing for visually impaired users.
+**Action:** Always check custom icon-only widget instantiation (WButton, WMinus, WConfirmedMinus) to verify that a `tooltip` property is set.
