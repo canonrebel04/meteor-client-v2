@@ -1,0 +1,4 @@
+## 2025-02-14 - Swarm Module Unauthenticated RCE Vulnerability
+**Vulnerability:** The Swarm module's `SwarmHost` bound a `ServerSocket` to `0.0.0.0` (all interfaces) and processed incoming `Socket` connections without any authentication. This allowed any remote attacker to connect to the host port and execute arbitrary commands.
+**Learning:** The module's documentation stated it "operates without network authentication, binding a `ServerSocket` to `0.0.0.0` and allowing unauthenticated broadcasts of commands to clients. This represents a significant long-term security and Remote Code Execution (RCE) vulnerability in the codebase."
+**Prevention:** Always bind network sockets to `localhost` (loopback) unless the service explicitly requires external access and incorporates strong authentication.
