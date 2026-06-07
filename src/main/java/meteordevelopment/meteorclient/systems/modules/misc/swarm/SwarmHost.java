@@ -18,7 +18,7 @@ public class SwarmHost extends Thread {
 
     public SwarmHost(int port) {
         try {
-            socket = new ServerSocket(port);
+            socket = new ServerSocket(port, 50, java.net.InetAddress.getLoopbackAddress());
         } catch (IOException e) {
             socket = null;
             ChatUtils.errorPrefix("Swarm", "Couldn't start a server on port %s.", port);
