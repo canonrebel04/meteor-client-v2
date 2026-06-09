@@ -86,6 +86,7 @@ public class StringListSetting extends Setting<List<String>> {
             textBox.actionOnUnfocused = () -> setting.set(strings);
 
             WMinus delete = table.add(theme.minus()).widget();
+            delete.tooltip = "Remove";
             delete.action = () -> {
                 strings.remove(msgI);
                 setting.set(strings);
