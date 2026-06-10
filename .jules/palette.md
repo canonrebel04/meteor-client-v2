@@ -1,0 +1,3 @@
+## 2025-01-20 - Add tooltips to icon-only buttons
+**Learning:** Found that custom GUI systems with icon-only widgets (such as WButton with GuiRenderer.EDIT, WMinus, WConfirmedMinus) often lack accessibility labels by default. In Meteor Client, setting the `.tooltip` property is required to make these elements accessible and their purpose clear.
+**Action:** Always ensure icon-only buttons in custom UI frameworks have an explicit `.tooltip` or ARIA equivalent set to ensure screen reader compatibility and clear visual indication for users.
