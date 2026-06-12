@@ -1,4 +1,4 @@
-## 2024-05-18 - Prevent Unauthenticated RCE in SwarmHost
-**Vulnerability:** `ServerSocket` in `SwarmHost.java` was binding to all interfaces (`0.0.0.0`) by default, exposing the custom port to external network connections and potentially allowing unauthenticated Remote Code Execution.
-**Learning:** Default constructors for `ServerSocket` (e.g., `new ServerSocket(port)`) bind to all available IP addresses on the machine, which is often not intended and insecure for local-only IPC/communication.
-**Prevention:** Always specify the bind address explicitly using `InetAddress.getLoopbackAddress()` (e.g., `new ServerSocket(port, backlog, InetAddress.getLoopbackAddress())`) for local services to prevent external access.
+## 2026-06-12 - CI Fix for Baritone MavenLocal Publish
+**Vulnerability:** The CI workflow failed because the custom `baritone-v2` dependency was not successfully published to MavenLocal.
+**Learning:** When building the custom `baritone-v2` dependency locally in GitHub workflows (`pull-request.yml`, `build.yml`, `release.yml`), `./gradlew build` must be executed before `./gradlew publishToMavenLocal` to ensure the required `.jar` artifacts are correctly generated. Also, `temurin` distribution for Java 25 lacks required `jmods` for the `proguard` task in `baritone-v2`.
+**Prevention:** Use `zulu` distribution for Java 25 and always execute `./gradlew build` before `./gradlew publishToMavenLocal` when building `baritone-v2`.
