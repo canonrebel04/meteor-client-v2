@@ -9,6 +9,7 @@ import meteordevelopment.meteorclient.utils.network.MeteorExecutor;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -18,7 +19,7 @@ public class SwarmHost extends Thread {
 
     public SwarmHost(int port) {
         try {
-            socket = new ServerSocket(port);
+            socket = new ServerSocket(port, 50, InetAddress.getLoopbackAddress());
         } catch (IOException e) {
             socket = null;
             ChatUtils.errorPrefix("Swarm", "Couldn't start a server on port %s.", port);
