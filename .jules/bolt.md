@@ -4,3 +4,6 @@
 ## 2024-05-23 - Avoid Repetitive Work in Hot Loops
 **Learning:** Checking hotbar for items inside the entity iteration loop is an O(N) operation per tick (N being entities), and completely avoidable if item state is constant per tick.
 **Action:** Extract repetitive item searches in modules `onTick` event handlers outside of the main loops.
+## 2024-05-13 - Optimize regex filter compilation in BetterChat.java
+**Learning:** Compiling regex patterns in a loop (using `Pattern.compile`) when the user edits a settings list is inefficient, particularly because elements that didn't change are recompiled. A naive implementation that removes elements from a list during iteration by using `remove(i)` without decrementing `i` skips the element that immediately followed it.
+**Action:** Implemented caching for compiled `Pattern` objects. For a new configuration, we check the old `filterRegexList` to see if a given string has already been compiled (by comparing `Pattern.pattern().equals(...)`). If so, we reuse the old object instead of calling `Pattern.compile()`. Also fixed the off-by-one bug by inserting `i--;` inside the `catch` block that removes elements.
