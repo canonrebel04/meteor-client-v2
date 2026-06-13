@@ -6,3 +6,7 @@
 **Vulnerability:** The local `HttpServer` listening for the Microsoft OAuth callback on `127.0.0.1:9675` accepted any incoming `code` parameter without verifying its origin via the OAuth `state` parameter.
 **Learning:** This lack of verification meant a malicious website could perform a Cross-Site Request Forgery (CSRF) attack to force a user to log into an attacker-controlled Microsoft account (since it listens locally and accepts forged `code` redirects).
 **Prevention:** Always implement and strictly validate the OAuth `state` parameter (e.g., using a random UUID) to ensure the callback request corresponds to a flow initiated by the local application instance.
+## 2025-02-27 - Insecure Random String Generation
+**Vulnerability:** Found usage of `RandomStringUtils.insecure().nextAlphabetic(...)` for bypass text in the Spam module, generating easily predictable strings.
+**Learning:** `RandomStringUtils.insecure()` relies on pseudo-random generators not suitable for security or robustness features like bypass systems.
+**Prevention:** Use `RandomStringUtils.secure()` which leverages Cryptographically Secure Pseudo-Random Number Generators (CSPRNG) when randomness predictability could lead to bypassed logic or detection.
