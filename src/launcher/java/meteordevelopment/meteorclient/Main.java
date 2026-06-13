@@ -72,6 +72,11 @@ public class Main {
         UNKNOWN;
 
         public void open(URL url) {
+            String protocol = url.getProtocol();
+            if (!"http".equals(protocol) && !"https".equals(protocol) && !"file".equals(protocol)) {
+                throw new IllegalArgumentException("Invalid URL protocol: " + protocol);
+            }
+
             try {
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                     Desktop.getDesktop().browse(url.toURI());
