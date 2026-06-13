@@ -23,7 +23,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '25'
+          java-version: '21'
           cache: 'gradle'
 
       - name: Checkout Baritone Dependency
@@ -32,6 +32,15 @@ jobs:
           repository: canonrebel04/baritone-v2
           ref: 26.1
           path: baritone-v2
+
+      - name: Fix Baritone Java Version
+        run: sed -i 's/java_version=25/java_version=21/g' baritone-v2/gradle.properties
+
+      - name: Setup Java 21 for Baritone toolchain build
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
 
       - name: Build and Publish Baritone to MavenLocal
         run: |

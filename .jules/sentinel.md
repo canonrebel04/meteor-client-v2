@@ -10,3 +10,7 @@
 **Vulnerability:** Found usage of `RandomStringUtils.insecure().nextAlphabetic(...)` for bypass text in the Spam module, generating easily predictable strings.
 **Learning:** `RandomStringUtils.insecure()` relies on pseudo-random generators not suitable for security or robustness features like bypass systems.
 **Prevention:** Use `RandomStringUtils.secure()` which leverages Cryptographically Secure Pseudo-Random Number Generators (CSPRNG) when randomness predictability could lead to bypassed logic or detection.
+## 2024-05-30 - Insecure API Call
+**Vulnerability:** Found `http` being used in TheAlteningAccount.java for sensitive endpoints (`http://sessionserver.thealtening.com` and `http://authserver.thealtening.com`).
+**Learning:** Hardcoding insecure protocol endpoints, especially related to authentication and session management, leaves the application vulnerable to Man-in-the-Middle (MitM) attacks.
+**Prevention:** Ensure that all endpoints use secure protocols (`https`) instead of `http` to protect sensitive data transmission.
