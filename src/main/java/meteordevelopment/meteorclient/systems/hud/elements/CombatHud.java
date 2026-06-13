@@ -72,6 +72,20 @@ public class CombatHud extends HudElement {
         .build()
     );
 
+    private final Setting<SettingColor> primaryColor = sgGeneral.add(new ColorSetting.Builder()
+        .name("primary-color")
+        .description("The primary color of the text.")
+        .defaultValue(new SettingColor(255, 255, 255))
+        .build()
+    );
+
+    private final Setting<SettingColor> secondaryColor = sgGeneral.add(new ColorSetting.Builder()
+        .name("secondary-color")
+        .description("The secondary color of the text.")
+        .defaultValue(new SettingColor(175, 175, 175))
+        .build()
+    );
+
     // Health
 
     private final Setting<SettingColor> healthColor1 = sgHealth.add(new ColorSetting.Builder()
@@ -233,9 +247,8 @@ public class CombatHud extends HudElement {
             double x = this.x;
             double y = this.y;
 
-            // TODO: These should probably be settings
-            Color primaryColor = TextHud.getSectionColor(0);
-            Color secondaryColor = TextHud.getSectionColor(1);
+            Color primaryColor = this.primaryColor.get();
+            Color secondaryColor = this.secondaryColor.get();
 
             if (isInEditor()) playerEntity = mc.player;
             else playerEntity = TargetUtils.getPlayerTarget(range.get(), SortPriority.LowestDistance);
