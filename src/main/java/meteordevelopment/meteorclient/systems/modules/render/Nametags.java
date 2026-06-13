@@ -350,7 +350,7 @@ public class Nametags extends Module {
             }
         }
 
-        entityList.sort(Comparator.comparing(e -> e.distanceToSqr(cameraPos)));
+        entityList.sort(Comparator.comparingDouble(e -> e.distanceToSqr(cameraPos))); // ⚡ Bolt: Use comparingDouble to avoid boxing overhead
     }
 
     @EventHandler
