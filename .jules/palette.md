@@ -16,3 +16,6 @@
 ## 2025-02-12 - Missing tooltips on icon-only widgets
 **Learning:** In Meteor's custom GUI framework, icon-only widgets (such as `theme.plus()` and `theme.minus()`) lack tooltips by default. This makes them inaccessible to screen readers and visually impaired users.
 **Action:** Always manually assign the `.tooltip` property to any icon-only widgets to ensure accessibility.
+## 2024-06-13 - Missing tooltips on icon-only buttons
+**Learning:** Icon-only buttons in this custom GUI framework (like `theme.button(GuiRenderer.EDIT)`, `theme.minus()`, `theme.plus()`, `theme.confirmedMinus()`) do not have tooltips by default. This makes their purpose unclear to users, especially for those relying on screen readers or those who aren't familiar with the icons.
+**Action:** Always assign a descriptive string to the `tooltip` property of icon-only widgets to ensure accessibility and clarity.
