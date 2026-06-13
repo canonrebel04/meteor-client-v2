@@ -64,11 +64,13 @@ public class AutoShearer extends Module {
     private void onTick(TickEvent.Pre event) {
         entity = null;
 
+        FindItemResult findShear = InvUtils.findInHotbar(itemStack -> itemStack.getItem() == Items.SHEARS && (!antiBreak.get() || itemStack.getDamageValue() < itemStack.getMaxDamage() - 1));
+        if (!findShear.found()) return;
+
         for (Entity entity : mc.level.entitiesForRendering()) {
             if (!(entity instanceof Sheep sheep) || sheep.isSheared() || sheep.isBaby() || !PlayerUtils.isWithin(entity, distance.get()))
                 continue;
 
-            FindItemResult findShear = InvUtils.findInHotbar(itemStack -> itemStack.getItem() == Items.SHEARS && (!antiBreak.get() || itemStack.getDamageValue() < itemStack.getMaxDamage() - 1));
             if (!InvUtils.swap(findShear.slot(), true)) return;
 
             this.hand = findShear.getHand();
