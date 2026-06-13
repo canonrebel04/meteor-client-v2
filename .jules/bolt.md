@@ -10,3 +10,6 @@
 ## 2023-10-27 - AutoShearer N+1 Loop Optimization
 **Learning:** Pre-computing static requirements (like having shears) before an entity loop can completely avoid O(N) operations. In AutoShearer, checking for shears *before* iterating over entities not only prevents redundant `findInHotbar` checks, but also allows an early return, bypassing the `instanceof` and distance checks for all `entitiesForRendering` when no shears are available.
 **Action:** When iterating over entities or items, extract required inventory lookups or state checks outside the loop. If the requirement is not met, return early to save CPU cycles.
+## 2023-11-20 - Pre-fetch expensive operations outside loops
+**Learning:** In Minecraft mods, checking inventory items inside a loop (like `onTick` combined with `blockInteractionRange`) causes redundant processing. Pre-fetching results outside the loop saves CPU cycles, especially when checking for specific items in the hotbar.
+**Action:** When iterating over blocks in `onTick` (or similar high-frequency methods) and searching for an item, pre-fetch the item using `InvUtils.findInHotbar` before the loop and add an early return if not found.
