@@ -1,0 +1,4 @@
+## 2024-05-18 - Prevent Unauthenticated RCE in Local Services
+**Vulnerability:** ServerSocket bound to all interfaces (`0.0.0.0`) by default in `SwarmHost.java`, which allows unauthenticated network connections.
+**Learning:** By default, `ServerSocket(port)` binds to all network interfaces. If the service is intended for local or internal use (or relies on client authentication), exposing it to the network can lead to Remote Code Execution (RCE) or unauthorized access.
+**Prevention:** Always use `InetAddress.getLoopbackAddress()` to bind the `ServerSocket` explicitly to `localhost` unless external network access is explicitly intended and properly secured with authentication.
