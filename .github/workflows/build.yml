@@ -13,6 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
       MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
       DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -43,7 +44,7 @@ jobs:
           cd baritone-v2
           sed -i 's/task createDist(type: CreateDistTask, dependsOn: proguard)/task createDist(type: CreateDistTask, dependsOn: remapJar)/g' fabric/build.gradle
           chmod +x gradlew
-          ./gradlew publishToMavenLocal --no-daemon
+          ./gradlew build publishToMavenLocal --no-daemon
           cd ..
 
       - name: Set up Node JS
