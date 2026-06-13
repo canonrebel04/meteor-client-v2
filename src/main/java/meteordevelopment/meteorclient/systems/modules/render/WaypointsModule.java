@@ -242,6 +242,7 @@ public class WaypointsModule extends Module {
             };
 
             WButton edit = table.add(theme.button(GuiRenderer.EDIT)).widget();
+            edit.tooltip = "Edit";
             edit.action = () -> mc.setScreen(new EditWaypointScreen(theme, waypoint, () -> initTable(theme, table)));
 
             // Goto
@@ -256,6 +257,7 @@ public class WaypointsModule extends Module {
             }
 
             WConfirmedMinus remove = table.add(theme.confirmedMinus()).widget();
+            remove.tooltip = "Remove";
             remove.action = () -> {
                 Waypoints.get().remove(waypoint);
                 initTable(theme, table);
