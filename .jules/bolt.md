@@ -13,3 +13,6 @@
 ## 2023-11-20 - Pre-fetch expensive operations outside loops
 **Learning:** In Minecraft mods, checking inventory items inside a loop (like `onTick` combined with `blockInteractionRange`) causes redundant processing. Pre-fetching results outside the loop saves CPU cycles, especially when checking for specific items in the hotbar.
 **Action:** When iterating over blocks in `onTick` (or similar high-frequency methods) and searching for an item, pre-fetch the item using `InvUtils.findInHotbar` before the loop and add an early return if not found.
+## 2026-06-13 - Avoid Streams.stream() for empty checks
+**Learning:** Using `Streams.stream(iterable).toList().isEmpty()` or `Streams.stream(iterable).findAny().isPresent()` on Iterables (like `mc.level.getBlockCollisions()`) adds unnecessary stream instantiation and list allocation overhead.
+**Action:** Use `!iterable.iterator().hasNext()` or `iterable.iterator().hasNext()` directly to avoid allocation overhead on the hot path (like TickEvents).
