@@ -48,6 +48,7 @@ public class BlockDataSettingScreen<T extends ICopyable<T> & ISerializable<T> & 
     @Override
     protected WWidget getDataWidget(Block block, @Nullable T blockData) {
         WButton edit = theme.button(GuiRenderer.EDIT);
+        edit.tooltip = "Edit";
         edit.action = () -> {
             T data = blockData;
             if (data == null) data = setting.defaultData.get().copy();

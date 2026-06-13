@@ -62,8 +62,10 @@ public class MacrosTab extends Tab {
 
                 WButton edit = table.add(theme.button(GuiRenderer.EDIT)).expandCellX().right().widget();
                 edit.action = () -> mc.setScreen(new EditMacroScreen(theme, macro, this::reload));
+                edit.tooltip = "Edit";
 
                 WConfirmedMinus remove = table.add(theme.confirmedMinus()).widget();
+                remove.tooltip = "Remove";
                 remove.action = () -> {
                     Macros.get().remove(macro);
                     reload();
