@@ -93,6 +93,7 @@ public abstract class CollectionListSettingScreen<T> extends WindowScreen {
             table.add(getValueWidget(t));
 
             WPressable button = table.add(isLeft ? theme.plus() : theme.minus()).expandCellX().right().widget();
+            button.tooltip = isLeft ? "Add" : "Remove";
             button.action = () -> buttonAction.accept(t);
 
             table.row();

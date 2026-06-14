@@ -221,6 +221,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
     private void genericW(WTable table, GenericSetting<?> setting) {
         WButton edit = table.add(theme.button(GuiRenderer.EDIT)).widget();
+        edit.tooltip = "Edit";
         edit.action = () -> mc.setScreen(setting.createScreen(theme));
 
         reset(table, setting, null);
@@ -232,6 +233,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         WQuad quad = list.add(theme.quad(setting.get())).widget();
 
         WButton edit = list.add(theme.button(GuiRenderer.EDIT)).widget();
+        edit.tooltip = "Edit";
         edit.action = () -> mc.setScreen(new ColorSettingScreen(theme, setting));
 
         reset(table, setting, () -> quad.color = setting.get());
@@ -341,6 +343,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
     private void blockDataW(WTable table, BlockDataSetting<?> setting) {
         WButton button = table.add(theme.button(GuiRenderer.EDIT)).expandCellX().widget();
+        button.tooltip = "Edit";
         button.action = () -> mc.setScreen(new BlockDataSettingScreen<>(theme, setting));
 
         reset(table, setting, null);
@@ -386,6 +389,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         colorListWFill(t, setting);
 
         WPlus add = tab.add(theme.plus()).expandCellX().widget();
+        add.tooltip = "Add";
         add.action = () -> {
             setting.get().add(new SettingColor());
             setting.onChanged();
@@ -410,6 +414,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
             t.add(theme.quad(color)).widget();
 
             WButton edit = t.add(theme.button(GuiRenderer.EDIT)).widget();
+            edit.tooltip = "Edit";
             edit.action = () -> {
                 SettingColor defaultValue = WHITE;
                 if (_i < setting.getDefaultValue().size()) defaultValue = setting.getDefaultValue().get(_i);
@@ -423,6 +428,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
             };
 
             WMinus remove = t.add(theme.minus()).expandCellX().right().widget();
+            remove.tooltip = "Remove";
             remove.action = () -> {
                 setting.get().remove(_i);
                 setting.onChanged();
@@ -497,6 +503,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
     private void reset(WContainer c, Setting<?> setting, Runnable action) {
         WButton reset = c.add(theme.button(GuiRenderer.RESET)).widget();
+        reset.tooltip = "Reset";
         reset.action = () -> {
             setting.reset();
             if (action != null) action.run();
