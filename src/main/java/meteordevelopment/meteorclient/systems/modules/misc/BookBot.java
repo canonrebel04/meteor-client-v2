@@ -384,25 +384,6 @@ public class BookBot extends Module {
         bookCount++;
     }
 
-    @Override
-    public CompoundTag toTag() {
-        CompoundTag tag = super.toTag();
-
-        if (file != null && file.exists()) {
-            tag.putString("file", file.getAbsolutePath());
-        }
-
-        return tag;
-    }
-
-    @Override
-    public Module fromTag(CompoundTag tag) {
-        if (tag.contains("file")) {
-            file = new File(tag.getStringOr("file", ""));
-        }
-
-        return super.fromTag(tag);
-    }
 
     public enum Mode {
         File,
