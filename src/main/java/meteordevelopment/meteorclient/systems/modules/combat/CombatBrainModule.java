@@ -15,6 +15,7 @@ import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.meteorclient.mixin.LevelAccessor;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -23,7 +24,10 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 public class CombatBrainModule extends Module {
     public enum BrainState {
@@ -160,6 +164,10 @@ public class CombatBrainModule extends Module {
     private int tickCounter;
     private int stateTimer;
     private CombatFollowController followController;
+    private CombatTargetAnalyzer.TargetAnalysis lastAnalysis;
+    private CombatTerrainGrid terrainGrid;
+    private final HashMap<UUID, Long> lastAttackedTimestamps = new HashMap<>();
+    private int stuckHealTicks;
 
     public CombatBrainModule() {
         super(Categories.Combat, "combat-brain", "Advanced combat AI brain. Auto-manages all combat modules, target selection, pathing, and threat analysis.");
@@ -172,6 +180,10 @@ public class CombatBrainModule extends Module {
         tickCounter = 0;
         stateTimer = 0;
         followController = new CombatFollowController();
+        terrainGrid = new CombatTerrainGrid();
+        lastAttackedTimestamps.clear();
+        stuckHealTicks = 0;
+        info("CombatBrain AI enabled");
     }
 
     @Override
@@ -203,6 +215,17 @@ public class CombatBrainModule extends Module {
             return;
         }
 
+        // Track combat interactions for targetFriendly
+        if (mc.player.hurtTime > 0) {
+            LivingEntity attacker = mc.player.getLastHurtByMob();
+            if (attacker instanceof Player p) {
+                lastAttackedTimestamps.put(p.getUUID(), (long) tickCounter);
+            }
+        }
+        if (currentTarget != null && mc.player.getLastHurtMob() == currentTarget) {
+            lastAttackedTimestamps.put(currentTarget.getUUID(), (long) tickCounter);
+        }
+
         // State machine
         switch (state) {
             case IDLE:
@@ -221,6 +244,9 @@ public class CombatBrainModule extends Module {
                     transitionTo(BrainState.SCANNING);
                     break;
                 }
+
+                // Analyze target with real analyzer
+                lastAnalysis = CombatTargetAnalyzer.analyze(currentTarget);
 
                 boolean canWin = !viabilityCheck.get() || assessViability(currentTarget);
                 if (canWin) {
@@ -265,8 +291,21 @@ public class CombatBrainModule extends Module {
 
             case HEALING:
                 if (health >= 14.0f || threat < engageThreshold.get()) {
+                    stuckHealTicks = 0;
                     transitionTo(BrainState.SCANNING);
                     break;
+                }
+
+                // If health stays below 8 for too long, flee
+                if (health < 8.0f) {
+                    stuckHealTicks++;
+                    if (stuckHealTicks > 100) {
+                        stuckHealTicks = 0;
+                        transitionTo(BrainState.FLEEING);
+                        break;
+                    }
+                } else {
+                    stuckHealTicks = 0;
                 }
 
                 doHealTick();
@@ -286,6 +325,12 @@ public class CombatBrainModule extends Module {
                 transitionTo(BrainState.IDLE);
                 toggle(); // Disable the module after emergency log
                 break;
+        }
+
+        // Stuck detection: if same state > 200 ticks with no progress, reset
+        if (stateTimer > 200) {
+            stateTimer = 0;
+            transitionTo(BrainState.IDLE);
         }
 
         stateTimer++;
@@ -353,7 +398,9 @@ public class CombatBrainModule extends Module {
                 if (!targetPlayers.get()) return false;
                 if (Friends.get().isFriend(player)) return false;
                 if (targetFriendly.get()) {
-                    // Only attack if they hit us recently (simplified: check if angry)
+                    // Only attack if they hit us recently or we hit them
+                    Long lastAttack = lastAttackedTimestamps.get(player.getUUID());
+                    if (lastAttack == null || tickCounter - lastAttack > 600) return false;
                 }
                 return true;
             }
@@ -373,12 +420,8 @@ public class CombatBrainModule extends Module {
 
     private boolean assessViability(LivingEntity target) {
         if (!analyzeGear.get()) return true;
-
-        double myScore = getPlayerCombatScore();
-        double targetScore = getEntityCombatScore(target);
-
-        // We engage if our score is at least 60% of target's score
-        return myScore >= targetScore * 0.6;
+        double viability = CombatTargetAnalyzer.calculateViability(target);
+        return viability > 0.4;
     }
 
     private double getPlayerCombatScore() {
@@ -486,6 +529,19 @@ public class CombatBrainModule extends Module {
 
     private void doEngageTick() {
         if (currentTarget == null) return;
+
+        // Update terrain awareness
+        if (terrainGrid != null) {
+            terrainGrid.update(currentTarget);
+            List<BlockPos> blockers = terrainGrid.getPathBlocks();
+            if (!blockers.isEmpty()) {
+                // Path is blocked — follow anyway, baritone will path around
+                if (followController != null) {
+                    followController.follow(currentTarget, followDistance.get());
+                }
+                return;
+            }
+        }
 
         // Follow target at follow distance
         double dist = mc.player.distanceTo(currentTarget);
