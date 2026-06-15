@@ -150,13 +150,20 @@ public class ProfilesTab extends Tab {
             CompoundTag nbt = NbtIo.read(profileFile.toPath());
 
             Profile p = new Profile();
-            p.name.set(nbt.getStringOr("name", profileFile.getName()));
+            String profileName = nbt.getStringOr("name", profileFile.getName());
+            profileName = profileName.replaceAll("[^a-zA-Z0-9_\\-\\.\\ ]", "");
+            if (profileName.isEmpty() || profileName.equals(".") || profileName.equals("..")) profileName = "imported_profile";
+            p.name.set(profileName);
             //noinspection ResultOfMethodCallIgnored
             p.getFile().mkdirs();
 
             nbt.remove("name");
             for (var entry : nbt.entrySet()) {
                 String filename = entry.getKey();
+
+                if (filename.contains("/") || filename.contains("\\") || filename.contains("..")) {
+                    continue;
+                }
 
                 switch (filename) {
                     case "hud.nbt" -> p.hud.set(true);
