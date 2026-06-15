@@ -69,6 +69,7 @@ public class Commands {
         add(new LocateCommand());
         add(new HelpCommand());
         add(new SmartCombatCommand());
+        add(new CombatBrainCommand());
 
         COMMANDS.sort(Comparator.comparing(Command::getName));
 
