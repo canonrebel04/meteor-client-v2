@@ -22,7 +22,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.Set;
 
@@ -160,6 +159,7 @@ public class CombatBrainModule extends Module {
     private LivingEntity currentTarget;
     private int tickCounter;
     private int stateTimer;
+    private CombatFollowController followController;
 
     public CombatBrainModule() {
         super(Categories.Combat, "combat-brain", "Advanced combat AI brain. Auto-manages all combat modules, target selection, pathing, and threat analysis.");
@@ -171,13 +171,16 @@ public class CombatBrainModule extends Module {
         currentTarget = null;
         tickCounter = 0;
         stateTimer = 0;
+        followController = new CombatFollowController();
     }
 
     @Override
     public void onDeactivate() {
+        if (followController != null) followController.stop();
         disableAllManagedModules();
         state = BrainState.IDLE;
         currentTarget = null;
+        followController = null;
     }
 
     @EventHandler
@@ -356,7 +359,7 @@ public class CombatBrainModule extends Module {
             }
 
             return false;
-        }, SortPriority.HighestDistance);
+        }, SortPriority.LowestDistance);
 
         if (target instanceof LivingEntity le) return le;
         return null;
@@ -486,26 +489,25 @@ public class CombatBrainModule extends Module {
 
         // Follow target at follow distance
         double dist = mc.player.distanceTo(currentTarget);
-        if (dist > followDistance.get() + 0.5) {
-            // Path toward target (baritone integration would go here)
+        if (dist > followDistance.get() + 0.5 && followController != null) {
+            followController.follow(currentTarget, followDistance.get());
         }
     }
 
     private void doRetreatTick() {
-        // Move away from threat / toward safe position
-        // Path away from current target
-        if (currentTarget != null) {
-            Vec3 away = mc.player.getPosition(mc.player.tickCount).subtract(currentTarget.getPosition(mc.player.tickCount)).normalize();
-            double fx = mc.player.getX() + away.x * fleeDistance.get();
-            double fz = mc.player.getZ() + away.z * fleeDistance.get();
-            // Path to (fx, fz) — baritone integration point
+        // Move away from threat using baritone flee
+        if (currentTarget != null && followController != null) {
+            followController.flee(currentTarget, fleeDistance.get());
         }
     }
 
     private void doHealTick() {
-        // Wait for natural regen / eat food
+        // Sprint away from threats while healing
+        if (followController != null && currentTarget != null) {
+            followController.flee(currentTarget, fleeDistance.get() * 1.5);
+        }
         if (mc.player != null && mc.player.getHealth() < mc.player.getMaxHealth()) {
-            // Food eating would go here
+            mc.player.setSprinting(true);
         }
     }
 
@@ -513,6 +515,9 @@ public class CombatBrainModule extends Module {
         // Sprint away from everything
         if (mc.player != null) {
             mc.player.setSprinting(true);
+        }
+        if (followController != null && currentTarget != null) {
+            followController.flee(currentTarget, fleeDistance.get());
         }
     }
 
