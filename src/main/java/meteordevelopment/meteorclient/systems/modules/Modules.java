@@ -21,6 +21,11 @@ import meteordevelopment.meteorclient.systems.System;
 import meteordevelopment.meteorclient.systems.Systems;
 import meteordevelopment.meteorclient.systems.config.Config;
 import meteordevelopment.meteorclient.systems.modules.combat.*;
+import meteordevelopment.meteorclient.systems.modules.combat.overlay.CombatDecisionOverlay;
+import meteordevelopment.meteorclient.systems.modules.combat.overlay.PathVisualizationOverlay;
+import meteordevelopment.meteorclient.systems.modules.combat.overlay.TargetESP;
+import meteordevelopment.meteorclient.systems.modules.combat.overlay.ThreatIndicatorModule;
+import meteordevelopment.meteorclient.systems.modules.combat.notifications.CombatNotificationManager;
 import meteordevelopment.meteorclient.systems.modules.misc.*;
 import meteordevelopment.meteorclient.systems.modules.misc.swarm.Swarm;
 import meteordevelopment.meteorclient.systems.modules.movement.*;
@@ -421,6 +426,16 @@ public class Modules extends System<Modules> {
         add(new SelfWeb());
         add(new Surround());
         add(new TacticalBrain());
+        // SmartCombat system
+        add(new SmartCombatModule());
+        add(new AntiDetectionModule());
+        add(new ShieldAutoSwapModule());
+        add(new PathVisualizationOverlay());
+        add(new ThreatIndicatorModule());
+        add(new CombatNotificationManager());
+        // SmartCombat overlays
+        add(new TargetESP());
+        add(new CombatDecisionOverlay());
     }
 
     private void initPlayer() {
