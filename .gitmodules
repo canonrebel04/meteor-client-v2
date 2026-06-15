@@ -1,0 +1,3 @@
+[submodule "baritone-v2"]
+	path = baritone-v2
+	url = https://github.com/canonrebel04/baritone-v2.git

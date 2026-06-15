@@ -96,12 +96,14 @@ public class Step extends Module {
     }
 
     private double getExplosionDamage() {
-        OptionalDouble crystalDamage = Streams.stream(mc.level.entitiesForRendering())
-            .filter(EndCrystal.class::isInstance)
-            .filter(Entity::isAlive)
-            .mapToDouble(entity -> DamageUtils.crystalDamage(mc.player, entity.position()))
-            .max();
-        return crystalDamage.orElse(0.0);
+        double maxDamage = 0.0;
+        for (Entity entity : mc.level.entitiesForRendering()) {
+            if (entity instanceof EndCrystal && entity.isAlive()) {
+                double damage = DamageUtils.crystalDamage(mc.player, entity.position());
+                if (damage > maxDamage) maxDamage = damage;
+            }
+        }
+        return maxDamage;
     }
 
     private boolean isSafe() {
