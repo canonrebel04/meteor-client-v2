@@ -480,6 +480,14 @@ public class CombatBrainModule extends Module {
     // --- Module management ---
 
     private void enableCombatModules() {
+        // CRITICAL: Disable KillAura's pause-baritone or it will fight us for control
+        // KillAura.pauseOnCombat (default true) calls PathManagers.get().pause() which
+        // registers a REQUEST_PAUSE process that blocks all other baritone commands
+        KillAura killAura = Modules.get().get(KillAura.class);
+        if (killAura != null) {
+            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-baritone")).set(false);
+        }
+
         enableModule(KillAura.class);
         enableModule(ArrowDodge.class);
         enableModule(AutoArmor.class);
