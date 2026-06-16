@@ -1016,12 +1016,14 @@ public class KeyboardHud extends HudElement {
             table.add(theme.label(String.format("(%s)", key.keybind))).expandWidgetX();
 
             WButton edit = table.add(theme.button(GuiRenderer.EDIT)).expandCellX().widget();
+            edit.tooltip = "Edit";
             edit.action = () -> {
                 WidgetScreen screen = (WidgetScreen) mc.screen;
                 mc.setScreen(new CustomKeySettingScreen(theme, setting, key, screen));
             };
 
             WMinus delete = table.add(theme.minus()).right().widget();
+            delete.tooltip = "Remove";
             delete.action = () -> {
                 it.remove();
                 setting.onChanged();
