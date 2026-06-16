@@ -53,7 +53,9 @@ public class CombatTerrainGrid {
                 int wx = centerX - gridSize + gx;
                 int wz = centerZ - gridSize + gz;
 
-                double dist = Math.sqrt(Math.pow(wx - centerX, 2) + Math.pow(wz - centerZ, 2));
+                double dx = wx - centerX;
+                double dz = wz - centerZ;
+                double dist = Math.sqrt(dx * dx + dz * dz);
                 if (dist > gridSize) {
                     grid[gx][gz] = '?';
                     continue;

@@ -349,7 +349,8 @@ public class HoleFiller extends Module {
         targets.clear();
 
         for (Player player : mc.level.players()) {
-            if (player.distanceToSqr(mc.player) > Math.pow(targetRange.get(), 2) ||
+            double tr = targetRange.get();
+            if (player.distanceToSqr(mc.player) > tr * tr ||
                 player.isCreative() ||
                 player == mc.player ||
                 player.isDeadOrDying() ||

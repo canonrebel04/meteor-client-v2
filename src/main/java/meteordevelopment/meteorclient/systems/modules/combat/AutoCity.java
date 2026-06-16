@@ -149,7 +149,8 @@ public class AutoCity extends Module {
         }
 
         targetPos = EntityUtils.getCityBlock(target);
-        if (targetPos == null || PlayerUtils.squaredDistanceTo(targetPos) > Math.pow(breakRange.get(), 2)) {
+        double br = breakRange.get();
+        if (targetPos == null || PlayerUtils.squaredDistanceTo(targetPos) > br * br) {
             if (chatInfo.get()) error("Couldn't find a good block, disabling.");
             toggle();
             return;
@@ -157,7 +158,8 @@ public class AutoCity extends Module {
 
         if (support.get()) {
             BlockPos supportPos = targetPos.below();
-            if (PlayerUtils.squaredDistanceTo(supportPos) <= Math.pow(placeRange.get(), 2)) {
+            double pr = placeRange.get();
+            if (PlayerUtils.squaredDistanceTo(supportPos) <= pr * pr) {
                 BlockUtils.place(supportPos, InvUtils.findInHotbar(Items.OBSIDIAN), rotate.get(), 0, true);
             }
         }
@@ -186,7 +188,8 @@ public class AutoCity extends Module {
             return;
         }
 
-        if (PlayerUtils.squaredDistanceTo(targetPos) > Math.pow(breakRange.get(), 2)) {
+        double br2 = breakRange.get();
+        if (PlayerUtils.squaredDistanceTo(targetPos) > br2 * br2) {
             if (chatInfo.get()) error("Couldn't find a target, disabling.");
             toggle();
             return;
