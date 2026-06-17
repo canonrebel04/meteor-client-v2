@@ -47,17 +47,20 @@ public class CombatTerrainGrid {
 
         int dim = 2 * gridSize + 1;
         int playerY = mc.player.blockPosition().getY();
+        int gridSizeSq = gridSize * gridSize;
 
         for (int gx = 0; gx < dim; gx++) {
             for (int gz = 0; gz < dim; gz++) {
-                int wx = centerX - gridSize + gx;
-                int wz = centerZ - gridSize + gz;
+                int dx = gx - gridSize;
+                int dz = gz - gridSize;
 
-                double dist = Math.sqrt(Math.pow(wx - centerX, 2) + Math.pow(wz - centerZ, 2));
-                if (dist > gridSize) {
+                if (dx * dx + dz * dz > gridSizeSq) {
                     grid[gx][gz] = '?';
                     continue;
                 }
+
+                int wx = centerX + dx;
+                int wz = centerZ + dz;
 
                 BlockPos pos = new BlockPos(wx, playerY, wz);
                 BlockState state = mc.level.getBlockState(pos);
