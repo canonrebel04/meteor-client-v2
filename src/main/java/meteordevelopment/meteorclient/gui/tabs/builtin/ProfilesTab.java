@@ -150,13 +150,23 @@ public class ProfilesTab extends Tab {
             CompoundTag nbt = NbtIo.read(profileFile.toPath());
 
             Profile p = new Profile();
-            p.name.set(nbt.getStringOr("name", profileFile.getName()));
+            String profileName = nbt.getStringOr("name", profileFile.getName());
+            if (profileName.contains("/") || profileName.contains("\\") || profileName.contains("..")) {
+                MeteorClient.LOG.warn("Skipping invalid profile name: {}", profileName);
+                return null;
+            }
+            p.name.set(profileName);
             //noinspection ResultOfMethodCallIgnored
             p.getFile().mkdirs();
 
             nbt.remove("name");
             for (var entry : nbt.entrySet()) {
                 String filename = entry.getKey();
+
+                if (filename.contains("/") || filename.contains("\\") || filename.contains("..")) {
+                    MeteorClient.LOG.warn("Skipping invalid file name in profile: {}", filename);
+                    continue;
+                }
 
                 switch (filename) {
                     case "hud.nbt" -> p.hud.set(true);
