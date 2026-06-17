@@ -52,7 +52,7 @@ public abstract class DynamicRegistryListSettingScreen<T> extends CollectionList
         }
 
         WHorizontalList manualEntry = left.add(theme.horizontalList()).expandX().widget();
-        WTextBox textBox = manualEntry.add(theme.textBox("minecraft:")).expandX().minWidth(120d).widget();
+        WTextBox textBox = manualEntry.add(theme.textBox("minecraft:", "minecraft:identifier")).expandX().minWidth(120d).widget();
         var add = manualEntry.add(theme.plus()).expandCellX().right().widget();
         add.tooltip = "Add";
         add.action = () -> {

@@ -38,11 +38,11 @@ public class EditBookTitleAndAuthorScreen extends WindowScreen {
         WTable t = add(theme.table()).expandX().widget();
 
         t.add(theme.label("Title"));
-        WTextBox title = t.add(theme.textBox(itemStack.get(DataComponents.WRITTEN_BOOK_CONTENT).title().get(mc.isTextFilteringEnabled()))).minWidth(220).expandX().widget();
+        WTextBox title = t.add(theme.textBox(itemStack.get(DataComponents.WRITTEN_BOOK_CONTENT).title().get(mc.isTextFilteringEnabled()), "Book title...")).minWidth(220).expandX().widget();
         t.row();
 
         t.add(theme.label("Author"));
-        WTextBox author = t.add(theme.textBox(itemStack.get(DataComponents.WRITTEN_BOOK_CONTENT).author())).minWidth(220).expandX().widget();
+        WTextBox author = t.add(theme.textBox(itemStack.get(DataComponents.WRITTEN_BOOK_CONTENT).author(), "Author name...")).minWidth(220).expandX().widget();
         t.row();
 
         t.add(theme.button("Done")).expandX().widget().action = () -> {
