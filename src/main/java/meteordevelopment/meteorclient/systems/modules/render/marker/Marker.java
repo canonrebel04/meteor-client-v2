@@ -116,10 +116,12 @@ public class Marker extends Module {
 
             // Edit
             WButton edit = hList.add(theme.button(GuiRenderer.EDIT)).widget();
+            edit.tooltip = "Edit marker";
             edit.action = () -> mc.setScreen(marker.getScreen(theme));
 
             // Remove
             WMinus remove = hList.add(theme.minus()).widget();
+            remove.tooltip = "Remove marker";
             remove.action = () -> {
                 markers.remove(marker);
                 marker.settings.unregisterColorSettings();

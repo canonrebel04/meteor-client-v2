@@ -81,6 +81,7 @@ public class AddHudElementScreen extends WindowScreen {
 
                 if (item.object instanceof HudElementInfo<?>.Preset preset) {
                     WPlus add = l.add(theme.plus()).expandCellX().right().widget();
+                    add.tooltip = "Add element";
                     add.action = () -> runObject(preset);
 
                     if (firstObject == null) firstObject = preset;
@@ -92,6 +93,7 @@ public class AddHudElementScreen extends WindowScreen {
                         open.action = () -> runObject(info);
                     } else {
                         WPlus add = l.add(theme.plus()).expandCellX().right().widget();
+                        add.tooltip = "Add element";
                         add.action = () -> runObject(info);
                     }
 
