@@ -120,6 +120,7 @@ public class Marker extends Module {
 
             // Remove
             WMinus remove = hList.add(theme.minus()).widget();
+            remove.tooltip = "Remove marker";
             remove.action = () -> {
                 markers.remove(marker);
                 marker.settings.unregisterColorSettings();

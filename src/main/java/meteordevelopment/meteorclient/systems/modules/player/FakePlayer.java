@@ -66,6 +66,7 @@ public class FakePlayer extends Module {
         for (FakePlayerEntity fakePlayer : FakePlayerManager.getFakePlayers()) {
             table.add(theme.label(fakePlayer.getName().getString()));
             WMinus delete = table.add(theme.minus()).expandCellX().right().widget();
+            delete.tooltip = "Remove";
             delete.action = () -> {
                 FakePlayerManager.remove(fakePlayer);
                 table.clear();
