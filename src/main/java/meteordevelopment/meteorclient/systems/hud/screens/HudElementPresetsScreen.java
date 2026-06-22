@@ -30,7 +30,7 @@ public class HudElementPresetsScreen extends WindowScreen {
         this.x = x + 9;
         this.y = y;
 
-        searchBar = theme.textBox("");
+        searchBar = theme.textBox("", "Search...");
         searchBar.action = () -> {
             clear();
             initWidgets();
