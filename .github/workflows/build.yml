@@ -44,7 +44,7 @@ jobs:
           cd baritone-v2
           sed -i 's/task createDist(type: CreateDistTask, dependsOn: proguard)/task createDist(type: CreateDistTask, dependsOn: remapJar)/g' fabric/build.gradle
           chmod +x gradlew
-          ./gradlew build --no-daemon
+          ./gradlew build --no-daemon --no-build-cache
           ./gradlew publishToMavenLocal --no-daemon
           cd ..
 
