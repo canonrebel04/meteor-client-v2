@@ -51,7 +51,7 @@ public class EntityTypeListSettingScreen extends WindowScreen {
         this.setting = setting;
 
         // Filter
-        filter = super.add(theme.textBox("")).minWidth(400).expandX().widget();
+        filter = super.add(theme.textBox("", "Search entities...")).minWidth(400).expandX().widget();
         filter.setFocused(true);
         filter.action = () -> {
             filterText = filter.get().trim();

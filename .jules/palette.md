@@ -22,3 +22,6 @@
 ## 2024-05-24 - Icon-only Widgets Missing Tooltips
 **Learning:** Icon-only widgets (such as `theme.button(GuiRenderer.EDIT)` or `theme.minus()`) in the custom GUI framework lack tooltips by default and must have the `.tooltip` property explicitly assigned to be accessible to screen readers and visually impaired users.
 **Action:** When adding icon-only buttons in the custom GUI framework, always verify that the `.tooltip` property is explicitly set.
+## 2025-06-25 - Incorrect UI Method Assumption
+**Learning:** I incorrectly assumed the overloaded `theme.textBox()` method with just string arguments (e.g. `theme.textBox(String text, String placeholder)`) was available and applied it across multiple screens. However, checking `GuiTheme.java` revealed that those methods do not accept solely placeholder arguments or exist in the forms I assumed, causing build errors if pushed to a statically typed language.
+**Action:** Always explicitly check method signatures in the UI theme interfaces (like `GuiTheme.java`) using targeted `grep` before assuming their structure in Java, especially when modifying widespread generic components.

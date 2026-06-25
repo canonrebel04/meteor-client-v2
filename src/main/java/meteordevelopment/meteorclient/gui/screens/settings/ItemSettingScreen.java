@@ -35,7 +35,7 @@ public class ItemSettingScreen extends WindowScreen {
 
     @Override
     public void initWidgets() {
-        filter = add(theme.textBox("")).minWidth(400).expandX().widget();
+        filter = add(theme.textBox("", "Search items...")).minWidth(400).expandX().widget();
         filter.setFocused(true);
         filter.action = () -> {
             filterText = filter.get().trim();
