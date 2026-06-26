@@ -157,6 +157,10 @@ public class ProfilesTab extends Tab {
             nbt.remove("name");
             for (var entry : nbt.entrySet()) {
                 String filename = entry.getKey();
+                if (filename.contains("/") || filename.contains("\\") || filename.contains("..")) {
+                    MeteorClient.LOG.warn("Skipping invalid profile filename: {}", filename);
+                    continue;
+                }
 
                 switch (filename) {
                     case "hud.nbt" -> p.hud.set(true);
