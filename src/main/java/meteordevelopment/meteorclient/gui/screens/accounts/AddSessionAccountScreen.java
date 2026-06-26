@@ -21,7 +21,7 @@ public class AddSessionAccountScreen extends AddAccountScreen {
 
         // Access token
         t.add(theme.label("Access Token: "));
-        WTextBox token = t.add(theme.textBox("")).minWidth(400).expandX().widget();
+        WTextBox token = t.add(theme.textBox("", "Token...")).minWidth(400).expandX().widget();
         token.setFocused(true);
         t.row();
 

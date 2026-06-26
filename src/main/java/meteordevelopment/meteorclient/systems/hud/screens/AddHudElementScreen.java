@@ -37,7 +37,7 @@ public class AddHudElementScreen extends WindowScreen {
         this.x = x;
         this.y = y;
 
-        searchBar = theme.textBox("");
+        searchBar = theme.textBox("", "Search...");
         searchBar.action = () -> {
             clear();
             initWidgets();
