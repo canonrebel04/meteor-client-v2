@@ -22,3 +22,6 @@
 ## 2024-05-24 - Icon-only Widgets Missing Tooltips
 **Learning:** Icon-only widgets (such as `theme.button(GuiRenderer.EDIT)` or `theme.minus()`) in the custom GUI framework lack tooltips by default and must have the `.tooltip` property explicitly assigned to be accessible to screen readers and visually impaired users.
 **Action:** When adding icon-only buttons in the custom GUI framework, always verify that the `.tooltip` property is explicitly set.
+## 2025-06-27 - Add placeholders to search bar textboxes
+**Learning:** Adding placeholders to the `theme.textBox("", "Placeholder...")` input initialization natively supports placeholders in the custom Meteor GUI framework. It significantly improves discoverability in commonly used inputs, like HUD element search bars, making their purpose immediately clear to the user.
+**Action:** Whenever creating search bars or text inputs in the custom GUI framework using `theme.textBox`, consider utilizing the overloaded method signature that accepts a placeholder string to improve accessibility and UX discoverability.
