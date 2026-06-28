@@ -19,3 +19,6 @@
 ## 2024-05-14 - Optimizing Entity Iteration Streams
 **Learning:** Using `Streams.stream()` to wrap Iterables (like `mc.level.entitiesForRendering()`) in hot paths like `Step` module's tick calculations causes significant overhead due to stream creation and lambda allocations. Replacing the stream with a standard `for-each` loop halves the execution time.
 **Action:** Avoid using `Streams.stream()` for hot path entity iteration; use standard `for-each` loops instead.
+## 2024-06-28 - Optimize nested loop distance checks
+**Learning:** Using Math.pow and Math.sqrt inside performance-critical nested loops (like terrain grid iteration) incurs heavy native JNI floating-point overhead, slowing down execution per tick.
+**Action:** Replace Math.sqrt(Math.pow(dx, 2) + Math.pow(dz, 2)) > radius with primitive integer squared distance calculations dx * dx + dz * dz > radiusSq to drastically reduce overhead in hot paths.
