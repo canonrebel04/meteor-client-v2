@@ -347,9 +347,10 @@ public class HoleFiller extends Module {
 
     private void setTargets() {
         targets.clear();
+        double targetRangeSq = targetRange.get() * targetRange.get();
 
         for (Player player : mc.level.players()) {
-            if (player.distanceToSqr(mc.player) > Math.pow(targetRange.get(), 2) ||
+            if (player.distanceToSqr(mc.player) > targetRangeSq ||
                 player.isCreative() ||
                 player == mc.player ||
                 player.isDeadOrDying() ||
@@ -398,9 +399,10 @@ public class HoleFiller extends Module {
         double i = pos.x - (blockPos.getX() + 0.5);
         double j = pos.y - (blockPos.getY() + 1.0);
         double k = pos.z - (blockPos.getZ() + 0.5);
-        double distance = Math.sqrt(i * i + j * j + k * k);
+        double feetRangeVal = feetRange.get();
+        double distanceSq = i * i + j * j + k * k;
 
-        return distance < feetRange.get();
+        return distanceSq < feetRangeVal * feetRangeVal;
     }
 
     private static class Hole {

@@ -19,3 +19,6 @@
 ## 2024-05-14 - Optimizing Entity Iteration Streams
 **Learning:** Using `Streams.stream()` to wrap Iterables (like `mc.level.entitiesForRendering()`) in hot paths like `Step` module's tick calculations causes significant overhead due to stream creation and lambda allocations. Replacing the stream with a standard `for-each` loop halves the execution time.
 **Action:** Avoid using `Streams.stream()` for hot path entity iteration; use standard `for-each` loops instead.
+## 2024-06-29 - Optimize distance calculations by replacing Math.pow with primitive multiplication
+**Learning:** Using `Math.pow(x, 2)` or `Math.sqrt` for simple squared calculations (like distance checking) inside tight loops (like entity iterators or grid scans) incurs significant floating-point JNI overhead and unnecessary autoboxing when compared to standard primitive integer multiplication.
+**Action:** Replace `Math.pow(val, 2)` with `val * val` in hot paths such as `onTick` methods (e.g. `HoleFiller`, `AutoCity`, `CombatTerrainGrid`, `ESP`, `Nuker`) to reduce CPU overhead. Also store squared values (like `distance * distance`) instead of calling `Math.sqrt()` where possible.
