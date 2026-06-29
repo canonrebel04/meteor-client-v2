@@ -22,3 +22,6 @@
 ## 2024-05-24 - Icon-only Widgets Missing Tooltips
 **Learning:** Icon-only widgets (such as `theme.button(GuiRenderer.EDIT)` or `theme.minus()`) in the custom GUI framework lack tooltips by default and must have the `.tooltip` property explicitly assigned to be accessible to screen readers and visually impaired users.
 **Action:** When adding icon-only buttons in the custom GUI framework, always verify that the `.tooltip` property is explicitly set.
+## 2025-06-29 - Added Placeholder Text to HUD Search Bars
+**Learning:** Found that search inputs in the `AddHudElementScreen` and `HudElementPresetsScreen` lacked placeholder text, forcing users to click an empty box to search. This missing discoverability cue made it less obvious that the box was a search bar.
+**Action:** Always utilize the overloaded `theme.textBox(text, placeholder)` method in the custom `GuiTheme` UI framework to add clear placeholder text (e.g., "Search HUD elements...") to any text input used as a search bar or filter.
