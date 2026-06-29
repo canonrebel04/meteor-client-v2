@@ -22,3 +22,7 @@
 **Vulnerability:** BookBot loads its target file path directly from the module's NBT config without validation, allowing malicious config files to silently read arbitrary local files (like SSH keys) and exfiltrate them by sending their contents to the server.
 **Learning:** Storing file paths from user configuration without restricting them to a safe directory enables Local File Inclusion and data exfiltration.
 **Prevention:** Avoid saving/loading arbitrary file paths in config, or validate that the paths reside within an allowed directory sandbox.
+## 2024-06-29 - Prevent Path Traversal in NBT Profile Imports
+**Vulnerability:** The imported profile NBT data extracts filenames from the NBT tag keys without validation, which allows for Path Traversal / Zip Slip to write arbitrary files to the disk.
+**Learning:** In the Meteor codebase, NBT keys read from external files are untrusted input. If these keys are used as filenames or concatenated into file paths, they must be strictly sanitized and validated (e.g., rejecting `/`, `\`, and `..`) to prevent Path Traversal/Zip Slip vulnerabilities.
+**Prevention:** Explicitly validate imported string keys used as filenames to ensure they do not contain path traversal vectors such as `/`, `\`, or `..`.
