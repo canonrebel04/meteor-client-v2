@@ -22,3 +22,6 @@
 ## 2024-05-24 - Icon-only Widgets Missing Tooltips
 **Learning:** Icon-only widgets (such as `theme.button(GuiRenderer.EDIT)` or `theme.minus()`) in the custom GUI framework lack tooltips by default and must have the `.tooltip` property explicitly assigned to be accessible to screen readers and visually impaired users.
 **Action:** When adding icon-only buttons in the custom GUI framework, always verify that the `.tooltip` property is explicitly set.
+## 2024-10-24 - Add placeholders to search textboxes
+**Learning:** Using `theme.textBox(text, placeholder)` improves discoverability and user guidance in search and filter inputs compared to leaving them unlabeled.
+**Action:** Always provide descriptive placeholder text for textboxes acting as search bars or generic inputs in the custom `GuiTheme` UI framework.
