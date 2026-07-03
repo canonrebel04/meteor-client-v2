@@ -37,7 +37,7 @@ public class AddHudElementScreen extends WindowScreen {
         this.x = x;
         this.y = y;
 
-        searchBar = theme.textBox("");
+        searchBar = theme.textBox("", "Search elements...");
         searchBar.action = () -> {
             clear();
             initWidgets();
@@ -81,6 +81,7 @@ public class AddHudElementScreen extends WindowScreen {
 
                 if (item.object instanceof HudElementInfo<?>.Preset preset) {
                     WPlus add = l.add(theme.plus()).expandCellX().right().widget();
+                    add.tooltip = "Add HUD element";
                     add.action = () -> runObject(preset);
 
                     if (firstObject == null) firstObject = preset;
@@ -89,9 +90,11 @@ public class AddHudElementScreen extends WindowScreen {
 
                     if (info.hasPresets()) {
                         WButton open = l.add(theme.button(" > ")).expandCellX().right().widget();
+                        open.tooltip = "View presets";
                         open.action = () -> runObject(info);
                     } else {
                         WPlus add = l.add(theme.plus()).expandCellX().right().widget();
+                        add.tooltip = "Add HUD element";
                         add.action = () -> runObject(info);
                     }
 
