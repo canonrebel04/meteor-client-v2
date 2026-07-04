@@ -30,7 +30,7 @@ public class HudElementPresetsScreen extends WindowScreen {
         this.x = x + 9;
         this.y = y;
 
-        searchBar = theme.textBox("");
+        searchBar = theme.textBox("", "Search presets...");
         searchBar.action = () -> {
             clear();
             initWidgets();
@@ -60,6 +60,7 @@ public class HudElementPresetsScreen extends WindowScreen {
             l.add(theme.label(preset.title));
 
             WPlus add = l.add(theme.plus()).expandCellX().right().widget();
+            add.tooltip = "Add " + preset.title;
             add.action = () -> {
                 Hud.get().add(preset, x, y);
                 onClose();
