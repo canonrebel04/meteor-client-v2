@@ -22,3 +22,6 @@
 ## 2024-05-24 - Icon-only Widgets Missing Tooltips
 **Learning:** Icon-only widgets (such as `theme.button(GuiRenderer.EDIT)` or `theme.minus()`) in the custom GUI framework lack tooltips by default and must have the `.tooltip` property explicitly assigned to be accessible to screen readers and visually impaired users.
 **Action:** When adding icon-only buttons in the custom GUI framework, always verify that the `.tooltip` property is explicitly set.
+## 2024-07-06 - Missing Tooltips on Icon-Only Edit and Copy Buttons
+**Learning:** In Meteor's custom GUI framework, icon-only widgets created using `theme.button(GuiRenderer.COPY)` and `theme.button(GuiRenderer.EDIT)` lack tooltips by default. This makes their purpose unclear to users, especially for those relying on screen readers or those who aren't familiar with the icons.
+**Action:** Always manually assign a descriptive string to the `.tooltip` property of icon-only widgets (e.g. `edit.tooltip = "Edit"`) to ensure accessibility and clarity.

@@ -1016,6 +1016,7 @@ public class KeyboardHud extends HudElement {
             table.add(theme.label(String.format("(%s)", key.keybind))).expandWidgetX();
 
             WButton edit = table.add(theme.button(GuiRenderer.EDIT)).expandCellX().widget();
+            edit.tooltip = "Edit";
             edit.action = () -> {
                 WidgetScreen screen = (WidgetScreen) mc.screen;
                 mc.setScreen(new CustomKeySettingScreen(theme, setting, key, screen));
@@ -1053,6 +1054,7 @@ public class KeyboardHud extends HudElement {
         };
 
         WButton reset = table.add(theme.button(GuiRenderer.RESET)).widget();
+        reset.tooltip = "Reset";
         reset.action = () -> {
             setting.reset();
 

@@ -116,6 +116,7 @@ public class Marker extends Module {
 
             // Edit
             WButton edit = hList.add(theme.button(GuiRenderer.EDIT)).widget();
+            edit.tooltip = "Edit";
             edit.action = () -> mc.setScreen(marker.getScreen(theme));
 
             // Remove
