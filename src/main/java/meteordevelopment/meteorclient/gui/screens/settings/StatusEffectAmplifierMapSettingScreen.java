@@ -41,7 +41,7 @@ public class StatusEffectAmplifierMapSettingScreen extends WindowScreen {
 
     @Override
     public void initWidgets() {
-        WTextBox filter = add(theme.textBox("")).minWidth(400).expandX().widget();
+        WTextBox filter = add(theme.textBox("", "Search effects...")).minWidth(400).expandX().widget();
         filter.setFocused(true);
         filter.action = () -> {
             filterText = filter.get().trim();
