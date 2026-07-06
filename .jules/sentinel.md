@@ -22,3 +22,7 @@
 **Vulnerability:** BookBot loads its target file path directly from the module's NBT config without validation, allowing malicious config files to silently read arbitrary local files (like SSH keys) and exfiltrate them by sending their contents to the server.
 **Learning:** Storing file paths from user configuration without restricting them to a safe directory enables Local File Inclusion and data exfiltration.
 **Prevention:** Avoid saving/loading arbitrary file paths in config, or validate that the paths reside within an allowed directory sandbox.
+## 2024-07-06 - Prevent Path Traversal in NBT Profile Import
+**Vulnerability:** The NBT profile import mechanism in `ProfilesTab.java` reads `filename` directly from NBT entries and uses it to construct a local `File` path without validation.
+**Learning:** This allows an attacker to construct a malicious NBT file containing entries with directory traversal characters (e.g., `../` or `/absolute/path`). When a victim imports this profile, it can overwrite arbitrary files on the local filesystem (Zip Slip / Path Traversal).
+**Prevention:** Always validate filenames extracted from untrusted formats (like NBT/ZIP) by checking for directory traversal sequences (e.g., `/`, `\`, `..`) and skip or reject them before using them in file I/O operations.
