@@ -528,16 +528,30 @@ public class BetterChat extends Module {
     private final List<Pattern> filterRegexList = new ArrayList<>();
 
     private void compileFilterRegexList() {
-        filterRegexList.clear();
-
+        List<Pattern> newPatterns = new ArrayList<>(regexFilters.get().size());
         for (int i = 0; i < regexFilters.get().size(); i++) {
-            try {
-                filterRegexList.add(Pattern.compile(regexFilters.get().get(i)));
-            } catch (PatternSyntaxException _) {
-                String removed = regexFilters.get().remove(i);
-                error("Removing Invalid regex: %s", removed);
+            String filter = regexFilters.get().get(i);
+            Pattern existing = null;
+            for (Pattern p : filterRegexList) {
+                if (p.pattern().equals(filter)) {
+                    existing = p;
+                    break;
+                }
+            }
+            if (existing != null) {
+                newPatterns.add(existing);
+            } else {
+                try {
+                    newPatterns.add(Pattern.compile(filter));
+                } catch (PatternSyntaxException _) {
+                    String removed = regexFilters.get().remove(i);
+                    i--;
+                    error("Removing Invalid regex: %s", removed);
+                }
             }
         }
+        filterRegexList.clear();
+        filterRegexList.addAll(newPatterns);
     }
 
     // Prefix and Suffix

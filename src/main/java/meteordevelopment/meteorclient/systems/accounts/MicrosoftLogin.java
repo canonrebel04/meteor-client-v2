@@ -52,12 +52,14 @@ public class MicrosoftLogin {
 
     private static volatile HttpServer server;
     private static volatile Consumer<String> callback;
+    private static volatile String expectedState;
 
     public static String getRefreshToken(Consumer<String> callback) {
         MicrosoftLogin.callback = callback;
+        expectedState = java.util.UUID.randomUUID().toString();
 
         startServer();
-        String url = "https://login.live.com/oauth20_authorize.srf?client_id=" + CLIENT_ID + "&response_type=code&redirect_uri=http://127.0.0.1:" + PORT + "&scope=XboxLive.signin%20offline_access&prompt=select_account";
+        String url = "https://login.live.com/oauth20_authorize.srf?client_id=" + CLIENT_ID + "&response_type=code&redirect_uri=http://127.0.0.1:" + PORT + "&state=" + expectedState + "&scope=XboxLive.signin%20offline_access&prompt=select_account";
         Util.getPlatform().openUri(url);
 
         return url;
@@ -142,13 +144,17 @@ public class MicrosoftLogin {
             List<Tuple<String, String>> query = parseURL(req.getRequestURI().getRawQuery());
 
             boolean ok = false;
-            for (Tuple<String, String> pair : query) {
-                if (pair.getA().equals("code")) {
-                    handleCode(pair.getB());
+            String code = null;
+            String state = null;
 
-                    ok = true;
-                    break;
-                }
+            for (Tuple<String, String> pair : query) {
+                if (pair.getA().equals("code")) code = pair.getB();
+                else if (pair.getA().equals("state")) state = pair.getB();
+            }
+
+            if (code != null && state != null && state.equals(expectedState)) {
+                handleCode(code);
+                ok = true;
             }
 
 

@@ -12,24 +12,43 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
+      MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      SERVER_TOKEN: ${{ secrets.SERVER_TOKEN }}
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-
       - name: Set up Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '25'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Checkout Baritone Dependency
+        uses: actions/checkout@v4
+        with:
+          repository: canonrebel04/baritone-v2
+          ref: 26.1
+          path: baritone-v2
+
+      - name: Build and Publish Baritone to MavenLocal
+        run: |
+          cd baritone-v2
+          sed -i 's/task createDist(type: CreateDistTask, dependsOn: proguard)/task createDist(type: CreateDistTask, dependsOn: remapJar)/g' fabric/build.gradle
+          chmod +x gradlew
+          ./gradlew build publishToMavenLocal --no-daemon
+          cd ..
 
       - name: Set up Node JS
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
 
@@ -43,24 +62,25 @@ jobs:
       - name: Build
         run: ./gradlew build -Pcommit=${{ github.sha }} -Pbuild_number=${{ steps.build-number.outputs.number }}
 
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meteor-client-${{ steps.build-number.outputs.number }}
+          path: build/libs/*.jar
+          retention-days: 30
+
       - name: Webhook Failure
-        if: ${{ failure() }}
+        if: ${{ failure() && env.DISCORD_WEBHOOK != '' }}
         run: |
           cd .github/builds
           npm run webhook -- ${{ steps.build-number.outputs.number }} ${{ github.ref_name }} https://api.github.com/repos/MeteorDevelopment/meteor-client/compare/${{ github.event.before }}...${{ github.event.after }} false
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
 
       - name: Publish
+        if: ${{ env.MAVEN_METEOR_ALIAS != '' && env.MAVEN_METEOR_TOKEN != '' }}
         run: ./gradlew publish -Pcommit=${{ github.sha }} -Pbuild_number=${{ steps.build-number.outputs.number }}
-        env:
-          MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
-          MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
 
       - name: Discord webhook
+        if: ${{ env.DISCORD_WEBHOOK != '' }}
         run: |
           cd .github/builds
           npm run webhook -- ${{ steps.build-number.outputs.number }} ${{ github.ref_name }} https://api.github.com/repos/MeteorDevelopment/meteor-client/compare/${{ github.event.before }}...${{ github.event.after }} true
-        env:
-          SERVER_TOKEN: ${{ secrets.SERVER_TOKEN }}
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}

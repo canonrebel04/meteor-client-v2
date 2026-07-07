@@ -17,6 +17,14 @@ public interface ServerboundMovePlayerPacketAccessor {
     void meteor$setY(double y);
 
     @Mutable
+    @Accessor("xRot")
+    void meteor$setXRot(float pitch);
+
+    @Mutable
+    @Accessor("yRot")
+    void meteor$setYRot(float yaw);
+
+    @Mutable
     @Accessor("onGround")
     void meteor$setOnGround(boolean onGround);
 }

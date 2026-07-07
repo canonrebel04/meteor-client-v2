@@ -103,6 +103,11 @@ public class Flamethrower extends Module {
     private void onTick(TickEvent.Pre event) {
         entity = null;
         ticks++;
+
+        FindItemResult item = InvUtils.findInHotbar(itemStack -> (itemStack.is(Items.FLINT_AND_STEEL) || itemStack.is(Items.FIRE_CHARGE)) &&
+            (!itemStack.isDamageableItem() || !antiBreak.get() || itemStack.getDamageValue() < itemStack.getMaxDamage() - 1));
+        if (!item.found()) return;
+
         for (Entity entity : mc.level.entitiesForRendering()) {
             if (!entities.get().contains(entity.getType()) || !PlayerUtils.isWithin(entity, distance.get())) continue;
             if (entity == mc.player) continue;
@@ -111,8 +116,6 @@ public class Flamethrower extends Module {
 
             if (!targetBabies.get() && entity instanceof LivingEntity livingEntity && livingEntity.isBaby()) continue;
 
-            FindItemResult item = InvUtils.findInHotbar(itemStack -> (itemStack.is(Items.FLINT_AND_STEEL) || itemStack.is(Items.FIRE_CHARGE)) &&
-                (!itemStack.isDamageableItem() || !antiBreak.get() || itemStack.getDamageValue() < itemStack.getMaxDamage() - 1));
             if (!InvUtils.swap(item.slot(), true)) return;
 
             this.hand = item.getHand();

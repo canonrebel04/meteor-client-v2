@@ -57,6 +57,7 @@
     "ClientboundSetEntityMotionPacketAccessor",
     "ClientChunkCacheAccessor",
     "ClientChunkMapAccessor",
+    "ClientBrandRetrieverMixin",
     "ClientLevelMixin",
     "ClientPacketListenerAccessor",
     "ClientPacketListenerMixin",

@@ -53,7 +53,9 @@ public abstract class DynamicRegistryListSettingScreen<T> extends CollectionList
 
         WHorizontalList manualEntry = left.add(theme.horizontalList()).expandX().widget();
         WTextBox textBox = manualEntry.add(theme.textBox("minecraft:")).expandX().minWidth(120d).widget();
-        manualEntry.add(theme.plus()).expandCellX().right().widget().action = () -> {
+        var add = manualEntry.add(theme.plus()).expandCellX().right().widget();
+        add.tooltip = "Add";
+        add.action = () -> {
             String entry = textBox.get().trim();
             try {
                 Identifier id = entry.contains(":") ? Identifier.parse(entry) : Identifier.withDefaultNamespace(entry);

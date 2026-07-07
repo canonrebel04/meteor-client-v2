@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
+      MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Checkout Baritone Dependency
+        uses: actions/checkout@v4
+        with:
+          repository: canonrebel04/baritone-v2
+          ref: 26.1
+          path: baritone-v2
+
+      - name: Fix Baritone Java Version
+        run: sed -i 's/java_version=25/java_version=21/g' baritone-v2/gradle.properties
+
+      - name: Setup Java 21 for Baritone toolchain build
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Build and Publish Baritone to MavenLocal
+        run: |
+          cd baritone-v2
+          chmod +x gradlew
+          ./gradlew build --no-daemon
+          ./gradlew publishToMavenLocal --no-daemon
+          cd ..
+
+      - name: Set up Node JS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build
+        run: ./gradlew build -Pversion=${{ github.ref_name }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: build/libs/meteor-client-${{ github.ref_name }}.jar
+
+      - name: Publish
+        run: ./gradlew publish -Pversion=${{ github.ref_name }}
