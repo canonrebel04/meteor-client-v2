@@ -36,7 +36,7 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
     @Override
     public boolean fetchInfo() {
         try {
-            AuthResponse res = authenticate();
+            AuthResponse res = Http.post(ENVIRONMENT.servicesHost() + "/authenticate").bodyJson(new AuthRequest("Minecraft", token, System.getenv().getOrDefault("ALTENING_PASSWORD", "Meteor"), UUID.randomUUID().toString(), true)).sendJson(AuthResponse.class);
             if (res == null || res.accessToken == null || res.selectedProfile == null) {
                 MeteorClient.LOG.error("Invalid TheAltening credentials.");
                 return false;
@@ -68,14 +68,7 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
         }
     }
 
-    private WaybackAuthLib getAuth() {
-        WaybackAuthLib auth = new WaybackAuthLib(ENVIRONMENT.servicesHost());
 
-        auth.setUsername(name);
-        auth.setPassword(System.getenv().getOrDefault("ALTENING_PASSWORD", "Meteor"));
-
-        return auth;
-    }
 
     @Override
     public String getToken() {
