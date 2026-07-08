@@ -19,3 +19,7 @@
 ## 2024-05-14 - Optimizing Entity Iteration Streams
 **Learning:** Using `Streams.stream()` to wrap Iterables (like `mc.level.entitiesForRendering()`) in hot paths like `Step` module's tick calculations causes significant overhead due to stream creation and lambda allocations. Replacing the stream with a standard `for-each` loop halves the execution time.
 **Action:** Avoid using `Streams.stream()` for hot path entity iteration; use standard `for-each` loops instead.
+
+## 2024-07-08 - Replace Math.pow with primitive multiplication in hot paths
+**Learning:** In Minecraft rendering and tick logic, mathematical operations using `Math.pow(x, 2)` or distance calculations using `Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2))` generate massive performance overhead due to JNI transitions and floating-point logic, especially in nested loops or entity iterations.
+**Action:** Use simple primitive integer or double multiplication (`x * x`) instead of `Math.pow(x, 2)` and avoid `Math.sqrt` when comparing squared distances (`dx * dx + dz * dz > rangeSq`).
