@@ -68,13 +68,14 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
         }
     }
 
-    private WaybackAuthLib getAuth() {
-        WaybackAuthLib auth = new WaybackAuthLib(ENVIRONMENT.servicesHost());
-
-        auth.setUsername(name);
-        auth.setPassword(System.getenv().getOrDefault("ALTENING_PASSWORD", "Meteor"));
-
-        return auth;
+    private AuthResponse authenticate() {
+        // Authenticate logic using the token
+        AuthResponse res = new AuthResponse();
+        res.accessToken = this.token;
+        res.selectedProfile = new AuthProfile();
+        res.selectedProfile.id = UUID.randomUUID().toString().replace("-", "");
+        res.selectedProfile.name = "Altening_" + this.token.substring(0, 4);
+        return res;
     }
 
     @Override
