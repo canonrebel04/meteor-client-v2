@@ -53,8 +53,10 @@ public class CombatTerrainGrid {
                 int wx = centerX - gridSize + gx;
                 int wz = centerZ - gridSize + gz;
 
-                double dist = Math.sqrt(Math.pow(wx - centerX, 2) + Math.pow(wz - centerZ, 2));
-                if (dist > gridSize) {
+                long dx = wx - centerX;
+                long dz = wz - centerZ;
+                // ⚡ Bolt: Use integer multiplication for squared distance checking to avoid JNI/floating-point overhead of Math.pow and Math.sqrt
+                if (dx * dx + dz * dz > (long) gridSize * gridSize) {
                     grid[gx][gz] = '?';
                     continue;
                 }
