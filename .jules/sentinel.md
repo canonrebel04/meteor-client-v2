@@ -22,3 +22,7 @@
 **Vulnerability:** BookBot loads its target file path directly from the module's NBT config without validation, allowing malicious config files to silently read arbitrary local files (like SSH keys) and exfiltrate them by sending their contents to the server.
 **Learning:** Storing file paths from user configuration without restricting them to a safe directory enables Local File Inclusion and data exfiltration.
 **Prevention:** Avoid saving/loading arbitrary file paths in config, or validate that the paths reside within an allowed directory sandbox.
+## 2024-07-10 - Fix Path Traversal in NBT Keys (Zip Slip)
+**Vulnerability:** The ProfilesTab imported NBT keys directly as file paths. While `/` and `\` were checked, the `..` traversal sequence was not explicitly blocked, leading to a Zip Slip vulnerability.
+**Learning:** Even if subsequent checks like `startsWith` might mitigate escaping the root directory, explicitly blocking `..` at the filename/key parsing level is a necessary defense-in-depth measure against Path Traversal.
+**Prevention:** Always validate and sanitize user-provided filenames or keys by rejecting `/`, `\`, and `..` before performing any file operations.
