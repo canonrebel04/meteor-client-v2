@@ -37,7 +37,7 @@ jobs:
           chmod +x gradlew
 
           sed -i -E 's/java_version=25/java_version=21/g' gradle.properties
-          sed -i -E 's/languageVersion.set\\(JavaLanguageVersion.of\\(25\\)\\)/languageVersion = JavaLanguageVersion.of(21)/g' build.gradle
+          sed -i -E 's/languageVersion.set\\(JavaLanguageVersion.of\\(sourceCompatibility.majorVersion.toInteger\\(\\)\\)\\)/languageVersion = JavaLanguageVersion.of(21)/g' build.gradle
           ./gradlew build publishToMavenLocal --no-daemon --no-build-cache
           cd ..
 
