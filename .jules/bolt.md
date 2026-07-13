@@ -19,3 +19,6 @@
 ## 2024-05-14 - Optimizing Entity Iteration Streams
 **Learning:** Using `Streams.stream()` to wrap Iterables (like `mc.level.entitiesForRendering()`) in hot paths like `Step` module's tick calculations causes significant overhead due to stream creation and lambda allocations. Replacing the stream with a standard `for-each` loop halves the execution time.
 **Action:** Avoid using `Streams.stream()` for hot path entity iteration; use standard `for-each` loops instead.
+## 2024-07-13 - Replace Math.sqrt and Math.pow in hot loops with integer multiplication
+**Learning:** In hot loops, calculating distances using `Math.sqrt` and `Math.pow` introduces severe JNI floating-point overhead, slowing down critical tick and render operations. Using simple primitive multiplication (e.g. `dx * dx + dz * dz > distanceSq`) eliminates this overhead.
+**Action:** Always compute squared distance logic using primitive multiplication (`x * x`) instead of `Math.pow`, and compare against a precalculated squared distance threshold to avoid `Math.sqrt` entirely in high-frequency calculations.
