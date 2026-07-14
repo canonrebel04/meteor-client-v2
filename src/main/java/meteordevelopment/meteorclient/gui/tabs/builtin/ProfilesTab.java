@@ -172,7 +172,7 @@ public class ProfilesTab extends Tab {
             for (var entry : nbt.entrySet()) {
                 String filename = entry.getKey();
                 if (!filename.endsWith(".nbt")) continue;
-                if (filename.contains("/") || filename.contains("\\") || new File(filename).isAbsolute()) continue;
+                if (filename.contains("/") || filename.contains("\\") || filename.contains("..") || new File(filename).isAbsolute()) continue;
 
                 switch (filename) {
                     case "hud.nbt" -> p.hud.set(true);
