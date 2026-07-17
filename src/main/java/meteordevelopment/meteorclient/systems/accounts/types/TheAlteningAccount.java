@@ -35,23 +35,7 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
 
     @Override
     public boolean fetchInfo() {
-        try {
-            AuthResponse res = authenticate();
-            if (res == null || res.accessToken == null || res.selectedProfile == null) {
-                MeteorClient.LOG.error("Invalid TheAltening credentials.");
-                return false;
-            }
-
-            accessToken = res.accessToken;
-            cache.username = res.selectedProfile.name;
-            cache.uuid = res.selectedProfile.id;
-            cache.loadHead();
-
-            return true;
-        } catch (Exception _) {
-            MeteorClient.LOG.error("Failed to fetch info for TheAltening account!");
-            return false;
-        }
+        return false;
     }
 
     @Override
@@ -68,14 +52,6 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
         }
     }
 
-    private WaybackAuthLib getAuth() {
-        WaybackAuthLib auth = new WaybackAuthLib(ENVIRONMENT.servicesHost());
-
-        auth.setUsername(name);
-        auth.setPassword(System.getenv().getOrDefault("ALTENING_PASSWORD", "Meteor"));
-
-        return auth;
-    }
 
     @Override
     public String getToken() {
