@@ -17,6 +17,7 @@ import com.mojang.util.UndashedUuid;
 import net.minecraft.client.User;
 import net.minecraft.nbt.CompoundTag;
 
+import de.florianreuth.waybackauthlib.WaybackAuthLib;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -36,15 +37,16 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
     @Override
     public boolean fetchInfo() {
         try {
-            AuthResponse res = authenticate();
-            if (res == null || res.accessToken == null || res.selectedProfile == null) {
+            WaybackAuthLib auth = getAuth();
+            auth.logIn();
+            if (auth.getAccessToken() == null || auth.getCurrentProfile() == null) {
                 MeteorClient.LOG.error("Invalid TheAltening credentials.");
                 return false;
             }
 
-            accessToken = res.accessToken;
-            cache.username = res.selectedProfile.name;
-            cache.uuid = res.selectedProfile.id;
+            accessToken = auth.getAccessToken();
+            cache.username = auth.getCurrentProfile().name();
+            cache.uuid = auth.getCurrentProfile().id().toString();
             cache.loadHead();
 
             return true;
@@ -106,15 +108,6 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
         return this;
     }
 
-    private record AuthRequest(String agent, String username, String password, String clientToken, boolean requestUser) {}
 
-    private static class AuthResponse {
-        public String accessToken;
-        public AuthProfile selectedProfile;
-    }
 
-    private static class AuthProfile {
-        public String id;
-        public String name;
-    }
 }
