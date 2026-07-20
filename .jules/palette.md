@@ -22,3 +22,6 @@
 ## 2024-05-24 - Icon-only Widgets Missing Tooltips
 **Learning:** Icon-only widgets (such as `theme.button(GuiRenderer.EDIT)` or `theme.minus()`) in the custom GUI framework lack tooltips by default and must have the `.tooltip` property explicitly assigned to be accessible to screen readers and visually impaired users.
 **Action:** When adding icon-only buttons in the custom GUI framework, always verify that the `.tooltip` property is explicitly set.
+## 2024-07-20 - HUD Add Element Buttons Missing Tooltips
+**Learning:** Found that custom icon-only and textual buttons (like `WPlus` and `WButton(" > ")`) in HUD component selection screens lacked `tooltip` assignments. This is particularly problematic in deep custom menus where the purpose of buttons may not be obvious to screen readers.
+**Action:** Always assign the `.tooltip` property to `WPlus` widgets and abstract buttons inside lists (like the Add Hud element and Presets screens) to improve discoverability and accessibility.
