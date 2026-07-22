@@ -70,7 +70,7 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
 
     private AuthResponse authenticate() {
         AuthRequest req = new AuthRequest("Minecraft", token, "Meteor", UUID.randomUUID().toString(), true);
-        return Http.post("https://authserver.thealtening.com/authenticate").bodyJson(req).sendJsonResponse(AuthResponse.class).body();
+        return Http.post("https://authserver.thealtening.com/authenticate").bodyJson(req).sendJson(AuthResponse.class);
     }
 
     @Override
