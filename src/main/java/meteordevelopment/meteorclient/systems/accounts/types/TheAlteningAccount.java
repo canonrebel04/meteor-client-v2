@@ -68,13 +68,9 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
         }
     }
 
-    private WaybackAuthLib getAuth() {
-        WaybackAuthLib auth = new WaybackAuthLib(ENVIRONMENT.servicesHost());
-
-        auth.setUsername(name);
-        auth.setPassword(System.getenv().getOrDefault("ALTENING_PASSWORD", "Meteor"));
-
-        return auth;
+    private AuthResponse authenticate() {
+        AuthRequest req = new AuthRequest("Minecraft", token, "Meteor", UUID.randomUUID().toString(), true);
+        return Http.post("https://authserver.thealtening.com/authenticate").bodyJson(req).sendJsonResponse(AuthResponse.class).body();
     }
 
     @Override
