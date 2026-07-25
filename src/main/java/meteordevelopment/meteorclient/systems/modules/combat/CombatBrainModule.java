@@ -485,7 +485,10 @@ public class CombatBrainModule extends Module {
         // registers a REQUEST_PAUSE process that blocks all other baritone commands
         KillAura killAura = Modules.get().get(KillAura.class);
         if (killAura != null) {
-            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-baritone")).set(false);
+            Setting<Boolean> pauseBaritoneSetting = (Setting<Boolean>) killAura.settings.get("pause-baritone");
+            if (pauseBaritoneSetting != null) {
+                pauseBaritoneSetting.set(false);
+            }
         }
 
         enableModule(KillAura.class);
