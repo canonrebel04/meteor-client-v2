@@ -20,8 +20,8 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '25'
+          distribution: 'temurin'
+          java-version: '21'
           cache: 'gradle'
 
       - name: Checkout Baritone Dependency
@@ -34,8 +34,10 @@ jobs:
       - name: Build and Publish Baritone to MavenLocal
         run: |
           cd baritone-v2
+          sed -i -E 's/java_version=25/java_version=21/g' gradle.properties
+          sed -i -E 's/languageVersion.set\(.*\)/languageVersion = JavaLanguageVersion.of\(21\)/g' build.gradle
           chmod +x gradlew
-          ./gradlew build publishToMavenLocal --no-daemon
+          ./gradlew build publishToMavenLocal --no-daemon --no-build-cache
           cd ..
 
       - name: Set up Node JS
