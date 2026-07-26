@@ -42,11 +42,9 @@ jobs:
       - name: Build and Publish Baritone to MavenLocal
         run: |
           cd baritone-v2
-          sed -i -E 's/java_version=25/java_version=21/g' gradle.properties
-          sed -i -E 's/languageVersion.set\(.*\)/languageVersion = JavaLanguageVersion.of\(21\)/g' build.gradle
           sed -i 's/task createDist(type: CreateDistTask, dependsOn: proguard)/task createDist(type: CreateDistTask, dependsOn: remapJar)/g' fabric/build.gradle
           chmod +x gradlew
-          ./gradlew build publishToMavenLocal --no-daemon --no-build-cache
+          ./gradlew build publishToMavenLocal --no-daemon
           cd ..
 
       - name: Set up Node JS
