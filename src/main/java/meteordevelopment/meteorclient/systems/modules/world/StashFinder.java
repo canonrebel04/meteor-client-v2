@@ -308,7 +308,6 @@ public class StashFinder extends Module {
             gotoBtn.action = () -> PathManagers.get().moveTo(new BlockPos(chunk.x, 0, chunk.z), true);
 
             WMinus delete = table.add(theme.minus()).widget();
-            delete.tooltip = "Delete chunk";
             delete.action = () -> {
                 if (chunks.remove(chunk)) {
                     tracerPositions.remove(chunk.chunkPos);
