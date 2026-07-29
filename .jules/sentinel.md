@@ -23,7 +23,14 @@
 **Learning:** Storing file paths from user configuration without restricting them to a safe directory enables Local File Inclusion and data exfiltration.
 **Prevention:** Avoid saving/loading arbitrary file paths in config, or validate that the paths reside within an allowed directory sandbox.
 
+
 ## 2024-05-31 - Command Injection Risk in URL opening
 **Vulnerability:** Use of `Runtime.getRuntime().exec` with user-provided strings constructed into OS commands to open URLs and files.
 **Learning:** Hardcoding shell commands and interpolating URLs/paths can lead to command injection if inputs are poorly sanitized, and is generally brittle across platforms.
 **Prevention:** Use Java's built-in `java.awt.Desktop` API (e.g., `Desktop.getDesktop().browse()` and `Desktop.getDesktop().open()`) to safely hand off URLs and files to the OS.
+
+
+## 2024-05-18 - Arbitrary Profile Overwrite via Path Traversal
+**Vulnerability:** In `ProfilesTab.java`, profile names were extracted from NBT and used to create file directories. Directory traversal was seemingly mitigated by `!profileFolder.getParentFile().equals(Profiles.FOLDER.getCanonicalFile())`. However, an attacker could supply a profile name like `../profiles/MaliciousProfile`. This evaluates to a parent of `Profiles.FOLDER.getCanonicalFile()` and passes the check, allowing the attacker to overwrite arbitrary profiles.
+**Learning:** Canonical parent checks can be bypassed if the user-supplied input creates a path that conceptually jumps out and back into the allowed directory structure, thereby matching the expected parent but writing to an unintended sibling folder. The code review tool hallucinated a compilation error regarding `.get()` on a `String`, failing to recognize `p.name` is a `Setting<String>`.
+**Prevention:** Explicitly validate that user-controlled path segments (like profile names) do not contain traversal characters like `..`, `/`, or `\`, regardless of canonical parent checks.
