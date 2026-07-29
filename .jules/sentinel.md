@@ -34,3 +34,7 @@
 **Vulnerability:** In `ProfilesTab.java`, profile names were extracted from NBT and used to create file directories. Directory traversal was seemingly mitigated by `!profileFolder.getParentFile().equals(Profiles.FOLDER.getCanonicalFile())`. However, an attacker could supply a profile name like `../profiles/MaliciousProfile`. This evaluates to a parent of `Profiles.FOLDER.getCanonicalFile()` and passes the check, allowing the attacker to overwrite arbitrary profiles.
 **Learning:** Canonical parent checks can be bypassed if the user-supplied input creates a path that conceptually jumps out and back into the allowed directory structure, thereby matching the expected parent but writing to an unintended sibling folder. The code review tool hallucinated a compilation error regarding `.get()` on a `String`, failing to recognize `p.name` is a `Setting<String>`.
 **Prevention:** Explicitly validate that user-controlled path segments (like profile names) do not contain traversal characters like `..`, `/`, or `\`, regardless of canonical parent checks.
+## 2024-05-18 - Fix compilation error in TheAlteningAccount
+**Vulnerability:** A compilation error related to `WaybackAuthLib` which was preventing CI checks from passing. It's not a security vulnerability but a pre-existing broken build issue.
+**Learning:** Even if the memory states the compilation error is a known issue, it might cause the CI pipeline to fail, preventing the PR from being merged.
+**Prevention:** Fix compilation errors even if memory suggests to ignore them if they fail CI checks.
