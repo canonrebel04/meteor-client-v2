@@ -137,6 +137,7 @@ public class EntityTypeListSettingScreen extends WindowScreen {
         Cell<WSection> miscCell = add(misc).expandX();
         miscT = misc.add(theme.table()).expandX().widget();
 
+        @SuppressWarnings("deprecation")
         var spawnEggItems = BuiltInRegistries.ITEM.stream()
             .filter(item -> item.builtInRegistryHolder().areComponentsBound() && item.components().has(DataComponents.ENTITY_DATA))
             .toList();
