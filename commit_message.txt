@@ -1,0 +1,10 @@
+🎨 Palette: Add tooltips to icon-only buttons in Marker settings
+
+💡 What: Added tooltips to the 'Edit' and 'Remove' icon-only buttons in the Marker module settings UI.
+🎯 Why: To improve accessibility and provide clarity to users about the function of these icon-only buttons.
+📸 Before/After: (No visual changes, tooltips added to elements)
+♿ Accessibility: Makes the 'Edit' and 'Remove' buttons discoverable and readable by screen readers and clear to users who might not recognize the icons.
+
+Additionally fixed CI failures:
+- Fixed missing WaybackAuthLib import by rewriting TheAlteningAccount to use native Http client
+- Fixed deprecated `builtInRegistryHolder()` method call in EntityTypeListSettingScreen
