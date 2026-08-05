@@ -24,6 +24,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
+import meteordevelopment.meteorclient.systems.modules.player.AutoTool;
 
 import java.util.HashMap;
 import java.util.List;
@@ -1024,6 +1025,7 @@ public class CombatBrainModule extends Module {
         enableModule(KillAura.class);
         enableModule(AutoArmor.class);
         enableModule(AutoWeapon.class);
+        enableModule(AutoTool.class);
 
         if (criticals.get()) enableModule(Criticals.class);
     }
@@ -1032,6 +1034,7 @@ public class CombatBrainModule extends Module {
         disableModule(KillAura.class);
         disableModule(AutoArmor.class);
         disableModule(AutoWeapon.class);
+        disableModule(AutoTool.class);
 
         disableModule(Criticals.class);
     }
@@ -1040,6 +1043,7 @@ public class CombatBrainModule extends Module {
         disableModule(KillAura.class);
         disableModule(AutoArmor.class);
         disableModule(AutoWeapon.class);
+        disableModule(AutoTool.class);
         disableModule(Criticals.class);
         if (automator != null) {
             automator.shutdown();

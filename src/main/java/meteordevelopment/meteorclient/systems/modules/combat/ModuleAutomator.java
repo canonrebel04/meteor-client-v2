@@ -22,6 +22,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluids;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -39,6 +40,9 @@ public class ModuleAutomator {
     private final CombatBrainModule brain;
     private final Set<Class<? extends Module>> enabledByAutomator = new HashSet<>();
     private final List<String> activeRuleNames = new ArrayList<>();
+
+    /** Dwell timer (in update() passes) keeping Jesus active after leaving water to stop surface-bobbing flapping. */
+    private int waterRuleTimer;
 
     public ModuleAutomator(CombatBrainModule brain) {
         this.brain = brain;
@@ -85,6 +89,7 @@ public class ModuleAutomator {
         }
         enabledByAutomator.clear();
         activeRuleNames.clear();
+        waterRuleTimer = 0;
     }
 
     public List<String> getActiveRules() {
@@ -191,15 +196,54 @@ public class ModuleAutomator {
         return count;
     }
 
+    /** Maximum dwell passes keeping Jesus active after leaving water (20 passes × 2 ticks = 40 ticks ≈ 2 s). */
+    private static final int WATER_DWELL_PASSES = 20;
+
     private void evalWaterRule(LivingEntity target) {
         boolean active = false;
         if (brain.waterDetect.get() && mc.player != null) {
-            if (mc.player.isInWater() || (target != null && target.isInWater())) {
+            if (isNearWater(target)) {
+                // Near water: reset dwell timer and stay active
+                waterRuleTimer = WATER_DWELL_PASSES;
                 active = true;
+            } else {
+                // Not near water: drain timer; keep active until timer hits 0
+                if (waterRuleTimer > 0) {
+                    waterRuleTimer = Math.max(0, waterRuleTimer - 1);
+                    active = waterRuleTimer > 0;
+                }
             }
+        } else {
+            waterRuleTimer = 0;
         }
         setModuleState(Jesus.class, active);
         if (active) activeRuleNames.add("WaterDetect");
+    }
+
+    /**
+     * Returns true if the player is in/touching/under water, or if any block within
+     * 3 blocks below the player's feet is a water or lava fluid — OR the target is in water.
+     * Uses isInWater() and isUnderWater() (verified in AntiHunger/Sprint in this codebase).
+     */
+    private boolean isNearWater(LivingEntity target) {
+        if (mc.player == null) return false;
+        // Player water checks
+        if (mc.player.isInWater() || mc.player.isUnderWater()) return true;
+        // Scan up to 3 blocks below feet for water/lava fluid
+        if (mc.level != null) {
+            BlockPos feet = mc.player.blockPosition();
+            for (int i = 0; i <= 3; i++) {
+                BlockState state = mc.level.getBlockState(feet.below(i));
+                net.minecraft.world.level.material.FluidState fs = state.getFluidState();
+                if (fs.is(Fluids.WATER) || fs.is(Fluids.FLOWING_WATER)
+                    || fs.is(Fluids.LAVA) || fs.is(Fluids.FLOWING_LAVA)) {
+                    return true;
+                }
+            }
+        }
+        // Target water check
+        if (target != null && target.isInWater()) return true;
+        return false;
     }
 
     private void evalBedRule(LivingEntity target) {
