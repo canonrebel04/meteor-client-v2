@@ -23,7 +23,7 @@ import java.util.UUID;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class TheAlteningAccount extends Account<TheAlteningAccount> implements TokenAccount {
-    private static final Environment ENVIRONMENT = new Environment("https://sessionserver.thealtening.com", "https://authserver.thealtening.com", "https://api.mojang.com", "The Altening");
+    private static final Environment ENVIRONMENT = new Environment("http://sessionserver.thealtening.com", "http://authserver.thealtening.com", "https://api.mojang.com", "The Altening");
     private static final YggdrasilAuthenticationService SERVICE = new YggdrasilAuthenticationService(mc.getProxy(), ENVIRONMENT);
     private String token;
     private String accessToken;
@@ -68,13 +68,10 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
         }
     }
 
-    private WaybackAuthLib getAuth() {
-        WaybackAuthLib auth = new WaybackAuthLib(ENVIRONMENT.servicesHost());
-
-        auth.setUsername(name);
-        auth.setPassword(System.getenv().getOrDefault("ALTENING_PASSWORD", "Meteor"));
-
-        return auth;
+    private AuthResponse authenticate() {
+        return Http.post(ENVIRONMENT.servicesHost() + "/authenticate")
+            .bodyJson(new AuthRequest("MINECRAFT", token, "Meteor on Crack!", UUID.randomUUID().toString(), true))
+            .sendJson(AuthResponse.class);
     }
 
     @Override
