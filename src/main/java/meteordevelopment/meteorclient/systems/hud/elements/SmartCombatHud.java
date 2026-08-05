@@ -11,6 +11,7 @@ import meteordevelopment.meteorclient.systems.hud.HudElement;
 import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
 import meteordevelopment.meteorclient.systems.hud.HudRenderer;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
 import meteordevelopment.meteorclient.systems.modules.combat.SmartCombatModule;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
@@ -100,22 +101,27 @@ public class SmartCombatHud extends HudElement {
 
     @Override
     public void tick(HudRenderer renderer) {
+        CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
         SmartCombatModule module = Modules.get().get(SmartCombatModule.class);
-        if (module == null) {
+
+        if (cb == null && module == null) {
             setSize(renderer.textWidth("SmartCombat", false, getScale()), renderer.textHeight(false, getScale()));
             return;
         }
 
-        String title = "SmartCombat";
-        String status = module.isActive() ? "Enabled" : "Disabled";
-        String mode = "Mode: " + module.getCombatMode().name();
+        String title = (cb != null && cb.isActive()) ? "CombatBrain" : "SmartCombat";
+        String status = (cb != null && cb.isActive()) ? "Enabled" : (module != null && module.isActive() ? "Enabled" : "Disabled");
+        String mode = "Mode: " + ((cb != null && cb.isActive()) ? cb.getCombatMode().name() : (module != null ? module.getCombatMode().name() : "N/A"));
         String targetLine = "Target: none";
         String timerLine = "Timer: --";
 
         if (isInEditor()) {
             targetLine = "Target: Zombie (4.2m)";
             timerLine = "Attack in: 5 ticks";
-        } else {
+        } else if (cb != null && cb.isActive()) {
+            targetLine = "Brain: " + cb.getInfoString();
+            timerLine = "State: Active";
+        } else if (module != null) {
             Entity target = module.getTarget();
             if (target != null && mc.player != null) {
                 double dist = Math.round(mc.player.distanceTo(target) * 10.0) / 10.0;
@@ -125,7 +131,6 @@ public class SmartCombatHud extends HudElement {
         }
 
         double width = 0;
-        double height = 0;
         double lineHeight = renderer.textHeight(false, getScale()) + 2;
 
         width = Math.max(width, renderer.textWidth(title, false, getScale()));
@@ -134,7 +139,7 @@ public class SmartCombatHud extends HudElement {
         width = Math.max(width, renderer.textWidth(targetLine, false, getScale()));
         width = Math.max(width, renderer.textWidth(timerLine, false, getScale()));
 
-        height = 5 * lineHeight;
+        double height = 5 * lineHeight;
 
         setSize(width, height);
     }
@@ -148,33 +153,38 @@ public class SmartCombatHud extends HudElement {
             renderer.quad(this.x, this.y, getWidth(), getHeight(), backgroundColor.get());
         }
 
+        CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
         SmartCombatModule module = Modules.get().get(SmartCombatModule.class);
         double lineHeight = renderer.textHeight(false, getScale()) + 2;
 
-        // Title
-        renderer.text("SmartCombat", x, y, primaryColor.get(), false, getScale());
+        String title = (cb != null && cb.isActive()) ? "CombatBrain" : "SmartCombat";
+        renderer.text(title, x, y, primaryColor.get(), false, getScale());
         y += lineHeight;
 
-        if (module == null) {
+        if (cb == null && module == null) {
             renderer.text("Module not loaded", x, y, RED, false, getScale());
             return;
         }
 
         // Status
-        Color statusColor = module.isActive() ? activeColor.get() : inactiveColor.get();
-        String status = module.isActive() ? "Enabled" : "Disabled";
+        boolean active = (cb != null && cb.isActive()) || (module != null && module.isActive());
+        Color statusColor = active ? activeColor.get() : inactiveColor.get();
+        String status = active ? "Enabled" : "Disabled";
         renderer.text(status, x, y, statusColor, false, getScale());
         y += lineHeight;
 
         // Mode
-        renderer.text("Mode: " + module.getCombatMode().name(), x, y, secondaryColor.get(), false, getScale());
+        String modeName = (cb != null && cb.isActive()) ? cb.getCombatMode().name() : (module != null ? module.getCombatMode().name() : "N/A");
+        renderer.text("Mode: " + modeName, x, y, secondaryColor.get(), false, getScale());
         y += lineHeight;
 
-        // Target
+        // Target / Brain line
         String targetLine;
         if (isInEditor()) {
             targetLine = "Target: Zombie (4.2m)";
-        } else {
+        } else if (cb != null && cb.isActive()) {
+            targetLine = "Brain: " + cb.getInfoString();
+        } else if (module != null) {
             Entity target = module.getTarget();
             if (target != null && mc.player != null) {
                 double dist = Math.round(mc.player.distanceTo(target) * 10.0) / 10.0;
@@ -182,16 +192,22 @@ public class SmartCombatHud extends HudElement {
             } else {
                 targetLine = "Target: none";
             }
+        } else {
+            targetLine = "Target: none";
         }
         renderer.text(targetLine, x, y, primaryColor.get(), false, getScale());
         y += lineHeight;
 
-        // Timer
+        // Timer / State line
         String timerLine;
         if (isInEditor()) {
             timerLine = "Attack in: 5 ticks";
-        } else {
+        } else if (cb != null && cb.isActive()) {
+            timerLine = "State: Active";
+        } else if (module != null) {
             timerLine = "Attack in: " + module.getAttackTimer() + " ticks";
+        } else {
+            timerLine = "Timer: --";
         }
         renderer.text(timerLine, x, y, secondaryColor.get(), false, getScale());
     }

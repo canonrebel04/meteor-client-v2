@@ -16,6 +16,8 @@ import meteordevelopment.meteorclient.renderer.text.TextRenderer;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
 import meteordevelopment.meteorclient.systems.modules.combat.CombatIntegrationBridge;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
@@ -130,6 +132,9 @@ public class PathVisualizationOverlay extends Module {
         String line1 = "Path Goal: " + goalPos.getX() + ", " + goalPos.getY() + ", " + goalPos.getZ();
         String line2 = "Distance: " + distStr + " blocks";
 
+        CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+        String line3 = (cb != null && cb.isActive()) ? "Mode: " + cb.getCombatMode().name() : null;
+
         TextRenderer text = TextRenderer.get();
         text.begin(textScale.get());
 
@@ -137,8 +142,13 @@ public class PathVisualizationOverlay extends Module {
         double pad = padding.get();
 
         double width = Math.max(text.getWidth(line1), text.getWidth(line2));
+        if (line3 != null) {
+            width = Math.max(width, text.getWidth(line3));
+        }
+
         double boxWidth = width + pad * 2;
-        double boxHeight = lineHeight * 2 + pad * 2;
+        int lineCount = line3 != null ? 3 : 2;
+        double boxHeight = lineHeight * lineCount + pad * 2;
 
         // Position top-right
         double boxX = event.screenWidth - boxWidth - 2;
@@ -156,6 +166,10 @@ public class PathVisualizationOverlay extends Module {
         text.render(line1, textX, textY, textColor.get());
         textY += lineHeight;
         text.render(line2, textX, textY, WHITE);
+        if (line3 != null) {
+            textY += lineHeight;
+            text.render(line3, textX, textY, WHITE);
+        }
 
         text.end();
     }

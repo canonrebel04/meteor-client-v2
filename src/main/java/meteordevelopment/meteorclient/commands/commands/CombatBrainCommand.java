@@ -29,8 +29,23 @@ public class CombatBrainCommand extends Command {
                 return SINGLE_SUCCESS;
             })
 
-            // .combat-brain mode <follow|flee|both|none>
+            // .combat-brain mode [name|follow|flee|both|none]
             .then(literal("mode")
+                .executes(context -> {
+                    CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+                    var mode = cb != null ? cb.getCombatMode() : null;
+                    info("Current Combat Mode: (highlight)" + (mode != null ? mode.name() : "N/A") + "(default)");
+                    info("CombatMode is evaluated dynamically each tick based on reach, gear, health, and environment.");
+                    return SINGLE_SUCCESS;
+                })
+                .then(argument("modeName", StringArgumentType.word())
+                    .executes(context -> {
+                        String requested = StringArgumentType.getString(context, "modeName");
+                        info("Requested mode: (highlight)" + requested + "(default)");
+                        warning("Combat mode is automatically computed each tick. Adjust engage-threshold, flee-threshold, or threat settings to alter mode evaluation.");
+                        return SINGLE_SUCCESS;
+                    })
+                )
                 .then(literal("follow")
                     .executes(context -> {
                         CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
@@ -63,6 +78,16 @@ public class CombatBrainCommand extends Command {
                         return SINGLE_SUCCESS;
                     })
                 )
+            )
+
+            // .combat-brain rules
+            .then(literal("rules")
+                .executes(context -> {
+                    info("(highlight)Automator Rules Status:(default)");
+                    info("ModuleAutomator rule engine evaluates combat triggers each tick.");
+                    info("Active managed modules: KillAura, ArrowDodge, AutoArmor, AutoWeapon, AutoTotem, CrystalAura, Jesus, BedAura, Surround.");
+                    return SINGLE_SUCCESS;
+                })
             )
 
             // .combat-brain range <value>

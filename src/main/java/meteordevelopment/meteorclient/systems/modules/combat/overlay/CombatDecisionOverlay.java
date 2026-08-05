@@ -19,6 +19,8 @@ import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.world.entity.Entity;
 
+import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
+
 public class CombatDecisionOverlay extends Module {
     private static final Color WHITE = new Color(255, 255, 255);
     private static final Color GRAY = new Color(175, 175, 175);
@@ -74,16 +76,25 @@ public class CombatDecisionOverlay extends Module {
     private void onRender2D(Render2DEvent event) {
         SmartCombatModule sc = Modules.get().get(SmartCombatModule.class);
         TacticalBrain brain = Modules.get().get(TacticalBrain.class);
+        CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
 
-        if (sc == null) return;
+        if (sc == null && cb == null) return;
 
         // Build text lines
         String title = "Combat Decision";
-        String mode = "Mode: " + (sc.isActive() ? sc.getCombatMode().name() : "DISABLED");
-        String status = "Status: " + (sc.isActive() ? "Running" : "Idle");
+        String modeStr;
+        if (cb != null && cb.isActive()) {
+            modeStr = "Mode: " + cb.getCombatMode().name();
+        } else if (sc != null) {
+            modeStr = "Mode: " + (sc.isActive() ? sc.getCombatMode().name() : "DISABLED");
+        } else {
+            modeStr = "Mode: DISABLED";
+        }
+        String mode = modeStr;
+        String status = "Status: " + ((cb != null && cb.isActive()) || (sc != null && sc.isActive()) ? "Running" : "Idle");
 
         String targetLine;
-        Entity target = sc.getTarget();
+        Entity target = sc != null ? sc.getTarget() : null;
         if (target != null && mc.player != null) {
             double dist = Math.round(mc.player.distanceTo(target) * 10.0) / 10.0;
             targetLine = "Target: " + target.getName().getString() + " (" + dist + "m)";
@@ -91,10 +102,10 @@ public class CombatDecisionOverlay extends Module {
             targetLine = "Target: none";
         }
 
-        String timerLine = "Attack in: " + sc.getAttackTimer() + " ticks";
-        String rangeLine = "Range: " + sc.getRange() + "m";
+        String timerLine = "Attack in: " + (sc != null ? sc.getAttackTimer() : 0) + " ticks";
+        String rangeLine = "Range: " + (sc != null ? sc.getRange() : 0) + "m";
 
-        String brainAction = "AI Action: " + (brain != null && brain.isActive() ? brain.getInfoString() : "N/A");
+        String brainAction = "AI Action: " + (cb != null && cb.isActive() ? cb.getInfoString() : (brain != null && brain.isActive() ? brain.getInfoString() : "N/A"));
 
         TextRenderer text = TextRenderer.get();
         text.begin(scale.get());

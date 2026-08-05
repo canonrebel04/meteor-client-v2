@@ -322,6 +322,7 @@ public class CombatBrainModule extends Module {
     private int stuckHealTicks;
     private ModuleAutomator automator;
     private CombatMode combatMode = CombatMode.AGGRESSIVE;
+    private boolean stealthAntiDetectionEnabled = false;
     private int modeHoldTimer;
 
     public CombatBrainModule() {
@@ -346,6 +347,10 @@ public class CombatBrainModule extends Module {
     public void onDeactivate() {
         if (followController != null) followController.stop();
         if (automator != null) automator.shutdown();
+        if (stealthAntiDetectionEnabled) {
+            disableModule(AntiDetectionModule.class);
+            stealthAntiDetectionEnabled = false;
+        }
         disableAllManagedModules();
         state = BrainState.IDLE;
         combatMode = CombatMode.AGGRESSIVE;
@@ -389,6 +394,19 @@ public class CombatBrainModule extends Module {
                 modeHoldTimer = 0;
             } else {
                 modeHoldTimer += 2;
+            }
+
+            // STEALTH mode wiring: enable AntiDetectionModule while hidden so
+            // rotation jitter + sneak cycling mask bot-like behavior. Disable
+            // and release when leaving STEALTH.
+            if (combatMode == CombatMode.STEALTH) {
+                if (!stealthAntiDetectionEnabled) {
+                    enableModule(AntiDetectionModule.class);
+                    stealthAntiDetectionEnabled = true;
+                }
+            } else if (stealthAntiDetectionEnabled) {
+                disableModule(AntiDetectionModule.class);
+                stealthAntiDetectionEnabled = false;
             }
         }
 

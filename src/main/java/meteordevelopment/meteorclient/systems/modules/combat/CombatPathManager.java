@@ -26,7 +26,8 @@ public class CombatPathManager {
     private boolean active = false;
     private Goal activeGoal = null;
     private PathingCommandType activeCommandType = null;
-    
+    private boolean combatModeActive = false;
+
     private Player activeTarget = null;
     private BlockPos activeHole = null;
 
@@ -95,14 +96,26 @@ public class CombatPathManager {
         return active;
     }
 
-    private void enableCombatMode(boolean enabled) {
-        // disabled
+    public boolean isCombatModeActive() {
+        return combatModeActive;
+    }
+
+    public void enableCombatMode(boolean enabled) {
+        this.combatModeActive = enabled;
+        // Fresh goal command: cancel stale pathing so the next SET_GOAL_AND_PATH
+        // from CombatProcess starts clean instead of inheriting an old path.
+        if (enabled) {
+            baritone.getPathingBehavior().cancelEverything();
+        }
     }
 
     private void enableFavoring() {
+        // Baritone's Favoring/avoidance system is not exposed as a public API in
+        // this fork build; retained as a no-op for TacticalBrain API contract.
     }
 
     private void disableFavoring() {
+        // No-op — see enableFavoring().
     }
 
     private class CombatProcess implements IBaritoneProcess {

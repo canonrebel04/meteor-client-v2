@@ -90,6 +90,13 @@ public enum CombatMode {
             }
         }
 
+        // 8.5 STEALTH: target exists but is hidden behind cover AND no nearby
+        // threat entities — stay dark instead of pushing. AntiDetectionModule
+        // gets enabled by CombatBrainModule when this mode is active.
+        if (target != null && grid != null && !grid.isTargetVisible(target) && grid.getThreatMap().isEmpty()) {
+            return STEALTH;
+        }
+
         // 9. Default
         return AGGRESSIVE;
     }
