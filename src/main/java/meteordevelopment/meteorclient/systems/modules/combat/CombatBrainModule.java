@@ -82,11 +82,21 @@ public class CombatBrainModule extends Module {
 
     private final Setting<Double> targetRange = sgTargeting.add(new DoubleSetting.Builder()
         .name("target-range")
-        .description("Maximum range to search for targets.")
+        .description("Maximum range to search for targets (retained for backwards compatibility).")
         .defaultValue(8.0)
         .min(1.0)
         .max(16.0)
         .sliderMax(16.0)
+        .build()
+    );
+
+    private final Setting<Double> acquireRange = sgTargeting.add(new DoubleSetting.Builder()
+        .name("acquire-range")
+        .description("Maximum range to acquire (lock onto) a target. The brain paths to it from any distance within this range — baritone handles the travel.")
+        .defaultValue(64.0)
+        .min(8.0)
+        .max(256.0)
+        .sliderMax(256.0)
         .build()
     );
 
@@ -466,6 +476,15 @@ public class CombatBrainModule extends Module {
         stealthAntiDetectionEnabled = false;
         lastAttackedTimestamps.clear();
         stuckHealTicks = 0;
+
+        // Immediate target acquisition on activation so pathing starts instantly
+        if (mc.player != null && mc.level != null) {
+            currentTarget = findBestTarget();
+            if (currentTarget != null) {
+                transitionTo(BrainState.ANALYZING);
+            }
+        }
+
         info("CombatBrain AI enabled");
     }
 
@@ -738,7 +757,8 @@ public class CombatBrainModule extends Module {
             if (!(entity instanceof LivingEntity le)) return false;
             if (le == mc.player) return false;
             if (!le.isAlive()) return false;
-            if (le.distanceTo(mc.player) > targetRange.get()) return false;
+            // Acquire targets up to acquireRange (default 64) so long-range targets are locked onto and pathed to
+            if (le.distanceTo(mc.player) > acquireRange.get()) return false;
 
             // Check entity type filter (mobs)
             if (targetEntities.get().contains(le.getType())) return true;
@@ -822,7 +842,7 @@ public class CombatBrainModule extends Module {
             targetHealthWeight.get(),
             targetDefenseWeight.get(),
             targetWeaponWeight.get(),
-            targetRange.get()
+            acquireRange.get()
         );
     }
 

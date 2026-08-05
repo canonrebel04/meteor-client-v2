@@ -246,7 +246,7 @@ public class CombatTargetAnalyzer {
      * @param healthWeight weight for target health (lower target health = higher score)
      * @param defenseWeight weight for target-armor defense (less armor = higher score)
      * @param weaponWeight weight for target-weapons threat (weaker weapon = higher score)
-     * @param maxRange maximum search range for distance normalization
+     * @param maxRange maximum search range for distance normalization (e.g. acquireRange / acquire-range from findBestTarget, replacing old targetRange)
      * @return normalized target score in range [0, 1]
      */
     public static double targetScore(TargetAnalysis a, double distanceWeight, double healthWeight, double defenseWeight, double weaponWeight, double maxRange) {
