@@ -42,6 +42,12 @@ public class CombatBrainModule extends Module {
         EMERGENCY_LOG
     }
 
+    public enum EmergencyMode {
+        DISCONNECT,
+        BURROW,
+        FLEE
+    }
+
     private final SettingGroup sgTargeting = settings.createGroup("Targeting");
     private final SettingGroup sgEngagement = settings.createGroup("Engagement");
     private final SettingGroup sgAnalysis = settings.createGroup("Analysis");
@@ -129,6 +135,30 @@ public class CombatBrainModule extends Module {
         .name("crystal")
         .description("Also enable CrystalAura (PvP crystal mode).")
         .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> modeSwitch = sgEngagement.add(new BoolSetting.Builder()
+        .name("mode-switch")
+        .description("Enable tactical combat mode switching loop.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Integer> modeHysteresisTicks = sgEngagement.add(new IntSetting.Builder()
+        .name("mode-hysteresis-ticks")
+        .description("Minimum ticks to hold a combat mode before switching (prevents flapping).")
+        .defaultValue(20)
+        .min(0)
+        .max(200)
+        .sliderMax(200)
+        .build()
+    );
+
+    private final Setting<EmergencyMode> emergencyMode = sgEngagement.add(new EnumSetting.Builder<EmergencyMode>()
+        .name("emergency-mode")
+        .description("Action to take when emergency protocol triggers.")
+        .defaultValue(EmergencyMode.DISCONNECT)
         .build()
     );
 
@@ -241,6 +271,16 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    private final Setting<Double> undergearRatio = sgAnalysis.add(new DoubleSetting.Builder()
+        .name("undergear-ratio")
+        .description("Ratio threshold below which player is considered undergeared compared to target.")
+        .defaultValue(0.6)
+        .min(0.1)
+        .max(1.0)
+        .sliderRange(0.1, 1.0)
+        .build()
+    );
+
     private final Setting<Double> followDistance = sgAnalysis.add(new DoubleSetting.Builder()
         .name("follow-distance")
         .description("Stay this far from target. Used as manual override when dynamic-follow is off.")
@@ -281,6 +321,8 @@ public class CombatBrainModule extends Module {
     private final HashMap<UUID, Long> lastAttackedTimestamps = new HashMap<>();
     private int stuckHealTicks;
     private ModuleAutomator automator;
+    private CombatMode combatMode = CombatMode.AGGRESSIVE;
+    private int modeHoldTimer;
 
     public CombatBrainModule() {
         super(Categories.Combat, "combat-brain", "Advanced combat AI brain. Auto-manages all combat modules, target selection, pathing, and threat analysis.");
@@ -306,6 +348,8 @@ public class CombatBrainModule extends Module {
         if (automator != null) automator.shutdown();
         disableAllManagedModules();
         state = BrainState.IDLE;
+        combatMode = CombatMode.AGGRESSIVE;
+        modeHoldTimer = 0;
         currentTarget = null;
         followController = null;
         automator = null;
@@ -324,6 +368,29 @@ public class CombatBrainModule extends Module {
         float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
         int totems = countTotems();
         double threat = computeThreatLevel();
+
+        // Tactical combat-mode evaluation
+        if (modeSwitch.get()) {
+            CombatMode proposed = CombatMode.evaluateCombatMode(
+                threat,
+                engageThreshold.get(),
+                fleeThreshold.get(),
+                health,
+                totems,
+                currentTarget,
+                terrainGrid,
+                false,
+                false,
+                crystal.get()
+            );
+            CombatMode prevMode = combatMode;
+            combatMode = CombatMode.holdMode(combatMode, proposed, modeHoldTimer, modeHysteresisTicks.get());
+            if (combatMode != prevMode) {
+                modeHoldTimer = 0;
+            } else {
+                modeHoldTimer += 2;
+            }
+        }
 
         // Emergency check
         if (health <= 4.0f && totems == 0 && threat > 0.8f) {
@@ -364,7 +431,8 @@ public class CombatBrainModule extends Module {
                 // Analyze target with real analyzer
                 lastAnalysis = CombatTargetAnalyzer.analyze(currentTarget);
 
-                boolean canWin = !viabilityCheck.get() || assessViability(currentTarget);
+                boolean isUndergeared = viabilityCheck.get() && CombatTargetAnalyzer.undergeared(currentTarget, undergearRatio.get());
+                boolean canWin = !viabilityCheck.get() || (assessViability(currentTarget) && !isUndergeared);
                 if (canWin) {
                     transitionTo(BrainState.ENGAGING);
                 } else {
@@ -711,7 +779,7 @@ public class CombatBrainModule extends Module {
         // Resolve follow distance: dynamic (reach/potion/weapon aware) or manual override
         double targetDistance = followDistance.get();
         if (dynamicFollow.get() && lastAnalysis != null) {
-            targetDistance = CombatTargetAnalyzer.computeDynamicFollowDistance(lastAnalysis, 0.5);
+            targetDistance = CombatTargetAnalyzer.computeDynamicFollowDistance(lastAnalysis, CombatMode.modePadding(combatMode));
         }
 
         // Update terrain awareness
@@ -762,11 +830,33 @@ public class CombatBrainModule extends Module {
     }
 
     private void doEmergencyLog() {
-        if (mc.getConnection() != null && mc.getConnection().getConnection() != null) {
-            mc.getConnection().getConnection().disconnect(Component.literal("CombatBrain: Emergency Log triggered."));
+        switch (emergencyMode.get()) {
+            case DISCONNECT -> {
+                if (mc.getConnection() != null && mc.getConnection().getConnection() != null) {
+                    mc.getConnection().getConnection().disconnect(Component.literal("CombatBrain: Emergency Log triggered."));
+                }
+                disableAllManagedModules();
+            }
+            case BURROW -> {
+                info("Emergency: burrowing");
+                disableModule(KillAura.class);
+                disableModule(ArrowDodge.class);
+                enableModule(Surround.class);
+                enableModule(HoleFiller.class);
+            }
+            case FLEE -> {
+                info("Emergency: fleeing");
+                disableAllManagedModules();
+                if (mc.player != null) {
+                    mc.player.setSprinting(true);
+                }
+                if (followController != null && currentTarget != null) {
+                    followController.flee(currentTarget, fleeDistance.get() * 2.0);
+                }
+            }
         }
-        disableAllManagedModules();
         state = BrainState.IDLE;
+        toggle(); // Disable CombatBrain module after emergency action
     }
 
     // --- Utilities ---
@@ -781,11 +871,15 @@ public class CombatBrainModule extends Module {
         return count;
     }
 
+    public CombatMode getCombatMode() {
+        return combatMode;
+    }
+
     @Override
     public String getInfoString() {
         if (currentTarget != null) {
-            return currentTarget.getName().getString() + " (" + state.name() + ")";
+            return currentTarget.getName().getString() + " (" + state.name() + "/" + combatMode.name() + ")";
         }
-        return state.name();
+        return state.name() + "/" + combatMode.name();
     }
 }

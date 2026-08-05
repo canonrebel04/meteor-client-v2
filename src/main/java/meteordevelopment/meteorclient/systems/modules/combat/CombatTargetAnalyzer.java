@@ -179,6 +179,76 @@ public class CombatTargetAnalyzer {
         return 2.0;
     }
 
+    /**
+     * Calculates self-gear combat score for mc.player based on health, armor, and weapon quality.
+     * Mirrors the viability structure:
+     * - Health component (40%): (health + absorption) / 20.0 (clamped 0..1)
+     * - Armor component (30%): armor attribute value / 20.0 (clamped 0..1)
+     * - Weapon component (30%): weapon tier score + sharpness enchant bonus (clamped 0..1)
+     */
+    public static double myCombatScore() {
+        if (mc.player == null) return 0.0;
+
+        // Health term (40% weight): normalized current health + absorption
+        float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+        double healthScore = Math.min(1.0, health / 20.0);
+
+        // Armor term (30% weight): normalized armor attribute value
+        double armorValue = mc.player.getAttributeValue(Attributes.ARMOR);
+        double armorScore = Math.min(1.0, armorValue / 20.0);
+
+        // Weapon term (30% weight): held item base score + sharpness enchant bonus
+        ItemStack weapon = mc.player.getMainHandItem();
+        double baseWeaponScore = getWeaponScore(weapon);
+        int sharpnessLevel = Utils.getEnchantmentLevel(weapon, Enchantments.SHARPNESS);
+        double weaponScore = Math.min(1.0, baseWeaponScore + (sharpnessLevel * 0.1));
+
+        return (healthScore * 0.4) + (armorScore * 0.3) + (weaponScore * 0.3);
+    }
+
+    /**
+     * Calculates effective combat score for a target entity.
+     */
+    public static double effectiveTargetScore(LivingEntity target) {
+        if (target == null) return 0.0;
+
+        float targetHealth = target.getHealth() + target.getAbsorptionAmount();
+        double healthScore = Math.min(1.0, targetHealth / 20.0);
+
+        double targetArmor = target.getAttributeValue(Attributes.ARMOR);
+        double armorScore = Math.min(1.0, targetArmor / 20.0);
+
+        ItemStack weapon = target.getMainHandItem();
+        double baseWeaponScore = getWeaponScore(weapon);
+        int sharpnessLevel = Utils.getEnchantmentLevel(weapon, Enchantments.SHARPNESS);
+        double weaponScore = Math.min(1.0, baseWeaponScore + (sharpnessLevel * 0.1));
+
+        return (healthScore * 0.4) + (armorScore * 0.3) + (weaponScore * 0.3);
+    }
+
+    /**
+     * Determines if mc.player is undergeared relative to target by checking if
+     * myCombatScore() is below the specified ratio of the target's score.
+     */
+    public static boolean undergeared(LivingEntity target, double ratio) {
+        if (target == null || mc.player == null) return false;
+        double myScore = myCombatScore();
+        double targetScore = effectiveTargetScore(target);
+        return myScore < ratio * targetScore;
+    }
+
+    private static double getWeaponScore(ItemStack stack) {
+        if (stack.isEmpty()) return 0.4;
+        var item = stack.getItem();
+        if (item == Items.NETHERITE_SWORD || item == Items.DIAMOND_SWORD ||
+            item == Items.NETHERITE_AXE || item == Items.DIAMOND_AXE) return 1.0;
+        if (item == Items.IRON_SWORD || item == Items.IRON_AXE) return 0.7;
+        if (item == Items.STONE_SWORD || item == Items.STONE_AXE) return 0.5;
+        if (item == Items.WOODEN_SWORD || item == Items.WOODEN_AXE) return 0.3;
+        if (item == Items.BOW || item == Items.CROSSBOW || item == Items.TRIDENT) return 0.6;
+        return 0.4;
+    }
+
     // --- Helpers ---
 
     private static String buildArmorSummary(LivingEntity entity) {
