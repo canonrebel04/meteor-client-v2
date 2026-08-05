@@ -132,6 +132,99 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    private final Setting<Double> losWeight = sgEngagement.add(new DoubleSetting.Builder()
+        .name("los-weight")
+        .description("Threat multiplier for visible enemies with line of sight.")
+        .defaultValue(2.0)
+        .min(1.0)
+        .max(5.0)
+        .sliderRange(1.0, 5.0)
+        .build()
+    );
+
+    private final Setting<Boolean> coverModifier = sgEngagement.add(new BoolSetting.Builder()
+        .name("cover-modifier")
+        .description("Modify threat level based on nearby cover/walls.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Double> crystalThreat = sgEngagement.add(new DoubleSetting.Builder()
+        .name("crystal-threat")
+        .description("Threat added per nearby end crystal.")
+        .defaultValue(0.15)
+        .min(0.0)
+        .max(0.5)
+        .sliderRange(0.0, 0.5)
+        .build()
+    );
+
+    // --- Automator ---
+
+    private final SettingGroup sgAutomator = settings.createGroup("Automator");
+
+    final Setting<Double> crystalDetectRange = sgAutomator.add(new DoubleSetting.Builder()
+        .name("crystal-detect-range")
+        .description("End crystal detection range for CrystalAura.")
+        .defaultValue(6.0)
+        .min(1.0)
+        .max(16.0)
+        .sliderMax(16.0)
+        .build()
+    );
+
+    final Setting<Boolean> bowDetect = sgAutomator.add(new BoolSetting.Builder()
+        .name("bow-detect")
+        .description("Enable ArrowDodge when target holds a bow, crossbow, or trident.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Double> autoHealThreshold = sgAutomator.add(new DoubleSetting.Builder()
+        .name("auto-heal-threshold")
+        .description("Health threshold (health + absorption) below which auto-heal triggers.")
+        .defaultValue(14.0)
+        .min(1.0)
+        .max(20.0)
+        .sliderMax(20.0)
+        .build()
+    );
+
+    final Setting<Boolean> autoHeal = sgAutomator.add(new BoolSetting.Builder()
+        .name("auto-heal")
+        .description("Auto enable AutoEat and AutoGap when health is low.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> autoTotemSetting = sgAutomator.add(new BoolSetting.Builder()
+        .name("auto-totem")
+        .description("Auto enable AutoTotem when health is low and no totems.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> waterDetect = sgAutomator.add(new BoolSetting.Builder()
+        .name("water-detect")
+        .description("Auto enable Jesus when player or target is in water.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> bedDetect = sgAutomator.add(new BoolSetting.Builder()
+        .name("bed-detect")
+        .description("Auto enable BedAura when target is near a bed block in the nether.")
+        .defaultValue(false)
+        .build()
+    );
+
+    final Setting<Boolean> holeDetect = sgAutomator.add(new BoolSetting.Builder()
+        .name("hole-detect")
+        .description("Auto enable Surround when player is in a 1x1 hole.")
+        .defaultValue(true)
+        .build()
+    );
+
     // --- Analysis ---
 
     private final Setting<Boolean> analyzeGear = sgAnalysis.add(new BoolSetting.Builder()
@@ -187,6 +280,7 @@ public class CombatBrainModule extends Module {
     private CombatTerrainGrid terrainGrid;
     private final HashMap<UUID, Long> lastAttackedTimestamps = new HashMap<>();
     private int stuckHealTicks;
+    private ModuleAutomator automator;
 
     public CombatBrainModule() {
         super(Categories.Combat, "combat-brain", "Advanced combat AI brain. Auto-manages all combat modules, target selection, pathing, and threat analysis.");
@@ -200,6 +294,7 @@ public class CombatBrainModule extends Module {
         stateTimer = 0;
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
+        automator = new ModuleAutomator(this);
         lastAttackedTimestamps.clear();
         stuckHealTicks = 0;
         info("CombatBrain AI enabled");
@@ -208,10 +303,12 @@ public class CombatBrainModule extends Module {
     @Override
     public void onDeactivate() {
         if (followController != null) followController.stop();
+        if (automator != null) automator.shutdown();
         disableAllManagedModules();
         state = BrainState.IDLE;
         currentTarget = null;
         followController = null;
+        automator = null;
     }
 
     @EventHandler
@@ -352,6 +449,14 @@ public class CombatBrainModule extends Module {
             transitionTo(BrainState.IDLE);
         }
 
+        // Module automator update during active combat states
+        if (autoModules.get() && automator != null) {
+            if (state == BrainState.ENGAGING || state == BrainState.RETREATING
+                || state == BrainState.HEALING || state == BrainState.FLEEING) {
+                automator.update(currentTarget, terrainGrid);
+            }
+        }
+
         stateTimer++;
     }
 
@@ -360,10 +465,18 @@ public class CombatBrainModule extends Module {
     private void transitionTo(BrainState newState) {
         if (state == newState) return;
 
+        BrainState oldState = state;
         onExitState(state);
         state = newState;
         stateTimer = 0;
         onEnterState(state);
+        onStateChange(oldState, newState);
+    }
+
+    private void onStateChange(BrainState oldState, BrainState newState) {
+        if (automator != null) {
+            automator.onStateChange(oldState, newState);
+        }
     }
 
     private void onEnterState(BrainState s) {
@@ -472,7 +585,7 @@ public class CombatBrainModule extends Module {
         return 0.4;
     }
 
-    // --- Threat analysis ---
+    // --- Threat analysis (refined) ---
 
     private double computeThreatLevel() {
         if (mc.player == null) return 0.0;
@@ -483,20 +596,50 @@ public class CombatBrainModule extends Module {
         int totems = countTotems();
         double totemFactor = totems > 0 ? 0.0 : 0.3;
 
-        // Check nearby threats
+        // Check nearby threats and crystal entities
         double nearbyThreats = 0.0;
+        int nearbyCrystals = 0;
+
         if (mc.level != null) {
             for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
                 if (entity instanceof LivingEntity le && le != mc.player && le.isAlive()) {
                     double dist = le.distanceTo(mc.player);
                     if (dist < 6.0) {
-                        nearbyThreats += (1.0 - dist / 6.0) * 0.3;
+                        double losFactor = (terrainGrid != null && terrainGrid.isTargetVisible(le)) ? losWeight.get() : 1.0;
+                        nearbyThreats += (1.0 - dist / 6.0) * 0.3 * losFactor;
+                    }
+                } else if (entity.getType() == EntityType.END_CRYSTAL) {
+                    double dist = entity.distanceTo(mc.player);
+                    if (dist < 6.0) {
+                        nearbyCrystals++;
                     }
                 }
             }
         }
 
-        double threat = healthFactor * 0.4 + totemFactor * 0.2 + Math.min(nearbyThreats, 0.4);
+        double threat = healthFactor * 0.4 + totemFactor * 0.2 + Math.min(nearbyThreats, 0.4) + (nearbyCrystals * crystalThreat.get());
+
+        // Cover modifier calculation
+        if (coverModifier.get() && mc.level != null) {
+            BlockPos playerPos = mc.player.blockPosition();
+            int solidNeighbors = 0;
+            int[] dx = {-1, 1, 0, 0, -1, -1, 1, 1};
+            int[] dz = {0, 0, -1, 1, -1, 1, -1, 1};
+
+            for (int i = 0; i < 8; i++) {
+                BlockPos checkPos = playerPos.offset(dx[i], 0, dz[i]);
+                if (!mc.level.getBlockState(checkPos).isAir()) {
+                    solidNeighbors++;
+                }
+            }
+
+            if (solidNeighbors == 0) {
+                threat *= 1.2;
+            } else if (solidNeighbors >= 4) {
+                threat *= 0.8;
+            }
+        }
+
         return Mth.clamp(threat, 0.0, 1.0);
     }
 
@@ -512,34 +655,28 @@ public class CombatBrainModule extends Module {
         }
 
         enableModule(KillAura.class);
-        enableModule(ArrowDodge.class);
         enableModule(AutoArmor.class);
         enableModule(AutoWeapon.class);
-        enableModule(AutoTotem.class);
 
         if (criticals.get()) enableModule(Criticals.class);
-        if (crystal.get()) enableModule(CrystalAura.class);
     }
 
     private void disableCombatModules() {
         disableModule(KillAura.class);
-        disableModule(ArrowDodge.class);
         disableModule(AutoArmor.class);
         disableModule(AutoWeapon.class);
-        disableModule(AutoTotem.class);
 
         disableModule(Criticals.class);
-        disableModule(CrystalAura.class);
     }
 
     private void disableAllManagedModules() {
         disableModule(KillAura.class);
-        disableModule(ArrowDodge.class);
         disableModule(AutoArmor.class);
         disableModule(AutoWeapon.class);
-        disableModule(AutoTotem.class);
         disableModule(Criticals.class);
-        disableModule(CrystalAura.class);
+        if (automator != null) {
+            automator.shutdown();
+        }
     }
 
     private void enableModule(Class<? extends Module> klass) {
