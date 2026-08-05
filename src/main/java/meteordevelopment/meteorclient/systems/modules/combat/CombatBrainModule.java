@@ -90,6 +90,16 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    private final Setting<Double> maxChaseRange = sgTargeting.add(new DoubleSetting.Builder()
+        .name("max-chase-range")
+        .description("Maximum range to keep chasing an acquired target before abandoning it. Lets the brain chase far beyond the acquisition range — baritone paths the distance.")
+        .defaultValue(64.0)
+        .min(8.0)
+        .max(256.0)
+        .sliderMax(256.0)
+        .build()
+    );
+
     // --- Scoring ---
 
     private final SettingGroup sgScoring = settings.createGroup("Scoring");
@@ -818,7 +828,10 @@ public class CombatBrainModule extends Module {
 
     private boolean isTargetValid(LivingEntity entity) {
         if (entity == null || !entity.isAlive()) return false;
-        if (entity.distanceTo(mc.player) > targetRange.get() + 2.0) return false;
+        // Chase range is much larger than acquisition range: once a target is
+        // acquired, the brain follows it (via baritone) up to max-chase-range
+        // instead of abandoning the chase at target-range + 2.
+        if (entity.distanceTo(mc.player) > maxChaseRange.get()) return false;
         return true;
     }
 
