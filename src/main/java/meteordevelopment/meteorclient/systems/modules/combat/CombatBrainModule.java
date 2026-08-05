@@ -48,6 +48,11 @@ public class CombatBrainModule extends Module {
         FLEE
     }
 
+    public enum StrikePhase {
+        BUBBLE,
+        STRIKE
+    }
+
     private final SettingGroup sgTargeting = settings.createGroup("Targeting");
     private final SettingGroup sgEngagement = settings.createGroup("Engagement");
     private final SettingGroup sgAnalysis = settings.createGroup("Analysis");
@@ -203,6 +208,43 @@ public class CombatBrainModule extends Module {
         .name("mode-switch")
         .description("Enable tactical combat mode switching loop.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> hitAndRun = sgEngagement.add(new BoolSetting.Builder()
+        .name("hit-and-run")
+        .description("Enable hit-and-run strike cycle between safety bubble and strike range.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Double> strikeDistance = sgEngagement.add(new DoubleSetting.Builder()
+        .name("strike-distance")
+        .description("Distance to get to target when darting in to attack.")
+        .defaultValue(2.5)
+        .min(1.0)
+        .max(6.0)
+        .sliderMax(6.0)
+        .build()
+    );
+
+    private final Setting<Integer> strikeDurationTicks = sgEngagement.add(new IntSetting.Builder()
+        .name("strike-duration-ticks")
+        .description("Duration (in ticks) to stay in the strike phase before retreating.")
+        .defaultValue(10)
+        .min(1)
+        .max(100)
+        .sliderMax(100)
+        .build()
+    );
+
+    private final Setting<Integer> retreatCooldownTicks = sgEngagement.add(new IntSetting.Builder()
+        .name("retreat-cooldown-ticks")
+        .description("Minimum ticks to stay in the safety bubble before next strike.")
+        .defaultValue(10)
+        .min(0)
+        .max(200)
+        .sliderMax(200)
         .build()
     );
 
@@ -388,6 +430,9 @@ public class CombatBrainModule extends Module {
     private int switchTimer;
     private int lastSwitchTick = -999;
     private double currentTargetScore;
+    private StrikePhase strikePhase = StrikePhase.BUBBLE;
+    private int strikeTimer;
+    private int bubbleTimer;
 
     public CombatBrainModule() {
         super(Categories.Combat, "combat-brain", "Advanced combat AI brain. Auto-manages all combat modules, target selection, pathing, and threat analysis.");
@@ -402,6 +447,9 @@ public class CombatBrainModule extends Module {
         lastSwitchTick = -999;
         switchTimer = 0;
         currentTargetScore = 0.0;
+        strikePhase = StrikePhase.BUBBLE;
+        strikeTimer = 0;
+        bubbleTimer = 0;
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
@@ -872,6 +920,18 @@ public class CombatBrainModule extends Module {
         KillAura killAura = Modules.get().get(KillAura.class);
         if (killAura != null) {
             ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-baritone")).set(false);
+
+            // Sync KillAura's entity filter with the brain's target selection.
+            // KillAura defaults to PLAYER-only — without this it would never swing
+            // at the mobs the brain is targeting (observed: enabled but no attacks).
+            // Build the union: brain's target-entities + PLAYER when target-players
+            // is on, always preserving KillAura's own configured entities.
+            Set<EntityType<?>> killAuraEntities = new java.util.HashSet<>(
+                ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).get()
+            );
+            killAuraEntities.addAll(targetEntities.get());
+            if (targetPlayers.get()) killAuraEntities.add(EntityType.PLAYER);
+            ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(killAuraEntities);
         }
 
         enableModule(KillAura.class);
@@ -928,29 +988,81 @@ public class CombatBrainModule extends Module {
         }
         followRecalcTimer++;
 
-        // Resolve follow distance: dynamic (reach/potion/weapon aware) or manual override
+        // Resolve follow distance: dynamic (reach/potion/weapon aware) or manual override (safety bubble)
         double targetDistance = followDistance.get();
         if (dynamicFollow.get() && lastAnalysis != null) {
             targetDistance = CombatTargetAnalyzer.computeDynamicFollowDistance(lastAnalysis, CombatMode.modePadding(combatMode));
         }
 
-        // Update terrain awareness
+        // If hit-and-run is disabled, use standard follow behavior
+        if (!hitAndRun.get()) {
+            if (terrainGrid != null) {
+                terrainGrid.update(currentTarget);
+                List<BlockPos> blockers = terrainGrid.getPathBlocks();
+                if (!blockers.isEmpty()) {
+                    if (followController != null) {
+                        followController.follow(currentTarget, targetDistance);
+                    }
+                    return;
+                }
+            }
+
+            double dist = mc.player.distanceTo(currentTarget);
+            if (dist > targetDistance + 0.5 && followController != null) {
+                followController.follow(currentTarget, targetDistance);
+            }
+            return;
+        }
+
+        // Hit-and-run strike cycle
+        double effectiveStrikeDist = Math.min(strikeDistance.get(), targetDistance);
+
+        // Terrain obstacle check using active phase's distance
         if (terrainGrid != null) {
             terrainGrid.update(currentTarget);
             List<BlockPos> blockers = terrainGrid.getPathBlocks();
             if (!blockers.isEmpty()) {
-                // Path is blocked — follow anyway, baritone will path around
                 if (followController != null) {
-                    followController.follow(currentTarget, targetDistance);
+                    double activeDist = (strikePhase == StrikePhase.STRIKE) ? effectiveStrikeDist : targetDistance;
+                    followController.follow(currentTarget, activeDist);
                 }
                 return;
             }
         }
 
-        // Follow target at computed distance
         double dist = mc.player.distanceTo(currentTarget);
-        if (dist > targetDistance + 0.5 && followController != null) {
-            followController.follow(currentTarget, targetDistance);
+
+        if (strikePhase == StrikePhase.STRIKE) {
+            if (strikeTimer >= strikeDurationTicks.get()) {
+                // Strike phase finished -> retreat back to safety bubble
+                strikePhase = StrikePhase.BUBBLE;
+                strikeTimer = 0;
+                bubbleTimer = 0;
+                if (followController != null && dist > targetDistance + 0.5) {
+                    followController.follow(currentTarget, targetDistance);
+                }
+            } else {
+                // Inside strike phase -> follow at strike distance inside attack range
+                if (followController != null) {
+                    followController.follow(currentTarget, effectiveStrikeDist);
+                }
+                strikeTimer += 2;
+            }
+        } else { // BUBBLE phase
+            if (dist <= targetDistance + 0.5 && bubbleTimer >= retreatCooldownTicks.get()) {
+                // Reached bubble and retreat cooldown elapsed -> dart in for strike
+                strikePhase = StrikePhase.STRIKE;
+                strikeTimer = 0;
+                if (followController != null) {
+                    followController.follow(currentTarget, effectiveStrikeDist);
+                }
+            } else {
+                // Stay in safety bubble phase
+                if (dist > targetDistance + 0.5 && followController != null) {
+                    followController.follow(currentTarget, targetDistance);
+                }
+                bubbleTimer += 2;
+            }
         }
     }
 
@@ -1030,7 +1142,7 @@ public class CombatBrainModule extends Module {
     @Override
     public String getInfoString() {
         if (currentTarget != null) {
-            return currentTarget.getName().getString() + " (" + state.name() + "/" + combatMode.name() + ")";
+            return currentTarget.getName().getString() + " (" + state.name() + "/" + combatMode.name() + "/" + strikePhase.name() + ")";
         }
         return state.name() + "/" + combatMode.name();
     }
