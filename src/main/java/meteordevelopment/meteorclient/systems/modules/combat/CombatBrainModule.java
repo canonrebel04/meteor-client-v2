@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.systems.modules.combat;
 
 import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.pathing.PathManagers;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.friends.Friends;
 import meteordevelopment.meteorclient.systems.modules.Categories;
@@ -351,6 +352,10 @@ public class CombatBrainModule extends Module {
         switch (s) {
             case ENGAGING:
                 if (autoModules.get()) enableCombatModules();
+                // H4 fix: a stale REQUEST_PAUSE from KillAura/BowAimbot/AutoEat
+                // (PathManagers.get().pause()) can leave BaritonePathManager's
+                // process active, suppressing follow. Force-resume before engaging.
+                PathManagers.get().resume();
                 info("Engaging target");
                 break;
             case RETREATING:

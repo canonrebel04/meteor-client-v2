@@ -7,6 +7,8 @@ import baritone.api.process.ICustomGoalProcess;
 import baritone.api.process.IFollowProcess;
 import net.minecraft.world.entity.Entity;
 
+import java.util.UUID;
+
 public class CombatFollowController {
 
     private final IBaritone baritone;
@@ -38,12 +40,22 @@ public class CombatFollowController {
             return;
         }
 
+        // H3 fix: cancel the existing follow process BEFORE mutating settings so
+        // the restarted FollowProcess picks up the new radius/offset. Mutating
+        // settings first (old order) let a stale REQUEST_PAUSE / running process
+        // swallow the new values.
+        followProcess.cancel();
+
         // Configure follow distance via baritone settings
         BaritoneAPI.getSettings().followRadius.value = 0;
         BaritoneAPI.getSettings().followOffsetDistance.value = distance;
 
-        followProcess.cancel();
-        followProcess.follow(e -> e == target);
+        // H2 fix: match by UUID instead of reference equality (`e == target`).
+        // Entity instances are replaced on respawn / dimension switch / ID
+        // reallocation, which silently killed the follow. UUID matching survives
+        // those cases.
+        UUID targetUuid = target.getUUID();
+        followProcess.follow(e -> e != null && e.getUUID().equals(targetUuid));
     }
 
     public void flee(Entity target, double distance) {

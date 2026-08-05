@@ -12,6 +12,8 @@ import baritone.api.process.IFollowProcess;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 
+import java.util.UUID;
+
 public class CombatIntegrationBridge {
 
     private final IBaritone baritone;
@@ -58,7 +60,10 @@ public class CombatIntegrationBridge {
             return;
         }
         followProcess.cancel();
-        followProcess.follow(e -> e == entity);
+        // H2 fix: UUID match instead of reference equality — entity instances
+        // are replaced on respawn/dimension switch, which broke `e == entity`.
+        UUID entityUuid = entity.getUUID();
+        followProcess.follow(e -> e != null && e.getUUID().equals(entityUuid));
     }
 
     /**
