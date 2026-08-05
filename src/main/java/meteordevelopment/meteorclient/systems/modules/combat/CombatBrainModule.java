@@ -85,6 +85,67 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    // --- Scoring ---
+
+    private final SettingGroup sgScoring = settings.createGroup("Scoring");
+
+    private final Setting<Double> targetDistanceWeight = sgScoring.add(new DoubleSetting.Builder()
+        .name("target-distance-weight")
+        .description("Weight for target distance in multi-target scoring (closer is better).")
+        .defaultValue(0.4)
+        .min(0.0)
+        .max(2.0)
+        .sliderMax(2.0)
+        .build()
+    );
+
+    private final Setting<Double> targetHealthWeight = sgScoring.add(new DoubleSetting.Builder()
+        .name("target-health-weight")
+        .description("Weight for target health in multi-target scoring (lower health is better).")
+        .defaultValue(0.2)
+        .min(0.0)
+        .max(2.0)
+        .sliderMax(2.0)
+        .build()
+    );
+
+    private final Setting<Double> targetDefenseWeight = sgScoring.add(new DoubleSetting.Builder()
+        .name("target-defense-weight")
+        .description("Weight for target-armor defense in multi-target scoring (less armor is better).")
+        .defaultValue(0.2)
+        .min(0.0)
+        .max(2.0)
+        .sliderMax(2.0)
+        .build()
+    );
+
+    private final Setting<Double> targetWeaponWeight = sgScoring.add(new DoubleSetting.Builder()
+        .name("target-weapon-weight")
+        .description("Weight for target-weapons threat in multi-target scoring (weaker weapon is better).")
+        .defaultValue(0.2)
+        .min(0.0)
+        .max(2.0)
+        .sliderMax(2.0)
+        .build()
+    );
+
+    private final Setting<Boolean> multiTarget = sgScoring.add(new BoolSetting.Builder()
+        .name("multi-target")
+        .description("Enable smart multi-target scoring and switching.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Integer> switchDelay = sgScoring.add(new IntSetting.Builder()
+        .name("switch-delay")
+        .description("Minimum ticks before switching targets to prevent anti-flicker.")
+        .defaultValue(20)
+        .min(0)
+        .max(200)
+        .sliderMax(200)
+        .build()
+    );
+
     // --- Engagement ---
 
     private final Setting<Boolean> autoModules = sgEngagement.add(new BoolSetting.Builder()
@@ -324,6 +385,9 @@ public class CombatBrainModule extends Module {
     private CombatMode combatMode = CombatMode.AGGRESSIVE;
     private boolean stealthAntiDetectionEnabled = false;
     private int modeHoldTimer;
+    private int switchTimer;
+    private int lastSwitchTick = -999;
+    private double currentTargetScore;
 
     public CombatBrainModule() {
         super(Categories.Combat, "combat-brain", "Advanced combat AI brain. Auto-manages all combat modules, target selection, pathing, and threat analysis.");
@@ -335,9 +399,13 @@ public class CombatBrainModule extends Module {
         currentTarget = null;
         tickCounter = 0;
         stateTimer = 0;
+        lastSwitchTick = -999;
+        switchTimer = 0;
+        currentTargetScore = 0.0;
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
+        stealthAntiDetectionEnabled = false;
         lastAttackedTimestamps.clear();
         stuckHealTicks = 0;
         info("CombatBrain AI enabled");
@@ -602,17 +670,19 @@ public class CombatBrainModule extends Module {
         }
     }
 
-    // --- Target selection ---
+    // --- Target selection & multi-target scoring ---
 
     private LivingEntity findBestTarget() {
-        // Use TargetUtils for entity-based targeting
-        Entity target = TargetUtils.get(entity -> {
+        if (mc.level == null || mc.player == null) return null;
+
+        // Candidate predicate: handles BOTH players and mobs
+        java.util.function.Predicate<Entity> candidatePredicate = entity -> {
             if (!(entity instanceof LivingEntity le)) return false;
             if (le == mc.player) return false;
             if (!le.isAlive()) return false;
             if (le.distanceTo(mc.player) > targetRange.get()) return false;
 
-            // Check entity type filter
+            // Check entity type filter (mobs)
             if (targetEntities.get().contains(le.getType())) return true;
 
             // Player targeting
@@ -628,10 +698,74 @@ public class CombatBrainModule extends Module {
             }
 
             return false;
-        }, SortPriority.LowestDistance);
+        };
 
-        if (target instanceof LivingEntity le) return le;
-        return null;
+        // Fallback: single-target LowestDistance mode if multi-target is disabled
+        if (!multiTarget.get()) {
+            Entity target = TargetUtils.get(candidatePredicate, SortPriority.LowestDistance);
+            if (target instanceof LivingEntity le) return le;
+            return null;
+        }
+
+        // Smart multi-target scoring mode
+        LivingEntity bestCandidate = null;
+        double bestScore = -1.0;
+
+        for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (!candidatePredicate.test(entity)) continue;
+            if (entity instanceof LivingEntity le) {
+                double score = scoreTarget(le);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCandidate = le;
+                }
+            }
+        }
+
+        // Anti-flicker / switch-delay logic:
+        // Initial target acquisition (currentTarget == null) bypasses switch delay.
+        // Post-acquisition switches require switch-delay ticks to elapse and new best score to exceed current by margin 0.15.
+        if (currentTarget != null && isTargetValid(currentTarget)) {
+            int ticksSinceLastSwitch = tickCounter - lastSwitchTick;
+            switchTimer = ticksSinceLastSwitch;
+
+            if (bestCandidate != null && bestCandidate != currentTarget) {
+                double currentScore = scoreTarget(currentTarget);
+                if (ticksSinceLastSwitch >= switchDelay.get() && bestScore > currentScore + 0.15) {
+                    lastSwitchTick = tickCounter;
+                    currentTargetScore = bestScore;
+                    return bestCandidate;
+                }
+            }
+
+            currentTargetScore = scoreTarget(currentTarget);
+            return currentTarget;
+        }
+
+        // Initial acquisition or replacing invalid target
+        if (bestCandidate != null) {
+            lastSwitchTick = tickCounter;
+            switchTimer = 0;
+            currentTargetScore = bestScore;
+        }
+
+        return bestCandidate;
+    }
+
+    /**
+     * Helper method to compute smart multi-target engagement score for a candidate entity.
+     */
+    private double scoreTarget(LivingEntity target) {
+        CombatTargetAnalyzer.TargetAnalysis analysis = CombatTargetAnalyzer.analyze(target);
+        if (analysis == null) return 0.0;
+        return CombatTargetAnalyzer.targetScore(
+            analysis,
+            targetDistanceWeight.get(),
+            targetHealthWeight.get(),
+            targetDefenseWeight.get(),
+            targetWeaponWeight.get(),
+            targetRange.get()
+        );
     }
 
     private boolean isTargetValid(LivingEntity entity) {

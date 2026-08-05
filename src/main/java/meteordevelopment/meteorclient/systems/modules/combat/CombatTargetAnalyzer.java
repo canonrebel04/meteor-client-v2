@@ -237,6 +237,49 @@ public class CombatTargetAnalyzer {
         return myScore < ratio * targetScore;
     }
 
+    /**
+     * Calculates smart multi-target engagement score (0..1) based on distance, health, defense, and weapon threat.
+     * Higher score = better target to engage.
+     *
+     * @param a target analysis snapshot
+     * @param distanceWeight weight for distance (closer target = higher score)
+     * @param healthWeight weight for target health (lower target health = higher score)
+     * @param defenseWeight weight for target-armor defense (less armor = higher score)
+     * @param weaponWeight weight for target-weapons threat (weaker weapon = higher score)
+     * @param maxRange maximum search range for distance normalization
+     * @return normalized target score in range [0, 1]
+     */
+    public static double targetScore(TargetAnalysis a, double distanceWeight, double healthWeight, double defenseWeight, double weaponWeight, double maxRange) {
+        if (a == null) return 0.0;
+
+        double totalWeight = distanceWeight + healthWeight + defenseWeight + weaponWeight;
+        if (totalWeight <= 0.0) return 0.5;
+
+        // 1. Distance term (closer is better): normalized 0..1
+        double distNorm = Math.min(1.0, a.distance() / Math.max(0.1, maxRange));
+        double distanceTerm = Math.max(0.0, 1.0 - distNorm);
+
+        // 2. Health term (lower health is better): normalized 0..1
+        double healthNorm = Math.min(1.0, a.targetHealth() / 20.0);
+        double healthTerm = Math.max(0.0, 1.0 - healthNorm);
+
+        // 3. Defense / target-armor term (less armor is better): normalized 0..1
+        double armorNorm = Math.min(1.0, a.totalArmor() / 20.0);
+        double defenseTerm = Math.max(0.0, 1.0 - armorNorm);
+
+        // 4. Target-weapons threat term (weaker weapon is better): normalized 0..1
+        double weaponNorm = Math.min(1.0, a.weaponDamage() / 20.0);
+        double weaponTerm = Math.max(0.0, 1.0 - weaponNorm);
+
+        // Weighted scoring sum
+        double score = (distanceWeight * distanceTerm
+                      + healthWeight * healthTerm
+                      + defenseWeight * defenseTerm
+                      + weaponWeight * weaponTerm) / totalWeight;
+
+        return Mth.clamp(score, 0.0, 1.0);
+    }
+
     private static double getWeaponScore(ItemStack stack) {
         if (stack.isEmpty()) return 0.4;
         var item = stack.getItem();
