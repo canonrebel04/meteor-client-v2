@@ -8,6 +8,8 @@ package meteordevelopment.meteorclient.systems.modules.combat;
 import meteordevelopment.meteorclient.utils.entity.DamageUtils;
 import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.util.Mth;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -39,6 +41,16 @@ public class CombatTargetAnalyzer {
         float targetHealth = target.getHealth() + target.getAbsorptionAmount();
         double viabilityScore = calculateViability(target);
 
+        // My side (FollowEngine inputs)
+        double myReach = getEntityReach(mc.player);
+        float rawMyDamage = DamageUtils.getAttackDamage(mc.player, target);
+        float rawTheirDamage = DamageUtils.getAttackDamage(target, mc.player);
+        double myPotionMod = getPotionDamageModifier(mc.player);
+        double theirPotionMod = getPotionDamageModifier(target);
+        float myDamage = (float) Math.max(0.0, rawMyDamage + myPotionMod);
+        float theirDamage = (float) Math.max(0.0, rawTheirDamage + theirPotionMod);
+        String potionEffects = buildPotionEffectsString(target);
+
         return new TargetAnalysis(
             target,
             distance,
@@ -48,8 +60,63 @@ public class CombatTargetAnalyzer {
             totalArmor,
             targetReach,
             targetHealth,
-            viabilityScore
+            viabilityScore,
+            myReach,
+            myDamage,
+            theirDamage,
+            potionEffects
         );
+    }
+
+    /**
+     * Dynamic follow distance — keeps the player outside the target's effective
+     * hit range based on reach, potion effects, and own weapon type.
+     */
+    public static double computeDynamicFollowDistance(TargetAnalysis a, double modePadding) {
+        // Never stand inside either combatant's reach
+        double base = Math.max(a.targetReach(), a.myReach());
+
+        // Target hits hard (Strength II+) — stay further back
+        if (a.potionEffects().contains("STR2")) base += 2.0;
+
+        // We hit soft (Weakness) — kite harder
+        if (a.potionEffects().contains("WEAK")) base += 3.0;
+
+        // Ranged weapon — stay outside melee reach entirely
+        ItemStack myWeapon = mc.player.getMainHandItem();
+        if (myWeapon.is(Items.BOW) || myWeapon.is(Items.CROSSBOW) || myWeapon.is(Items.TRIDENT)) {
+            base = Math.max(base, 6.0) + 1.0;
+        }
+
+        base += modePadding;
+
+        return Mth.clamp(base, 1.0, 10.0);
+    }
+
+    /** Strength +3.0 damage per level, Weakness -4.0 per level, folded into effective damage. */
+    private static double getPotionDamageModifier(LivingEntity entity) {
+        double mod = 0.0;
+        for (MobEffectInstance effect : entity.getActiveEffects()) {
+            if (effect.getEffect().value() == MobEffects.STRENGTH) {
+                mod += 3.0 * (effect.getAmplifier() + 1);
+            } else if (effect.getEffect().value() == MobEffects.WEAKNESS) {
+                mod -= 4.0 * (effect.getAmplifier() + 1);
+            }
+        }
+        return mod;
+    }
+
+    /** Compact potion summary for the target: "STR2", "WEAK1", "STR2+WEAK1", or "NONE". */
+    private static String buildPotionEffectsString(LivingEntity entity) {
+        StringBuilder sb = new StringBuilder();
+        for (MobEffectInstance effect : entity.getActiveEffects()) {
+            if (effect.getEffect().value() == MobEffects.STRENGTH && effect.getAmplifier() >= 1) {
+                sb.append("STR2");
+            } else if (effect.getEffect().value() == MobEffects.WEAKNESS) {
+                sb.append("WEAK").append(effect.getAmplifier() + 1);
+            }
+        }
+        return sb.isEmpty() ? "NONE" : sb.toString();
     }
 
     public static double calculateViability(LivingEntity target) {
@@ -199,6 +266,10 @@ public class CombatTargetAnalyzer {
         float totalArmor,
         double targetReach,
         float targetHealth,
-        double viabilityScore
+        double viabilityScore,
+        double myReach,
+        float myDamage,
+        float theirDamage,
+        String potionEffects
     ) {}
 }

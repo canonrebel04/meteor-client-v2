@@ -150,11 +150,28 @@ public class CombatBrainModule extends Module {
 
     private final Setting<Double> followDistance = sgAnalysis.add(new DoubleSetting.Builder()
         .name("follow-distance")
-        .description("Stay this far from target.")
+        .description("Stay this far from target. Used as manual override when dynamic-follow is off.")
         .defaultValue(3.5)
         .min(1.0)
         .max(10.0)
         .sliderMax(10.0)
+        .build()
+    );
+
+    private final Setting<Boolean> dynamicFollow = sgAnalysis.add(new BoolSetting.Builder()
+        .name("dynamic-follow")
+        .description("Dynamically compute follow distance from target reach, potion effects, and weapon type.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Integer> followRecalcTicks = sgAnalysis.add(new IntSetting.Builder()
+        .name("follow-recalc-ticks")
+        .description("How often (in ticks) to re-analyze the target and recompute the dynamic follow distance.")
+        .defaultValue(20)
+        .min(5)
+        .max(200)
+        .sliderMax(200)
         .build()
     );
 
@@ -164,6 +181,7 @@ public class CombatBrainModule extends Module {
     private LivingEntity currentTarget;
     private int tickCounter;
     private int stateTimer;
+    private int followRecalcTimer;
     private CombatFollowController followController;
     private CombatTargetAnalyzer.TargetAnalysis lastAnalysis;
     private CombatTerrainGrid terrainGrid;
@@ -543,6 +561,22 @@ public class CombatBrainModule extends Module {
     private void doEngageTick() {
         if (currentTarget == null) return;
 
+        // Re-analyze target periodically (or on target change) so the dynamic
+        // follow distance tracks reach/potion/gear changes.
+        if (lastAnalysis == null
+            || lastAnalysis.entity() != currentTarget
+            || followRecalcTimer >= followRecalcTicks.get()) {
+            lastAnalysis = CombatTargetAnalyzer.analyze(currentTarget);
+            followRecalcTimer = 0;
+        }
+        followRecalcTimer++;
+
+        // Resolve follow distance: dynamic (reach/potion/weapon aware) or manual override
+        double targetDistance = followDistance.get();
+        if (dynamicFollow.get() && lastAnalysis != null) {
+            targetDistance = CombatTargetAnalyzer.computeDynamicFollowDistance(lastAnalysis, 0.5);
+        }
+
         // Update terrain awareness
         if (terrainGrid != null) {
             terrainGrid.update(currentTarget);
@@ -550,16 +584,16 @@ public class CombatBrainModule extends Module {
             if (!blockers.isEmpty()) {
                 // Path is blocked — follow anyway, baritone will path around
                 if (followController != null) {
-                    followController.follow(currentTarget, followDistance.get());
+                    followController.follow(currentTarget, targetDistance);
                 }
                 return;
             }
         }
 
-        // Follow target at follow distance
+        // Follow target at computed distance
         double dist = mc.player.distanceTo(currentTarget);
-        if (dist > followDistance.get() + 0.5 && followController != null) {
-            followController.follow(currentTarget, followDistance.get());
+        if (dist > targetDistance + 0.5 && followController != null) {
+            followController.follow(currentTarget, targetDistance);
         }
     }
 
