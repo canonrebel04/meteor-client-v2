@@ -619,7 +619,7 @@ public class CombatBrainModule extends Module {
                 lastAnalysis = CombatTargetAnalyzer.analyze(currentTarget);
 
                 boolean isUndergeared = viabilityCheck.get() && CombatTargetAnalyzer.undergeared(currentTarget, undergearRatio.get());
-                boolean canWin = !viabilityCheck.get() || (assessViability(currentTarget) && !isUndergeared);
+                boolean canWin = isInvincible() || !viabilityCheck.get() || (assessViability(currentTarget) && !isUndergeared);
                 if (canWin) {
                     transitionTo(BrainState.ENGAGING);
                 } else {
