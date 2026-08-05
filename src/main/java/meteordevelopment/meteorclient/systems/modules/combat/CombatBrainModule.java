@@ -268,6 +268,26 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    private final Setting<Integer> threatHighDwell = sgEngagement.add(new IntSetting.Builder()
+        .name("threat-high-dwell")
+        .description("Consecutive FSM passes (threatDwell / stateDwell ticks) threat must stay above flee-threshold before retreating (threatHysteresis).")
+        .defaultValue(5)
+        .min(1)
+        .max(100)
+        .sliderMax(100)
+        .build()
+    );
+
+    private final Setting<Integer> threatLowDwell = sgEngagement.add(new IntSetting.Builder()
+        .name("threat-low-dwell")
+        .description("Consecutive FSM passes (threatDwell / retreatTicks) threat must stay below engage-threshold before re-engaging.")
+        .defaultValue(5)
+        .min(1)
+        .max(100)
+        .sliderMax(100)
+        .build()
+    );
+
     private final Setting<Integer> modeHysteresisTicks = sgEngagement.add(new IntSetting.Builder()
         .name("mode-hysteresis-ticks")
         .description("Minimum ticks to hold a combat mode before switching (prevents flapping).")
@@ -453,6 +473,8 @@ public class CombatBrainModule extends Module {
     private StrikePhase strikePhase = StrikePhase.BUBBLE;
     private int strikeTimer;
     private int bubbleTimer;
+    private int threatHighTicks;
+    private int threatLowTicks;
 
     public CombatBrainModule() {
         super(Categories.Combat, "combat-brain", "Advanced combat AI brain. Auto-manages all combat modules, target selection, pathing, and threat analysis.");
@@ -470,6 +492,8 @@ public class CombatBrainModule extends Module {
         strikePhase = StrikePhase.BUBBLE;
         strikeTimer = 0;
         bubbleTimer = 0;
+        threatHighTicks = 0;
+        threatLowTicks = 0;
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
@@ -605,14 +629,21 @@ public class CombatBrainModule extends Module {
 
             case ENGAGING:
                 if (currentTarget == null || !isTargetValid(currentTarget)) {
+                    threatHighTicks = 0;
                     transitionTo(BrainState.SCANNING);
                     break;
                 }
 
-                // Check if threat got too high
-                if (threat >= fleeThreshold.get()) {
-                    transitionTo(BrainState.RETREATING);
-                    break;
+                // Check if threat got too high (threatHysteresis threatDwell dwell requirement; bypassed when isInvincible())
+                if (!isInvincible() && threat >= fleeThreshold.get()) {
+                    threatHighTicks++;
+                    if (threatHighTicks >= threatHighDwell.get()) {
+                        threatHighTicks = 0;
+                        transitionTo(BrainState.RETREATING);
+                        break;
+                    }
+                } else {
+                    threatHighTicks = 0;
                 }
 
                 // Maintain modules
@@ -621,9 +652,20 @@ public class CombatBrainModule extends Module {
                 break;
 
             case RETREATING:
-                if (threat < engageThreshold.get()) {
-                    transitionTo(BrainState.SCANNING);
-                    break;
+                if (isInvincible() || threat < engageThreshold.get()) {
+                    if (isInvincible()) {
+                        threatLowTicks = 0;
+                        transitionTo(BrainState.SCANNING);
+                        break;
+                    }
+                    threatLowTicks++;
+                    if (threatLowTicks >= threatLowDwell.get()) {
+                        threatLowTicks = 0;
+                        transitionTo(BrainState.SCANNING);
+                        break;
+                    }
+                } else {
+                    threatLowTicks = 0;
                 }
 
                 // Try to heal first
@@ -700,6 +742,8 @@ public class CombatBrainModule extends Module {
         onExitState(state);
         state = newState;
         stateTimer = 0;
+        threatHighTicks = 0;
+        threatLowTicks = 0;
         onEnterState(state);
         onStateChange(oldState, newState);
     }
@@ -888,8 +932,18 @@ public class CombatBrainModule extends Module {
 
     // --- Threat analysis (refined) ---
 
+    /**
+     * Checks if mc.player is invincible in CREATIVE or SPECTATOR gameMode (or has instabuild abilities enabled).
+     * Prevents threat calculations, threatHysteresis retreats (retreatTicks), and retreat/flee FSM transitions in creative mode.
+     */
+    private boolean isInvincible() {
+        if (mc.player == null) return false;
+        return mc.player.isCreative() || mc.player.isSpectator() || mc.player.getAbilities().instabuild;
+    }
+
     private double computeThreatLevel() {
         if (mc.player == null) return 0.0;
+        if (isInvincible()) return 0.0;
 
         float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
         double healthFactor = 1.0 - (health / 20.0); // 0 = full, 1 = near death
