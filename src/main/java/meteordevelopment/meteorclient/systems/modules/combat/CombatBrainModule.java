@@ -28,6 +28,7 @@ import meteordevelopment.meteorclient.systems.modules.player.AutoTool;
 import net.minecraft.world.entity.MobCategory;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -299,6 +300,16 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    private final Setting<Integer> stateReentryDelay = sgEngagement.add(new IntSetting.Builder()
+        .name("state-reentry-delay")
+        .description("Minimum FSM passes before RETREATING/HEALING/FLEEING can be re-entered after leaving them. Prevents state-loop spam under sustained threat.")
+        .defaultValue(20)
+        .min(1)
+        .max(200)
+        .sliderMax(200)
+        .build()
+    );
+
     private final Setting<EmergencyMode> emergencyMode = sgEngagement.add(new EnumSetting.Builder<EmergencyMode>()
         .name("emergency-mode")
         .description("Action to take when emergency protocol triggers.")
@@ -490,6 +501,13 @@ public class CombatBrainModule extends Module {
     private int bubbleTimer;
     private int threatHighTicks;
     private int threatLowTicks;
+    private final Map<BrainState, Integer> lastStateExitPass = new HashMap<>();
+    private int passCounter;
+
+    private boolean isReentryCooldownActive(BrainState stateCheck) {
+        int lastExit = lastStateExitPass.getOrDefault(stateCheck, -9999);
+        return (passCounter - lastExit) < stateReentryDelay.get();
+    }
 
     public CombatBrainModule() {
         super(Categories.Combat, "combat-brain", "Advanced combat AI brain. Auto-manages all combat modules, target selection, pathing, and threat analysis.");
@@ -509,6 +527,8 @@ public class CombatBrainModule extends Module {
         bubbleTimer = 0;
         threatHighTicks = 0;
         threatLowTicks = 0;
+        lastStateExitPass.clear();
+        passCounter = 0;
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
@@ -542,6 +562,8 @@ public class CombatBrainModule extends Module {
         currentTarget = null;
         followController = null;
         automator = null;
+        lastStateExitPass.clear();
+        passCounter = 0;
     }
 
     @EventHandler
@@ -552,6 +574,8 @@ public class CombatBrainModule extends Module {
 
         // Run state machine every 2 ticks to reduce CPU
         if (tickCounter % 2 != 0) return;
+
+        passCounter++;
 
         // Check health / threat
         float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
@@ -614,7 +638,10 @@ public class CombatBrainModule extends Module {
         // State machine
         switch (state) {
             case IDLE:
-                transitionTo(BrainState.SCANNING);
+                // Hold in IDLE for stateReentryDelay passes (stateHold / cooldownTicks) to let BURROW/FLEE recover
+                if (stateTimer >= stateReentryDelay.get()) {
+                    transitionTo(BrainState.SCANNING);
+                }
                 break;
 
             case SCANNING:
@@ -635,7 +662,9 @@ public class CombatBrainModule extends Module {
 
                 boolean isUndergeared = viabilityCheck.get() && CombatTargetAnalyzer.undergeared(currentTarget, undergearRatio.get());
                 boolean canWin = isInvincible() || !viabilityCheck.get() || (assessViability(currentTarget) && !isUndergeared);
-                if (canWin) {
+                // Dwell gate / reentry check: if recently left RETREATING, do NOT immediately re-enter RETREATING
+                // (prevents RETREATING->HEALING->SCANNING->ANALYZING->RETREATING stateLoop spam). Engage instead.
+                if (canWin || isReentryCooldownActive(BrainState.RETREATING)) {
                     transitionTo(BrainState.ENGAGING);
                 } else {
                     transitionTo(BrainState.RETREATING);
@@ -653,9 +682,11 @@ public class CombatBrainModule extends Module {
                 if (!isInvincible() && threat >= fleeThreshold.get()) {
                     threatHighTicks++;
                     if (threatHighTicks >= threatHighDwell.get()) {
-                        threatHighTicks = 0;
-                        transitionTo(BrainState.RETREATING);
-                        break;
+                        if (!isReentryCooldownActive(BrainState.RETREATING)) {
+                            threatHighTicks = 0;
+                            transitionTo(BrainState.RETREATING);
+                            break;
+                        }
                     }
                 } else {
                     threatHighTicks = 0;
@@ -685,8 +716,10 @@ public class CombatBrainModule extends Module {
 
                 // Try to heal first
                 if (health < 10.0f) {
-                    transitionTo(BrainState.HEALING);
-                    break;
+                    if (!isReentryCooldownActive(BrainState.HEALING)) {
+                        transitionTo(BrainState.HEALING);
+                        break;
+                    }
                 }
 
                 if (autoModules.get()) disableCombatModules();
@@ -704,9 +737,11 @@ public class CombatBrainModule extends Module {
                 if (health < 8.0f) {
                     stuckHealTicks++;
                     if (stuckHealTicks > 100) {
-                        stuckHealTicks = 0;
-                        transitionTo(BrainState.FLEEING);
-                        break;
+                        if (!isReentryCooldownActive(BrainState.FLEEING)) {
+                            stuckHealTicks = 0;
+                            transitionTo(BrainState.FLEEING);
+                            break;
+                        }
                     }
                 } else {
                     stuckHealTicks = 0;
@@ -726,8 +761,6 @@ public class CombatBrainModule extends Module {
 
             case EMERGENCY_LOG:
                 doEmergencyLog();
-                transitionTo(BrainState.IDLE);
-                toggle(); // Disable the module after emergency log
                 break;
         }
 
@@ -759,6 +792,11 @@ public class CombatBrainModule extends Module {
         stateTimer = 0;
         threatHighTicks = 0;
         threatLowTicks = 0;
+        // Record the pass at which we LEFT the old state, so re-entering
+        // RETREATING/HEALING/FLEEING can be gated by isReentryCooldownActive.
+        // (Without this write, the cooldown map always reads -9999 and the
+        // re-entry guard is a silent no-op.)
+        lastStateExitPass.put(oldState, passCounter);
         onEnterState(state);
         onStateChange(oldState, newState);
     }
@@ -1274,6 +1312,8 @@ public class CombatBrainModule extends Module {
                     mc.getConnection().getConnection().disconnect(Component.literal("CombatBrain: Emergency Log triggered."));
                 }
                 disableAllManagedModules();
+                state = BrainState.IDLE;
+                toggle(); // Only DISCONNECT mode hard-disables module
             }
             case BURROW -> {
                 info("Emergency: burrowing");
@@ -1281,6 +1321,7 @@ public class CombatBrainModule extends Module {
                 disableModule(ArrowDodge.class);
                 enableModule(Surround.class);
                 enableModule(HoleFiller.class);
+                transitionTo(BrainState.IDLE);
             }
             case FLEE -> {
                 info("Emergency: fleeing");
@@ -1291,10 +1332,9 @@ public class CombatBrainModule extends Module {
                 if (followController != null && currentTarget != null) {
                     followController.flee(currentTarget, fleeDistance.get() * 2.0);
                 }
+                transitionTo(BrainState.IDLE);
             }
         }
-        state = BrainState.IDLE;
-        toggle(); // Disable CombatBrain module after emergency action
     }
 
     // --- Utilities ---
