@@ -504,6 +504,21 @@ public class CombatBrainModule extends Module {
     private final Map<BrainState, Integer> lastStateExitPass = new HashMap<>();
     private int passCounter;
 
+    // KillAura settings save/restore state
+    private boolean savedKillAura = false;
+    private boolean savedKillAuraState = false;
+    private boolean savedPauseBaritone = false;
+    private boolean savedAutoSwitch = false;
+    private boolean savedSwapBack = false;
+    private int savedMaxTargets = 1;
+    private Set<EntityType<?>> savedEntities = null;
+
+    // Target tracking statistics
+    private int trackedEntityCount = 0;
+    private int killedInCombat = 0;
+    private int killsInARow = 0;
+    private int lastKillTick = -999;
+
     private boolean isReentryCooldownActive(BrainState stateCheck) {
         int lastExit = lastStateExitPass.getOrDefault(stateCheck, -9999);
         return (passCounter - lastExit) < stateReentryDelay.get();
@@ -529,6 +544,11 @@ public class CombatBrainModule extends Module {
         threatLowTicks = 0;
         lastStateExitPass.clear();
         passCounter = 0;
+        killedInCombat = 0;
+        killsInARow = 0;
+        trackedEntityCount = 0;
+        lastKillTick = -999;
+        savedKillAura = false;
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
@@ -564,6 +584,8 @@ public class CombatBrainModule extends Module {
         automator = null;
         lastStateExitPass.clear();
         passCounter = 0;
+        killsInARow = 0;
+        trackedEntityCount = 0;
     }
 
     @EventHandler
@@ -622,6 +644,14 @@ public class CombatBrainModule extends Module {
         if (health <= 4.0f && totems == 0 && threat > 0.8f) {
             transitionTo(BrainState.EMERGENCY_LOG);
             return;
+        }
+
+        // Target kill tracking
+        if (currentTarget != null && !currentTarget.isAlive()) {
+            killedInCombat++;
+            killsInARow++;
+            lastKillTick = tickCounter;
+            currentTarget = null;
         }
 
         // Track combat interactions for targetFriendly
@@ -885,9 +915,11 @@ public class CombatBrainModule extends Module {
         // Smart multi-target scoring mode
         LivingEntity bestCandidate = null;
         double bestScore = -1.0;
+        int candidateCount = 0;
 
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
             if (!candidatePredicate.test(entity)) continue;
+            candidateCount++;
             if (entity instanceof LivingEntity le) {
                 double score = scoreTarget(le);
                 if (score > bestScore) {
@@ -896,17 +928,25 @@ public class CombatBrainModule extends Module {
                 }
             }
         }
+        trackedEntityCount = candidateCount;
 
-        // Anti-flicker / switch-delay logic:
+        // Anti-flicker / switch-delay logic with target-cycling:
         // Initial target acquisition (currentTarget == null) bypasses switch delay.
-        // Post-acquisition switches require switch-delay ticks to elapse and new best score to exceed current by margin 0.15.
+        // Post-acquisition switches require switch-delay ticks to elapse and:
+        //   - either new best score exceeds current by margin 0.15, OR
+        //   - target has been held >= 2 * switchDelay ticks (e.g. 40 ticks), allowing cycling
+        //     to the highest-scoring candidate (bestScore > currentScore) so skeletons/ranged
+        //     mobs get tracked instead of being permanently locked out by nearby zombies.
         if (currentTarget != null && isTargetValid(currentTarget)) {
             int ticksSinceLastSwitch = tickCounter - lastSwitchTick;
             switchTimer = ticksSinceLastSwitch;
 
             if (bestCandidate != null && bestCandidate != currentTarget) {
                 double currentScore = scoreTarget(currentTarget);
-                if (ticksSinceLastSwitch >= switchDelay.get() && bestScore > currentScore + 0.15) {
+                boolean marginExceeded = ticksSinceLastSwitch >= switchDelay.get() && bestScore > currentScore + 0.15;
+                boolean cycleTimeout = ticksSinceLastSwitch >= switchDelay.get() * 2 && bestScore > currentScore;
+
+                if (marginExceeded || cycleTimeout) {
                     lastSwitchTick = tickCounter;
                     currentTargetScore = bestScore;
                     return bestCandidate;
@@ -1066,44 +1106,50 @@ public class CombatBrainModule extends Module {
 
     // --- Module management ---
 
-    private void enableCombatModules() {
-        // CRITICAL: Disable KillAura's pause-baritone or it will fight us for control
-        // KillAura.pauseOnCombat (default true) calls PathManagers.get().pause() which
-        // registers a REQUEST_PAUSE process that blocks all other baritone commands
+    private void syncKillAura() {
         KillAura killAura = Modules.get().get(KillAura.class);
-        if (killAura != null) {
-            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-baritone")).set(false);
+        if (killAura == null) return;
 
-            // Force KillAura to auto-switch to a weapon before attacking and to
-            // KEEP it equipped afterward. KillAura's auto-switch defaults OFF:
-            // after baritone digs (AutoTool / baritone's own switchToBestToolFor
-            // leave a pickaxe/shovel in hand), the `!acceptableWeapon` gate in
-            // KillAura makes it refuse to attack entirely — no attack means no
-            // AttackEntityEvent, so AutoWeapon never fires and the tool is never
-            // swapped back. auto-switch=true makes KillAura grab the best weapon
-            // itself; swap-back=false keeps it equipped between strikes.
-            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("auto-switch")).set(true);
-            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).set(false);
-
-            // Sync KillAura's entity filter with the brain's target selection.
-            // KillAura defaults to PLAYER-only — without this it would never swing
-            // at the mobs the brain is targeting (observed: enabled but no attacks).
-            // Build the union: brain's target-entities + PLAYER when target-players
-            // is on, always preserving KillAura's own configured entities.
-            Set<EntityType<?>> killAuraEntities = new java.util.HashSet<>(
+        if (!savedKillAura) {
+            savedKillAuraState = killAura.isActive();
+            savedPauseBaritone = ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-baritone")).get();
+            savedAutoSwitch = ((Setting<Boolean>) (Setting<?>) killAura.settings.get("auto-switch")).get();
+            savedSwapBack = ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).get();
+            savedMaxTargets = ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).get();
+            savedEntities = new java.util.HashSet<>(
                 ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).get()
             );
-            killAuraEntities.addAll(targetEntities.get());
-            if (targetPlayers.get()) killAuraEntities.add(EntityType.PLAYER);
-            ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(killAuraEntities);
-
-            // Let KillAura attack up to max-targets entities at once instead of
-            // locking onto a single one. Default KillAura max-targets=1 means
-            // with a 30-zombie swarm it swings at ONE mob while the other 29
-            // chew on us — "missing tracking some enemies". Sync to the brain's
-            // swarm intent (3 concurrent targets) so it cycles the crowd.
-            ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(3);
+            savedKillAura = true;
         }
+
+        ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-baritone")).set(false);
+        ((Setting<Boolean>) (Setting<?>) killAura.settings.get("auto-switch")).set(true);
+        ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).set(false);
+
+        Set<EntityType<?>> killAuraEntities = new java.util.HashSet<>(savedEntities);
+        killAuraEntities.addAll(targetEntities.get());
+        if (targetPlayers.get()) killAuraEntities.add(EntityType.PLAYER);
+        ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(killAuraEntities);
+        ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(3);
+    }
+
+    private void restoreKillAura() {
+        if (!savedKillAura) return;
+        KillAura killAura = Modules.get().get(KillAura.class);
+        if (killAura != null) {
+            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-baritone")).set(savedPauseBaritone);
+            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("auto-switch")).set(savedAutoSwitch);
+            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).set(savedSwapBack);
+            if (savedEntities != null) {
+                ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(savedEntities);
+            }
+            ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(savedMaxTargets);
+        }
+        savedKillAura = false;
+    }
+
+    private void enableCombatModules() {
+        syncKillAura();
 
         enableModule(KillAura.class);
         enableModule(AutoArmor.class);
@@ -1114,6 +1160,8 @@ public class CombatBrainModule extends Module {
     }
 
     private void disableCombatModules() {
+        restoreKillAura();
+
         disableModule(KillAura.class);
         disableModule(AutoArmor.class);
         disableModule(AutoWeapon.class);
@@ -1123,6 +1171,8 @@ public class CombatBrainModule extends Module {
     }
 
     private void disableAllManagedModules() {
+        restoreKillAura();
+
         disableModule(KillAura.class);
         disableModule(AutoArmor.class);
         disableModule(AutoWeapon.class);
