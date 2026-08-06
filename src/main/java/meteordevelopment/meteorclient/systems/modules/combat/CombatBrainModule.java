@@ -889,8 +889,18 @@ public class CombatBrainModule extends Module {
             // Acquire targets up to acquireRange (default 64) so long-range targets are locked onto and pathed to
             if (le.distanceTo(mc.player) > acquireRange.get()) return false;
 
-            // Check entity type filter (mobs)
-            if (targetEntities.get().contains(le.getType())) return true;
+            // Check entity type filter (mobs). Self-heal: if the saved config
+            // has an EMPTY target-entities list (observed — the module then
+            // never acquires anything and combat never engages), fall back to
+            // the built-in default set instead of matching nothing.
+            Set<EntityType<?>> types = targetEntities.get();
+            if (types.isEmpty()) {
+                types = Set.of(
+                    EntityType.ZOMBIE, EntityType.SKELETON, EntityType.SPIDER,
+                    EntityType.CREEPER, EntityType.ENDERMAN, EntityType.PIGLIN
+                );
+            }
+            if (types.contains(le.getType())) return true;
 
             // Player targeting
             if (le instanceof Player player) {
