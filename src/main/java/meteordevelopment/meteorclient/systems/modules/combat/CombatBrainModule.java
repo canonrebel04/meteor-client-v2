@@ -1022,6 +1022,17 @@ public class CombatBrainModule extends Module {
         if (killAura != null) {
             ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-baritone")).set(false);
 
+            // Force KillAura to auto-switch to a weapon before attacking and to
+            // KEEP it equipped afterward. KillAura's auto-switch defaults OFF:
+            // after baritone digs (AutoTool / baritone's own switchToBestToolFor
+            // leave a pickaxe/shovel in hand), the `!acceptableWeapon` gate in
+            // KillAura makes it refuse to attack entirely — no attack means no
+            // AttackEntityEvent, so AutoWeapon never fires and the tool is never
+            // swapped back. auto-switch=true makes KillAura grab the best weapon
+            // itself; swap-back=false keeps it equipped between strikes.
+            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("auto-switch")).set(true);
+            ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).set(false);
+
             // Sync KillAura's entity filter with the brain's target selection.
             // KillAura defaults to PLAYER-only — without this it would never swing
             // at the mobs the brain is targeting (observed: enabled but no attacks).
