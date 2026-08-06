@@ -87,6 +87,15 @@ public class CombatFollowController {
         // swarm to get there.
         BaritoneAPI.getSettings().avoidance.value = true;
 
+        // ANTICHEAT: humanize look direction. Baritone walks perfect lines and
+        // keeps a perfectly stable look — a tell for automation on predictive
+        // anticheats (Grim et al). randomLooking adds slight yaw/pitch wander
+        // (community-verified: `#set randomLooking 1` is the known fix for
+        // baritone being flagged). antiCheatCompatibility is already true in
+        // this fork. Restored to the user's value in stop().
+        BaritoneAPI.getSettings().randomLooking.value = Math.max(
+            BaritoneAPI.getSettings().randomLooking.value, 0.5);
+
         // H2 fix: match by UUID instead of reference equality (`e == target`).
         // Entity instances are replaced on respawn / dimension switch / ID
         // reallocation, which silently killed the follow. UUID matching survives
@@ -120,8 +129,9 @@ public class CombatFollowController {
         followDistance = -1.0;
 
         // No sprint override to release (reverted to default baritone sprint);
-        // only disable the mob avoidance toggle we own.
+        // only disable the toggles we own: mob avoidance + randomLooking.
         BaritoneAPI.getSettings().avoidance.value = false;
+        BaritoneAPI.getSettings().randomLooking.value = 0.01;
 
         followProcess.cancel();
         baritone.getPathingBehavior().cancelEverything();

@@ -511,6 +511,7 @@ public class CombatBrainModule extends Module {
     private boolean savedAutoSwitch = false;
     private boolean savedSwapBack = false;
     private int savedMaxTargets = 1;
+    private double savedRange = 4.5;
     private Set<EntityType<?>> savedEntities = null;
 
     // Target tracking statistics
@@ -1116,6 +1117,7 @@ public class CombatBrainModule extends Module {
             savedAutoSwitch = ((Setting<Boolean>) (Setting<?>) killAura.settings.get("auto-switch")).get();
             savedSwapBack = ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).get();
             savedMaxTargets = ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).get();
+            savedRange = ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).get();
             savedEntities = new java.util.HashSet<>(
                 ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).get()
             );
@@ -1131,6 +1133,13 @@ public class CombatBrainModule extends Module {
         if (targetPlayers.get()) killAuraEntities.add(EntityType.PLAYER);
         ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(killAuraEntities);
         ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(3);
+
+        // ANTICHEAT: clamp KillAura attack range to 3.0 (vanilla reach). Grim's
+        // Reach check allows 3.01 max; KillAura defaults to 4.5 which is an
+        // instant reach flag + kick on any modern AC. Never attack beyond
+        // vanilla reach — the brain's follow bubble handles positioning.
+        ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(Math.min(
+            ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).get(), 3.0));
     }
 
     private void restoreKillAura() {
@@ -1144,6 +1153,7 @@ public class CombatBrainModule extends Module {
                 ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(savedEntities);
             }
             ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(savedMaxTargets);
+            ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(savedRange);
         }
         savedKillAura = false;
     }

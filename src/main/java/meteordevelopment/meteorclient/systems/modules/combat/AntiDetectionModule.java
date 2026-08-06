@@ -91,6 +91,13 @@ public class AntiDetectionModule extends Module {
             double yawDeg = (ouYaw / ouNorm) * range;
             double pitchDeg = (ouPitch / ouNorm) * range;
 
+            // ANTICHEAT: quantize to half-degree steps. Human mouse movement
+            // moves in discrete sensitivity steps (mouse deltas × GCD);
+            // continuous smooth rotation looks like cinematic camera, which
+            // predictive anticheats (Grim) false-flag as aim assist/baritone.
+            yawDeg = Math.round(yawDeg * 2.0) / 2.0;
+            pitchDeg = Math.round(pitchDeg * 2.0) / 2.0;
+
             mc.player.setYRot(mc.player.getYRot() + (float) Math.toRadians(yawDeg));
             mc.player.setXRot(net.minecraft.util.Mth.clamp(
                 mc.player.getXRot() + (float) Math.toRadians(pitchDeg), -90.0f, 90.0f));
