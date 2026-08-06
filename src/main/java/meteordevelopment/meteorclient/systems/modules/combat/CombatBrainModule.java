@@ -512,6 +512,7 @@ public class CombatBrainModule extends Module {
     private boolean savedSwapBack = false;
     private int savedMaxTargets = 1;
     private double savedRange = 4.5;
+    private KillAura.RotationMode savedRotate = KillAura.RotationMode.Always;
     private Set<EntityType<?>> savedEntities = null;
 
     // Target tracking statistics
@@ -1118,6 +1119,7 @@ public class CombatBrainModule extends Module {
             savedSwapBack = ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).get();
             savedMaxTargets = ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).get();
             savedRange = ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).get();
+            savedRotate = ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).get();
             savedEntities = new java.util.HashSet<>(
                 ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).get()
             );
@@ -1134,12 +1136,20 @@ public class CombatBrainModule extends Module {
         ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(killAuraEntities);
         ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(3);
 
-        // ANTICHEAT: clamp KillAura attack range to 3.0 (vanilla reach). Grim's
-        // Reach check allows 3.01 max; KillAura defaults to 4.5 which is an
-        // instant reach flag + kick on any modern AC. Never attack beyond
-        // vanilla reach — the brain's follow bubble handles positioning.
+        // ANTICHEAT: clamp KillAura attack range to 2.9 (vanilla reach is 3.0,
+        // Grim allows 3.01 but ADDS the player's current velocity to the reach
+        // calc — a sprinting bot attacking at 3.0 exceeds it on first contact).
+        // The 0.1 margin absorbs movement; the brain's follow bubble handles
+        // positioning. Never attack beyond vanilla reach.
         ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(Math.min(
-            ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).get(), 3.0));
+            ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).get(), 2.9));
+
+        // ANTICHEAT: force rotation mode to OnHit (rotate only at the moment of
+        // attack) instead of Always. Constant per-tick aim-lock at the target's
+        // exact body angles is the classic killaura tell (AimModulo360 /
+        // rotation-GCD checks). OnHit sends far fewer rotation packets and only
+        // when actually attacking — looks like a player flicking to their target.
+        ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).set(KillAura.RotationMode.OnHit);
     }
 
     private void restoreKillAura() {
@@ -1154,6 +1164,7 @@ public class CombatBrainModule extends Module {
             }
             ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(savedMaxTargets);
             ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(savedRange);
+            ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).set(savedRotate);
         }
         savedKillAura = false;
     }
