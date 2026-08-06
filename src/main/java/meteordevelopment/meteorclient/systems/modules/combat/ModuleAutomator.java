@@ -7,6 +7,8 @@ package meteordevelopment.meteorclient.systems.modules.combat;
 
 import meteordevelopment.meteorclient.mixin.LevelAccessor;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.combat.Surround;
+import meteordevelopment.meteorclient.systems.modules.movement.Scaffold;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.movement.Jesus;
 import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
@@ -16,6 +18,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -67,6 +71,8 @@ public class ModuleAutomator {
         evalLowHealthRule();
         evalWaterRule(target);
         evalHoleRule();
+        evalSwarmSurroundRule();
+        evalScaffoldFleeRule();
     }
 
     public void onStateChange(CombatBrainModule.BrainState oldState, CombatBrainModule.BrainState newState) {
@@ -277,6 +283,59 @@ public class ModuleAutomator {
         }
         setModuleState(Surround.class, active);
         if (active) activeRuleNames.add("HoleDetect");
+    }
+
+    /**
+     * Swarm-surround: when 3+ hostiles are within 4 blocks, box ourselves in
+     * with Surround so the crowd can't all land hits at once. This is distinct
+     * from the hole rule (which only fires when standing in a 1x1 hole) — it
+     * protects in open ground against mob swarms.
+     */
+    private void evalSwarmSurroundRule() {
+        boolean active = false;
+        if (brain.swarmSurround.get() && mc.player != null && mc.level != null) {
+            int hostiles = 0;
+            for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+                if (!(entity instanceof LivingEntity le) || le == mc.player || !le.isAlive()) continue;
+                boolean hostile = le.getType().getCategory() == MobCategory.MONSTER
+                    || (le instanceof Player && le != mc.player);
+                if (!hostile) continue;
+                if (le.distanceToSqr(mc.player) <= 4.0 * 4.0) hostiles++;
+            }
+            active = hostiles >= 3;
+        }
+        setModuleState(Surround.class, active);
+        if (active) activeRuleNames.add("SwarmSurround");
+    }
+
+    /**
+     * Scaffold-bridge while fleeing: when the FSM is in RETREATING/HEALING/
+     * FLEEING and the player is over a void/liquid gap, Scaffold lays blocks
+     * underfoot so the escape path doesn't drop us into a ravine or water.
+     * Only active during defensive states to avoid interfering with offense.
+     */
+    private void evalScaffoldFleeRule() {
+        boolean active = false;
+        if (brain.scaffoldFlee.get() && mc.player != null && mc.level != null) {
+            CombatBrainModule.BrainState st = brain.getState();
+            boolean fleeing = st == CombatBrainModule.BrainState.RETREATING
+                || st == CombatBrainModule.BrainState.HEALING
+                || st == CombatBrainModule.BrainState.FLEEING;
+            if (fleeing && !mc.player.onGround()) {
+                // Over a gap (nothing solid within 3 below) → bridge
+                BlockPos feet = mc.player.blockPosition();
+                boolean overGap = true;
+                for (int i = 1; i <= 3; i++) {
+                    if (mc.level.getBlockState(feet.below(i)).isSolidRender()) {
+                        overGap = false;
+                        break;
+                    }
+                }
+                active = overGap;
+            }
+        }
+        setModuleState(Scaffold.class, active);
+        if (active) activeRuleNames.add("ScaffoldFlee");
     }
 
     private boolean isIn1x1Hole() {

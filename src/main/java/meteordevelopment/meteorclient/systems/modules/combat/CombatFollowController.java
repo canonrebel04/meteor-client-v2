@@ -80,6 +80,13 @@ public class CombatFollowController {
         baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, true);
         BaritoneAPI.getSettings().humanizeMovements.value = false;
 
+        // Mob avoidance: route the approach AROUND clusters instead of through
+        // them. Avoidance.create() adds a spherical path-cost bump (coefficient
+        // 1.5, radius 8) around every mob; the follow goal still wins at the
+        // destination, but baritone won't path straight through a 20-zombie
+        // swarm to get there.
+        BaritoneAPI.getSettings().avoidance.value = true;
+
         // H2 fix: match by UUID instead of reference equality (`e == target`).
         // Entity instances are replaced on respawn / dimension switch / ID
         // reallocation, which silently killed the follow. UUID matching survives
@@ -115,6 +122,7 @@ public class CombatFollowController {
         // Release forced sprint override and restore humanizeMovements to its default.
         baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, false);
         BaritoneAPI.getSettings().humanizeMovements.value = true;
+        BaritoneAPI.getSettings().avoidance.value = false;
 
         followProcess.cancel();
         baritone.getPathingBehavior().cancelEverything();

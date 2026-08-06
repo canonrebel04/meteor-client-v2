@@ -399,6 +399,20 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    final Setting<Boolean> swarmSurround = sgAutomator.add(new BoolSetting.Builder()
+        .name("swarm-surround")
+        .description("Auto enable Surround when 3+ hostiles are within 4 blocks (swarm protection).")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> scaffoldFlee = sgAutomator.add(new BoolSetting.Builder()
+        .name("scaffold-flee")
+        .description("Auto enable Scaffold to bridge over gaps while retreating/healing/fleeing.")
+        .defaultValue(true)
+        .build()
+    );
+
     // --- Analysis ---
 
     private final Setting<Boolean> analyzeGear = sgAnalysis.add(new BoolSetting.Builder()
@@ -983,7 +997,7 @@ public class CombatBrainModule extends Module {
             }
         }
 
-        double envThreat = Math.tanh(envPressure * 0.5);
+        double envThreat = Math.min(1.0, envPressure * 0.8);
 
         double coverFactor = 1.0;
         if (coverModifier.get() && mc.level != null) {
@@ -1005,7 +1019,7 @@ public class CombatBrainModule extends Module {
 
         double survivalProb = (1.0 - selfVuln * 0.5)
                             * (1.0 - totemExposure * 0.2)
-                            * (1.0 - envThreat * 0.4);
+                            * (1.0 - envThreat * 0.7);
 
         double threat = 1.0 - survivalProb + crystalPressure * crystalThreat.get();
 
@@ -1175,7 +1189,15 @@ public class CombatBrainModule extends Module {
             }
         } else { // BUBBLE phase
             boolean cooldownReady = bubbleTimer >= retreatCooldownTicks.get();
-            boolean shouldStrike = cooldownReady && (targetJustSwung || bubbleTimer >= retreatCooldownTicks.get() * 2);
+            // targetJustSwung already computed above (line ~1171) from
+            // currentTarget.getAttackStrengthScale — reuse it for the swarm gate.
+            // Never dive into STRIKE while surrounded: attacking into a swarm
+            // guarantees we get hit by the crowd. Only strike when the immediate
+            // vicinity (2 blocks) has 0 other hostiles, or at most 1 total when
+            // the primary target just swung (safe trade window).
+            boolean swarmClear = countNearbyHostiles(2.0) == 0;
+            boolean safeWindow = countNearbyHostiles(3.0) <= 1 && targetJustSwung;
+            boolean shouldStrike = cooldownReady && (swarmClear || safeWindow);
 
             if (dist <= targetDistance + 0.5 && shouldStrike) {
                 strikePhase = StrikePhase.STRIKE;
@@ -1190,6 +1212,25 @@ public class CombatBrainModule extends Module {
                 bubbleTimer += 2;
             }
         }
+    }
+
+    /**
+     * Counts living hostile entities (monsters or players) within the given
+     * radius of the local player. Used to gate the hit-and-run strike phase:
+     * diving into a swarm is suicide, so STRIKE only happens when the nearby
+     * crowd is empty or a safe trade window exists.
+     */
+    private int countNearbyHostiles(double radius) {
+        if (mc.level == null || mc.player == null) return 0;
+        int count = 0;
+        for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (!(entity instanceof LivingEntity le) || le == mc.player || !le.isAlive()) continue;
+            boolean hostile = le.getType().getCategory() == MobCategory.MONSTER
+                || (le instanceof Player && le != mc.player);
+            if (!hostile) continue;
+            if (le.distanceToSqr(mc.player) <= radius * radius) count++;
+        }
+        return count;
     }
 
     private void doRetreatTick() {
@@ -1263,6 +1304,10 @@ public class CombatBrainModule extends Module {
 
     public CombatMode getCombatMode() {
         return combatMode;
+    }
+
+    public BrainState getState() {
+        return state;
     }
 
     @Override
