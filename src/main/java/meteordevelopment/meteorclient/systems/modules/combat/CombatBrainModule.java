@@ -1058,6 +1058,13 @@ public class CombatBrainModule extends Module {
             killAuraEntities.addAll(targetEntities.get());
             if (targetPlayers.get()) killAuraEntities.add(EntityType.PLAYER);
             ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(killAuraEntities);
+
+            // Let KillAura attack up to max-targets entities at once instead of
+            // locking onto a single one. Default KillAura max-targets=1 means
+            // with a 30-zombie swarm it swings at ONE mob while the other 29
+            // chew on us — "missing tracking some enemies". Sync to the brain's
+            // swarm intent (3 concurrent targets) so it cycles the crowd.
+            ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(3);
         }
 
         enableModule(KillAura.class);
