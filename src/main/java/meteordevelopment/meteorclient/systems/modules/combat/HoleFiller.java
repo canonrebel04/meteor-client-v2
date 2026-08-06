@@ -348,8 +348,12 @@ public class HoleFiller extends Module {
     private void setTargets() {
         targets.clear();
 
+        // ⚡ Bolt: Cache squared range outside loop and avoid Math.pow overhead
+        double limit = targetRange.get();
+        double limitSq = limit * limit;
+
         for (Player player : mc.level.players()) {
-            if (player.distanceToSqr(mc.player) > Math.pow(targetRange.get(), 2) ||
+            if (player.distanceToSqr(mc.player) > limitSq ||
                 player.isCreative() ||
                 player == mc.player ||
                 player.isDeadOrDying() ||
@@ -398,9 +402,10 @@ public class HoleFiller extends Module {
         double i = pos.x - (blockPos.getX() + 0.5);
         double j = pos.y - (blockPos.getY() + 1.0);
         double k = pos.z - (blockPos.getZ() + 0.5);
-        double distance = Math.sqrt(i * i + j * j + k * k);
 
-        return distance < feetRange.get();
+        // ⚡ Bolt: Avoid JNI overhead and Math.sqrt by using squared distance comparison
+        double limit = feetRange.get();
+        return (i * i + j * j + k * k) < (limit * limit);
     }
 
     private static class Hole {

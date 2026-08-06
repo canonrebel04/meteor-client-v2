@@ -19,3 +19,6 @@
 ## 2024-05-14 - Optimizing Entity Iteration Streams
 **Learning:** Using `Streams.stream()` to wrap Iterables (like `mc.level.entitiesForRendering()`) in hot paths like `Step` module's tick calculations causes significant overhead due to stream creation and lambda allocations. Replacing the stream with a standard `for-each` loop halves the execution time.
 **Action:** Avoid using `Streams.stream()` for hot path entity iteration; use standard `for-each` loops instead.
+## 2024-08-06 - Avoid Math.pow and Math.sqrt in hot tick loops
+**Learning:** Checking distance thresholds in tick event handlers (like iterating over entities for combat targets) using `Math.pow()` and `Math.sqrt()` introduces significant performance overhead due to JNI transitions and floating-point logic. Recalculating `Math.pow(range, 2)` inside an entity loop performs O(N) redundant calculations per tick.
+**Action:** When performing distance checks, cache limits squared (e.g. `limit * limit`) outside loops. When comparing point distances, calculate the squared distance (e.g. `i*i + j*j + k*k`) and compare it against the pre-calculated squared limit, rather than using `Math.sqrt`.
