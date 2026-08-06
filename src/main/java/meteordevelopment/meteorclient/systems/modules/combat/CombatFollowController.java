@@ -81,7 +81,11 @@ public class CombatFollowController {
             return;
         }
 
-        GoalRunAway runAwayGoal = new GoalRunAway(distance, target.blockPosition());
+        net.minecraft.world.phys.Vec3 targetVel = target.getDeltaMovement();
+        net.minecraft.world.phys.Vec3 predictedPos = target.position().add(targetVel.scale(20.0));
+        net.minecraft.core.BlockPos predictedBlock = net.minecraft.core.BlockPos.containing(predictedPos);
+
+        GoalRunAway runAwayGoal = new GoalRunAway(distance, predictedBlock);
         goalProcess.setGoalAndPath(runAwayGoal);
         goalProcess.path();
     }

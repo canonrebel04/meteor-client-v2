@@ -23,30 +23,47 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 public class CombatTerrainGrid {
     public record ThreatEntry(Entity entity, double distance, boolean visible) {}
 
+    public static final byte CELL_AIR = 0;
+    public static final byte CELL_SOLID = 1;
+    public static final byte CELL_WATER = 2;
+    public static final byte CELL_LAVA = 3;
+    public static final byte CELL_UNKNOWN = 4;
+    public static final byte CELL_PLAYER = 5;
+    public static final byte CELL_TARGET = 6;
+
     private int centerX;
+    private int centerY;
     private int centerZ;
     private int targetX;
     private int targetY;
     private int targetZ;
     private final int gridSize;
-    private final Character[][] grid;
-    private final Character[][][] grid3D;
+    private final int dim;
+    private final int yLevels;
+    private final byte[] grid2D;
+    private final byte[] grid3D;
 
     public CombatTerrainGrid() {
-        this(16);
+        this(16, 5);
     }
 
     public CombatTerrainGrid(int gridSize) {
+        this(gridSize, 5);
+    }
+
+    public CombatTerrainGrid(int gridSize, int yLevels) {
         this.gridSize = gridSize;
-        int dim = 2 * gridSize + 1;
-        this.grid = new Character[dim][dim];
-        this.grid3D = new Character[dim][5][dim];
+        this.yLevels = yLevels;
+        this.dim = 2 * gridSize + 1;
+        this.grid2D = new byte[dim * dim];
+        this.grid3D = new byte[dim * yLevels * dim];
     }
 
     public void update(Entity target) {
         if (mc.player == null || mc.level == null) return;
 
         centerX = mc.player.blockPosition().getX();
+        centerY = mc.player.blockPosition().getY();
         centerZ = mc.player.blockPosition().getZ();
 
         if (target != null) {
@@ -55,84 +72,71 @@ public class CombatTerrainGrid {
             targetZ = target.blockPosition().getZ();
         }
 
-        int dim = 2 * gridSize + 1;
-        int playerY = mc.player.blockPosition().getY();
+        int halfY = yLevels / 2;
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
         for (int gx = 0; gx < dim; gx++) {
+            int wx = centerX - gridSize + gx;
             for (int gz = 0; gz < dim; gz++) {
-                int wx = centerX - gridSize + gx;
                 int wz = centerZ - gridSize + gz;
 
-                double dist = Math.sqrt(Math.pow(wx - centerX, 2) + Math.pow(wz - centerZ, 2));
+                int dxSq = (wx - centerX);
+                int dzSq = (wz - centerZ);
+                boolean outOfRange = (dxSq * dxSq + dzSq * dzSq) > gridSize * gridSize;
 
-                // Populate 3D grid across 5 Y levels: gy 0..4 = playerY-2..playerY+2
-                for (int gy = 0; gy < 5; gy++) {
-                    int wy = playerY - 2 + gy;
-                    if (dist > gridSize) {
-                        grid3D[gx][gy][gz] = '?';
+                for (int gy = 0; gy < yLevels; gy++) {
+                    int wy = centerY - halfY + gy;
+                    int idx3D = gy * dim * dim + gz * dim + gx;
+                    if (outOfRange) {
+                        grid3D[idx3D] = CELL_UNKNOWN;
                     } else {
-                        BlockPos pos = new BlockPos(wx, wy, wz);
-                        BlockState state = mc.level.getBlockState(pos);
-                        if (state.is(Blocks.WATER)) {
-                            grid3D[gx][gy][gz] = 'W';
-                        } else if (state.is(Blocks.LAVA)) {
-                            grid3D[gx][gy][gz] = 'L';
-                        } else if (state.isAir()) {
-                            grid3D[gx][gy][gz] = '.';
-                        } else {
-                            grid3D[gx][gy][gz] = '#';
-                        }
+                        mutable.set(wx, wy, wz);
+                        grid3D[idx3D] = classifyBlock(mutable);
                     }
                 }
 
-                // Populate 2D grid for player-Y layer
-                if (dist > gridSize) {
-                    grid[gx][gz] = '?';
+                int idx2D = gz * dim + gx;
+                if (outOfRange) {
+                    grid2D[idx2D] = CELL_UNKNOWN;
                 } else {
-                    BlockPos pos = new BlockPos(wx, playerY, wz);
-                    BlockState state = mc.level.getBlockState(pos);
-                    if (state.is(Blocks.WATER)) {
-                        grid[gx][gz] = 'W';
-                    } else if (state.is(Blocks.LAVA)) {
-                        grid[gx][gz] = 'L';
-                    } else if (state.isAir()) {
-                        grid[gx][gz] = '.';
-                    } else {
-                        grid[gx][gz] = '#';
-                    }
+                    mutable.set(wx, centerY, wz);
+                    grid2D[idx2D] = classifyBlock(mutable);
                 }
             }
         }
 
-        // Place player and target markers at gy=2 in grid3D and in 2D grid
-        int px = gridSize;
-        int pz = gridSize;
+        int px = gridSize, pz = gridSize;
         if (target != null) {
-            int tx = (targetX - centerX + gridSize);
-            int tz = (targetZ - centerZ + gridSize);
+            int tx = targetX - centerX + gridSize;
+            int tz = targetZ - centerZ + gridSize;
             if (tx >= 0 && tx < dim && tz >= 0 && tz < dim) {
-                grid[tx][tz] = 'T';
-                grid3D[tx][2][tz] = 'T';
+                grid2D[tz * dim + tx] = CELL_TARGET;
+                int tgy = net.minecraft.util.Mth.clamp(targetY - centerY + halfY, 0, yLevels - 1);
+                grid3D[tgy * dim * dim + tz * dim + tx] = CELL_TARGET;
             }
         }
-        if (px >= 0 && px < dim && pz >= 0 && pz < dim) {
-            grid[px][pz] = 'P';
-            grid3D[px][2][pz] = 'P';
-        }
+        grid2D[pz * dim + px] = CELL_PLAYER;
+        grid3D[halfY * dim * dim + pz * dim + px] = CELL_PLAYER;
+    }
+
+    private byte classifyBlock(BlockPos pos) {
+        BlockState state = mc.level.getBlockState(pos);
+        if (state.isAir()) return CELL_AIR;
+        if (state.is(Blocks.WATER)) return CELL_WATER;
+        if (state.is(Blocks.LAVA)) return CELL_LAVA;
+        return CELL_SOLID;
     }
 
     public String getGridString() {
-        int dim = 2 * gridSize + 1;
-        StringBuilder sb = new StringBuilder();
-
+        char[] charMap = {'.', '#', 'W', 'L', '?', 'P', 'T'};
+        StringBuilder sb = new StringBuilder(dim * (dim + 1));
         for (int gz = 0; gz < dim; gz++) {
             for (int gx = 0; gx < dim; gx++) {
-                char c = grid[gx][gz] != null ? grid[gx][gz] : '?';
-                sb.append(c);
+                int cell = grid2D[gz * dim + gx] & 0xFF;
+                sb.append(cell < charMap.length ? charMap[cell] : '?');
             }
             if (gz < dim - 1) sb.append('\n');
         }
-
         return sb.toString();
     }
 
@@ -292,6 +296,6 @@ public class CombatTerrainGrid {
     public int getTargetY() { return targetY; }
     public int getTargetZ() { return targetZ; }
     public int getGridSize() { return gridSize; }
-    public Character[][] getGrid() { return grid; }
-    public Character[][][] getGrid3D() { return grid3D; }
+    public byte[] getGrid2D() { return grid2D; }
+    public byte[] getGrid3D() { return grid3D; }
 }

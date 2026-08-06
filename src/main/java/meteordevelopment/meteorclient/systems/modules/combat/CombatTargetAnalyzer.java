@@ -73,47 +73,95 @@ public class CombatTargetAnalyzer {
      * hit range based on reach, potion effects, and own weapon type.
      */
     public static double computeDynamicFollowDistance(TargetAnalysis a, double modePadding) {
-        // Never stand inside either combatant's reach
         double base = Math.max(a.targetReach(), a.myReach());
 
-        // Target hits hard (Strength II+) — stay further back
-        if (a.potionEffects().contains("STR2")) base += 2.0;
+        if (a.entity() instanceof LivingEntity target) {
+            for (MobEffectInstance effect : target.getActiveEffects()) {
+                var type = effect.getEffect().value();
+                int amp = effect.getAmplifier();
+                if (type == MobEffects.STRENGTH && amp >= 1) {
+                    base += 2.0;
+                }
+                if (type == MobEffects.SPEED) {
+                    base += 1.0 * (amp + 1);
+                }
+            }
+        }
 
-        // We hit soft (Weakness) — kite harder
-        if (a.potionEffects().contains("WEAK")) base += 3.0;
+        if (mc.player != null) {
+            for (MobEffectInstance effect : mc.player.getActiveEffects()) {
+                var type = effect.getEffect().value();
+                if (type == MobEffects.WEAKNESS) {
+                    base += 3.0;
+                }
+                if (type == MobEffects.SLOWNESS) {
+                    base -= 1.0;
+                }
+            }
+        }
 
-        // Ranged weapon — stay outside melee reach entirely
-        ItemStack myWeapon = mc.player.getMainHandItem();
+        ItemStack myWeapon = mc.player != null ? mc.player.getMainHandItem() : ItemStack.EMPTY;
         if (myWeapon.is(Items.BOW) || myWeapon.is(Items.CROSSBOW) || myWeapon.is(Items.TRIDENT)) {
-            base = Math.max(base, 6.0) + 1.0;
+            base = Math.max(base, 8.0) + 1.0;
+        }
+
+        if (mc.player != null && a.entity() != null) {
+            net.minecraft.world.phys.Vec3 targetVel = a.entity().getDeltaMovement();
+            net.minecraft.world.phys.Vec3 towardsUs = mc.player.position().subtract(a.entity().position());
+            double toLen = towardsUs.length();
+            if (toLen > 0.01) {
+                double approachSpeed = targetVel.dot(towardsUs.normalize());
+                base += Math.max(0.0, approachSpeed * 4.0);
+            }
         }
 
         base += modePadding;
-
-        return Mth.clamp(base, 1.0, 10.0);
+        return Mth.clamp(base, 1.0, 20.0);
     }
 
-    /** Strength +3.0 damage per level, Weakness -4.0 per level, folded into effective damage. */
     private static double getPotionDamageModifier(LivingEntity entity) {
         double mod = 0.0;
         for (MobEffectInstance effect : entity.getActiveEffects()) {
-            if (effect.getEffect().value() == MobEffects.STRENGTH) {
-                mod += 3.0 * (effect.getAmplifier() + 1);
-            } else if (effect.getEffect().value() == MobEffects.WEAKNESS) {
-                mod -= 4.0 * (effect.getAmplifier() + 1);
+            var type = effect.getEffect().value();
+            int amp = effect.getAmplifier();
+            if (type == MobEffects.STRENGTH) {
+                mod += 3.0 * (amp + 1);
+            } else if (type == MobEffects.WEAKNESS) {
+                mod -= 4.0 * (amp + 1);
             }
         }
         return mod;
     }
 
-    /** Compact potion summary for the target: "STR2", "WEAK1", "STR2+WEAK1", or "NONE". */
+    public static double getResistanceMultiplier(LivingEntity entity) {
+        for (MobEffectInstance effect : entity.getActiveEffects()) {
+            if (effect.getEffect().value() == MobEffects.RESISTANCE) {
+                double reduction = 0.2 * (effect.getAmplifier() + 1);
+                return Math.max(0.0, 1.0 - reduction);
+            }
+        }
+        return 1.0;
+    }
+
     private static String buildPotionEffectsString(LivingEntity entity) {
         StringBuilder sb = new StringBuilder();
         for (MobEffectInstance effect : entity.getActiveEffects()) {
-            if (effect.getEffect().value() == MobEffects.STRENGTH && effect.getAmplifier() >= 1) {
-                sb.append("STR2");
-            } else if (effect.getEffect().value() == MobEffects.WEAKNESS) {
-                sb.append("WEAK").append(effect.getAmplifier() + 1);
+            var type = effect.getEffect().value();
+            int amp = effect.getAmplifier();
+            if (type == MobEffects.STRENGTH && amp >= 1) {
+                sb.append("STR").append(amp + 1);
+            } else if (type == MobEffects.WEAKNESS) {
+                sb.append("WEAK").append(amp + 1);
+            } else if (type == MobEffects.RESISTANCE) {
+                sb.append("RES").append(amp + 1);
+            } else if (type == MobEffects.SPEED) {
+                sb.append("SPD").append(amp + 1);
+            } else if (type == MobEffects.FIRE_RESISTANCE) {
+                sb.append("FRES");
+            } else if (type == MobEffects.REGENERATION) {
+                sb.append("REGEN").append(amp + 1);
+            } else if (type == MobEffects.INVISIBILITY) {
+                sb.append("INVIS");
             }
         }
         return sb.isEmpty() ? "NONE" : sb.toString();
@@ -126,48 +174,72 @@ public class CombatTargetAnalyzer {
         float targetHealth = target.getHealth() + target.getAbsorptionAmount();
         if (myHealth <= 0.0f) return 0.0;
 
-        float myDamage = DamageUtils.getAttackDamage(mc.player, target);
-        float theirDamage = DamageUtils.getAttackDamage(target, mc.player);
-
-        // Check for player with high-end gear — very dangerous
         if (target instanceof Player) {
-            boolean hasDiamondOrNetherite = hasHighEndArmor(target);
-            boolean hasSharpSword = hasSharpnessSword(target);
-            if (hasDiamondOrNetherite && hasSharpSword) return 0.2;
+            if (hasHighEndArmor(target) && hasSharpnessSword(target)) return 0.2;
         }
-
-        // No armor, no weapon — easy prey
         boolean noArmor = target.getArmorValue() <= 0;
         boolean noWeapon = target.getMainHandItem().isEmpty();
         if (noArmor && noWeapon) return 0.9;
 
-        // DPS comparison: who kills whom faster
-        double myKillTime = myDamage > 0 ? targetHealth / myDamage : Double.MAX_VALUE;
-        double theirKillTime = theirDamage > 0 ? myHealth / theirDamage : Double.MAX_VALUE;
+        float rawMyDamage = DamageUtils.getAttackDamage(mc.player, target);
+        float rawTheirDamage = DamageUtils.getAttackDamage(target, mc.player);
 
-        double score = 0.5;
-        if (myKillTime < theirKillTime) {
-            // I kill faster
-            score = 0.5 + 0.4 * (1.0 - (myKillTime / Math.max(theirKillTime, 0.01)));
+        double myPotionMod = getPotionDamageModifier(mc.player);
+        double theirPotionMod = getPotionDamageModifier(target);
+        float myDmgPerHit = (float) Math.max(0.5, rawMyDamage + myPotionMod);
+        float theirDmgPerHit = (float) Math.max(0.5, rawTheirDamage + theirPotionMod);
+
+        double myAtkSpeed = 1.5;
+        double theirAtkSpeed = 1.5;
+        try {
+            myAtkSpeed = mc.player.getAttributeValue(Attributes.ATTACK_SPEED);
+        } catch (Exception ignored) {}
+        if (target instanceof Player) {
+            try {
+                theirAtkSpeed = ((Player) target).getAttributeValue(Attributes.ATTACK_SPEED);
+            } catch (Exception ignored) {}
         } else {
-            // They kill faster — penalize
-            score = 0.5 - 0.4 * (1.0 - (theirKillTime / Math.max(myKillTime, 0.01)));
+            theirAtkSpeed = 1.0;
         }
 
-        // Reach bonus: if I outrange them
+        float myDPS = (float) (myDmgPerHit * myAtkSpeed);
+        float theirDPS = (float) (theirDmgPerHit * theirAtkSpeed);
+
+        double myTTK = myDPS > 0 ? targetHealth / myDPS : 999.0;
+        double theirTTK = theirDPS > 0 ? myHealth / theirDPS : 999.0;
+
+        if (target instanceof LivingEntity le && le.isBlocking()) {
+            myTTK *= 2.0;
+        }
+
+        int myTotems = 0;
+        if (mc.player.getOffhandItem().getItem() == Items.TOTEM_OF_UNDYING) myTotems++;
+        for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+            if (mc.player.getInventory().getItem(i).getItem() == Items.TOTEM_OF_UNDYING) myTotems++;
+        }
+        double myEffectiveTTK = theirDPS > 0 ? (myHealth + myTotems * 8.0) / theirDPS : 999.0;
+
+        boolean hasGaps = meteordevelopment.meteorclient.utils.player.InvUtils.find(
+            Items.GOLDEN_APPLE,
+            Items.ENCHANTED_GOLDEN_APPLE
+        ).found();
+        if (hasGaps) myEffectiveTTK *= 1.3;
+
+        double killRatio = myEffectiveTTK / Math.max(myTTK, 0.01);
+        double score = 1.0 / (1.0 + Math.exp(3.0 * (1.0 / Math.max(killRatio, 0.01) - 1.0)));
+
         double myReach = getEntityReach(mc.player);
         double theirReach = getEntityReach(target);
-        if (myReach > theirReach) {
-            score += 0.1;
-        } else if (theirReach > myReach) {
-            score -= 0.1;
-        }
+        if (myReach > theirReach) score += 0.05;
+        else if (theirReach > myReach) score -= 0.05;
 
         return Mth.clamp(score, 0.0, 1.0);
     }
 
     public static double getEntityReach(Entity entity) {
-        if (entity.getType() == EntityType.PLAYER) return mc.player != null ? mc.player.entityInteractionRange() : 3.0;
+        if (entity instanceof Player player) {
+            return player.entityInteractionRange();
+        }
         if (entity.getType() == EntityType.ENDERMAN) return 3.0;
         if (entity.getType() == EntityType.CREEPER) return 3.0;
         if (entity.getType() == EntityType.SPIDER || entity.getType() == EntityType.CAVE_SPIDER) return 2.0;

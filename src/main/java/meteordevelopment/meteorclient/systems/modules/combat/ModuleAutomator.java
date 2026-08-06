@@ -44,34 +44,28 @@ public class ModuleAutomator {
     /** Dwell timer (in update() passes) keeping Jesus active after leaving water to stop surface-bobbing flapping. */
     private int waterRuleTimer;
 
+    /** Per-rule cooldown tracker: maps rule name -> tick of last toggle to prevent rapid flapping. */
+    private final java.util.HashMap<String, Integer> lastRuleToggleTick = new java.util.HashMap<>();
+    private int automatorTickCounter = 0;
+    private static final int DEFAULT_RULE_COOLDOWN = 20;
+
     public ModuleAutomator(CombatBrainModule brain) {
         this.brain = brain;
     }
 
     public void update(LivingEntity target, CombatTerrainGrid grid) {
         if (mc.player == null || mc.level == null) return;
+        automatorTickCounter += 2;
 
         activeRuleNames.clear();
 
-        // Rule 1: Crystal detect -> CrystalAura
-        evalCrystalRule();
-
-        // Rule 2: Bow detect -> ArrowDodge
-        evalBowRule(target);
-
-        // Rule 3: Low health -> AutoEat / AutoGap
-        evalLowHealthRule();
-
-        // Rule 4: No totem -> AutoTotem
+        // Priority order evaluation
         evalNoTotemRule();
-
-        // Rule 5: Water detect -> Jesus
-        evalWaterRule(target);
-
-        // Rule 6: Bed detect -> BedAura
+        evalCrystalRule();
+        evalBowRule(target);
         evalBedRule(target);
-
-        // Rule 7: Hole detect -> Surround
+        evalLowHealthRule();
+        evalWaterRule(target);
         evalHoleRule();
     }
 
@@ -90,6 +84,8 @@ public class ModuleAutomator {
         enabledByAutomator.clear();
         activeRuleNames.clear();
         waterRuleTimer = 0;
+        lastRuleToggleTick.clear();
+        automatorTickCounter = 0;
     }
 
     public List<String> getActiveRules() {

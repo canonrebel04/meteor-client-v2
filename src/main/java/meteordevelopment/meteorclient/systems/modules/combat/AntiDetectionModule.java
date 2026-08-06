@@ -49,9 +49,16 @@ public class AntiDetectionModule extends Module {
     private final Random random = new Random();
     private int sneakTimer = 0;
     private boolean isSneaking = false;
+    private int currentSneakDuration = 5;
+
+    private double ouYaw = 0.0;
+    private double ouPitch = 0.0;
+    private static final double OU_THETA = 0.15;
+    private static final double OU_SIGMA = 0.3;
+    private static final double OU_DT = 0.05;
 
     public AntiDetectionModule() {
-        super(Categories.Combat, "anti-detection", "Randomizes pitch/yaw and sneaks periodically to prevent server-side bot detection during AFK combat.");
+        super(Categories.Combat, "anti-detection", "Randomizes pitch/yaw using Ornstein-Uhlenbeck stochastic process and sneaks with Poisson-distributed intervals to evade anti-cheat detection during AFK combat.");
     }
 
     @Override
@@ -61,34 +68,39 @@ public class AntiDetectionModule extends Module {
             isSneaking = false;
         }
         sneakTimer = 0;
+        ouYaw = 0.0;
+        ouPitch = 0.0;
     }
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
         if (!Utils.canUpdate()) return;
 
-        // Random rotation
         double range = rotationRandomness.get();
         if (range > 0) {
-            float yawOffset = (float) (random.nextDouble() * 2.0 * range - range);
-            float pitchOffset = (float) (random.nextDouble() * 2.0 * range - range);
-            mc.player.setYRot(mc.player.getYRot() + yawOffset);
-            mc.player.setXRot(mc.player.getXRot() + pitchOffset);
+            double sqrtDt = Math.sqrt(OU_DT);
+            ouYaw += OU_THETA * (0.0 - ouYaw) * OU_DT + OU_SIGMA * random.nextGaussian() * sqrtDt;
+            ouPitch += OU_THETA * (0.0 - ouPitch) * OU_DT + OU_SIGMA * random.nextGaussian() * sqrtDt;
+
+            mc.player.setYRot(mc.player.getYRot() + (float) (ouYaw * range));
+            mc.player.setXRot(net.minecraft.util.Mth.clamp(
+                mc.player.getXRot() + (float) (ouPitch * range), -90.0f, 90.0f));
         }
 
-        // Sneak cycle
         sneakTimer++;
-
         if (isSneaking) {
-            if (sneakTimer >= sneakInterval.get() + sneakDuration.get()) {
+            if (sneakTimer >= currentSneakDuration) {
                 mc.options.keyShift.setDown(false);
                 isSneaking = false;
                 sneakTimer = 0;
             }
         } else {
-            if (sneakTimer >= sneakInterval.get()) {
+            if (random.nextDouble() < 1.0 / sneakInterval.get()) {
                 mc.options.keyShift.setDown(true);
                 isSneaking = true;
+                sneakTimer = 0;
+                currentSneakDuration = Math.max(1,
+                    sneakDuration.get() + (int) (random.nextGaussian() * 2.0));
             }
         }
     }

@@ -35,70 +35,47 @@ public enum CombatMode {
         boolean hasAnchor,
         boolean crystalSetting
     ) {
-        // 1. Emergency retreat/heal (health <= 4 && totems == 0 && threat > 0.8)
-        if (health <= 4.0f && totems == 0 && threat > 0.8) {
-            return RETREAT_HEAL;
+        double viability = (target != null) ? CombatTargetAnalyzer.calculateViability(target) : 0.5;
+        int nearbyEnemies = (grid != null) ? grid.getThreatMap().size() : 0;
+        boolean targetVisible = (target != null && grid != null) ? grid.isTargetVisible(target) : true;
+        double targetReach = (target != null) ? CombatTargetAnalyzer.getEntityReach(target) : 2.0;
+        double myReach = CombatTargetAnalyzer.getEntityReach(
+            net.minecraft.client.Minecraft.getInstance().player != null
+                ? net.minecraft.client.Minecraft.getInstance().player : target);
+        float targetHpRatio = (target != null && target.getMaxHealth() > 0)
+            ? (target.getHealth() + target.getAbsorptionAmount()) / target.getMaxHealth() : 1.0f;
+
+        double[] scores = new double[CombatMode.values().length];
+
+        double vulnerability = 1.0 - Math.min(1.0, health / 20.0);
+        scores[RETREAT_HEAL.ordinal()] = 1.0 / (1.0 + Math.exp(-5.0 * (vulnerability * threat - 0.35)));
+        if (health <= 4.0f && totems == 0 && threat > 0.8) scores[RETREAT_HEAL.ordinal()] = 1.0;
+
+        scores[BURROW.ordinal()] = Math.tanh(nearbyEnemies / 3.0) * 0.75;
+        if (target != null && !targetVisible && crystalSetting) {
+            scores[BURROW.ordinal()] = Math.max(scores[BURROW.ordinal()], 0.65);
         }
 
-        // 2. Low health / high threat
-        if (health < 10.0f || threat >= fleeThreshold) {
-            return RETREAT_HEAL;
-        }
+        scores[RUSH.ordinal()] = Math.max(0.0, (1.0 - targetHpRatio) * viability);
 
-        // 3. Multi-target threat: 3+ living enemies within 8 blocks
-        if (grid != null && grid.getThreatMap().size() >= 3) {
-            return BURROW;
-        }
+        double reachDeficit = targetReach - myReach;
+        scores[KITE.ordinal()] = (reachDeficit > 0 && isMyWeaponMelee())
+            ? Math.tanh(reachDeficit) * 0.7 : 0.0;
 
-        // 4. Target behind cover + crystal setting enabled
-        if (target != null && grid != null && grid.isTargetBehindCover(target) && crystalSetting) {
-            return BURROW;
-        }
+        scores[SNIPE.ordinal()] = (target != null && isHoldingRanged(target)) ? 0.7 : 0.0;
 
-        // 5. Target holds bow/crossbow/trident
-        if (target != null && isHoldingRanged(target)) {
-            return SNIPE;
-        }
+        scores[DEFENSIVE.ordinal()] = Math.max(0.0, 0.6 - viability);
 
-        // 6. Target reach > my reach && my weapon is melee
-        if (target != null) {
-            double targetReach = CombatTargetAnalyzer.getEntityReach(target);
-            double myReach = CombatTargetAnalyzer.getEntityReach(net.minecraft.client.Minecraft.getInstance().player != null
-                ? net.minecraft.client.Minecraft.getInstance().player
-                : target);
-            boolean myWeaponMelee = isMyWeaponMelee();
-            if (targetReach > myReach && myWeaponMelee) {
-                return KITE;
-            }
-        }
+        scores[STEALTH.ordinal()] = (target != null && !targetVisible && nearbyEnemies == 0)
+            ? 0.6 : 0.0;
 
-        // 7. Target low health (< 30%) && high viability (>= 0.6)
-        if (target != null) {
-            float targetMaxHealth = target.getMaxHealth();
-            float currentTargetHealth = target.getHealth() + target.getAbsorptionAmount();
-            double viability = CombatTargetAnalyzer.calculateViability(target);
-            if (targetMaxHealth > 0 && (currentTargetHealth / targetMaxHealth) < 0.3f && viability >= 0.6) {
-                return RUSH;
-            }
-        }
+        scores[AGGRESSIVE.ordinal()] = 0.3 + viability * 0.3;
 
-        // 8. Viability < 0.3 (undergeared / unfavorable fight)
-        if (target != null) {
-            double viability = CombatTargetAnalyzer.calculateViability(target);
-            if (viability < 0.3) {
-                return DEFENSIVE;
-            }
+        int bestIdx = 0;
+        for (int i = 1; i < scores.length; i++) {
+            if (scores[i] > scores[bestIdx]) bestIdx = i;
         }
-
-        // 8.5 STEALTH: target exists but is hidden behind cover AND no nearby
-        // threat entities — stay dark instead of pushing. AntiDetectionModule
-        // gets enabled by CombatBrainModule when this mode is active.
-        if (target != null && grid != null && !grid.isTargetVisible(target) && grid.getThreatMap().isEmpty()) {
-            return STEALTH;
-        }
-
-        // 9. Default
-        return AGGRESSIVE;
+        return CombatMode.values()[bestIdx];
     }
 
     public static double modePadding(CombatMode mode) {

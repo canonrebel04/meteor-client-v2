@@ -25,7 +25,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
 import meteordevelopment.meteorclient.systems.modules.player.AutoTool;
-
+import net.minecraft.world.entity.MobCategory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
@@ -947,35 +947,45 @@ public class CombatBrainModule extends Module {
         if (isInvincible()) return 0.0;
 
         float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
-        double healthFactor = 1.0 - (health / 20.0); // 0 = full, 1 = near death
+
+        double selfVuln = 1.0 / (1.0 + Math.exp(0.5 * (health - 10.0)));
 
         int totems = countTotems();
-        double totemFactor = totems > 0 ? 0.0 : 0.3;
+        double totemExposure = Math.pow(0.4, totems);
 
-        // Check nearby threats and crystal entities
-        double nearbyThreats = 0.0;
-        int nearbyCrystals = 0;
+        double envPressure = 0.0;
+        double crystalPressure = 0.0;
 
         if (mc.level != null) {
             for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
                 if (entity instanceof LivingEntity le && le != mc.player && le.isAlive()) {
+                    boolean isHostile = le.getType().getCategory() == MobCategory.MONSTER
+                        || (le instanceof Player && le != mc.player);
+                    if (!isHostile) continue;
+
                     double dist = le.distanceTo(mc.player);
-                    if (dist < 6.0) {
-                        double losFactor = (terrainGrid != null && terrainGrid.isTargetVisible(le)) ? losWeight.get() : 1.0;
-                        nearbyThreats += (1.0 - dist / 6.0) * 0.3 * losFactor;
+                    if (dist < 8.0) {
+                        double distFactor = 1.0 / (1.0 + dist * dist);
+                        float dmg = meteordevelopment.meteorclient.utils.entity.DamageUtils.getAttackDamage(le, mc.player);
+                        double dmgNorm = Math.min(1.0, dmg / 10.0);
+
+                        double losFactor = (terrainGrid != null && terrainGrid.isTargetVisible(le))
+                            ? losWeight.get() : 1.0;
+
+                        envPressure += distFactor * dmgNorm * losFactor;
                     }
                 } else if (entity.getType() == EntityType.END_CRYSTAL) {
                     double dist = entity.distanceTo(mc.player);
-                    if (dist < 6.0) {
-                        nearbyCrystals++;
+                    if (dist < 12.0) {
+                        crystalPressure += (12.0 - dist) / 12.0;
                     }
                 }
             }
         }
 
-        double threat = healthFactor * 0.4 + totemFactor * 0.2 + Math.min(nearbyThreats, 0.4) + (nearbyCrystals * crystalThreat.get());
+        double envThreat = Math.tanh(envPressure * 0.5);
 
-        // Cover modifier calculation
+        double coverFactor = 1.0;
         if (coverModifier.get() && mc.level != null) {
             BlockPos playerPos = mc.player.blockPosition();
             int solidNeighbors = 0;
@@ -983,20 +993,23 @@ public class CombatBrainModule extends Module {
             int[] dz = {0, 0, -1, 1, -1, 1, -1, 1};
 
             for (int i = 0; i < 8; i++) {
-                BlockPos checkPos = playerPos.offset(dx[i], 0, dz[i]);
-                if (!mc.level.getBlockState(checkPos).isAir()) {
+                BlockPos footCheck = playerPos.offset(dx[i], 0, dz[i]);
+                BlockPos headCheck = playerPos.offset(dx[i], 1, dz[i]);
+                if (!mc.level.getBlockState(footCheck).isAir() && !mc.level.getBlockState(headCheck).isAir()) {
                     solidNeighbors++;
                 }
             }
 
-            if (solidNeighbors == 0) {
-                threat *= 1.2;
-            } else if (solidNeighbors >= 4) {
-                threat *= 0.8;
-            }
+            coverFactor = 1.2 - (solidNeighbors * 0.05);
         }
 
-        return Mth.clamp(threat, 0.0, 1.0);
+        double survivalProb = (1.0 - selfVuln * 0.5)
+                            * (1.0 - totemExposure * 0.2)
+                            * (1.0 - envThreat * 0.4);
+
+        double threat = 1.0 - survivalProb + crystalPressure * crystalThreat.get();
+
+        return Mth.clamp(threat * coverFactor, 0.0, 1.0);
     }
 
     // --- Module management ---
@@ -1105,7 +1118,7 @@ public class CombatBrainModule extends Module {
             return;
         }
 
-        // Hit-and-run strike cycle
+        // Hit-and-run strike cycle — cooldown-synchronized
         double effectiveStrikeDist = Math.min(strikeDistance.get(), targetDistance);
 
         // Terrain obstacle check using active phase's distance
@@ -1123,9 +1136,20 @@ public class CombatBrainModule extends Module {
 
         double dist = mc.player.distanceTo(currentTarget);
 
+        double myAtkSpeed = 1.6;
+        try {
+            myAtkSpeed = mc.player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_SPEED);
+        } catch (Exception ignored) {}
+        int optimalStrikeTicks = (int) Math.ceil(20.0 / myAtkSpeed) + 4;
+        int activeStrikeDuration = Math.max(optimalStrikeTicks, strikeDurationTicks.get());
+
+        boolean targetJustSwung = false;
+        if (currentTarget instanceof Player targetPlayer) {
+            targetJustSwung = targetPlayer.getAttackStrengthScale(0.0f) < 0.3f;
+        }
+
         if (strikePhase == StrikePhase.STRIKE) {
-            if (strikeTimer >= strikeDurationTicks.get()) {
-                // Strike phase finished -> retreat back to safety bubble
+            if (strikeTimer >= activeStrikeDuration) {
                 strikePhase = StrikePhase.BUBBLE;
                 strikeTimer = 0;
                 bubbleTimer = 0;
@@ -1133,22 +1157,22 @@ public class CombatBrainModule extends Module {
                     followController.follow(currentTarget, targetDistance);
                 }
             } else {
-                // Inside strike phase -> follow at strike distance inside attack range
                 if (followController != null) {
                     followController.follow(currentTarget, effectiveStrikeDist);
                 }
                 strikeTimer += 2;
             }
         } else { // BUBBLE phase
-            if (dist <= targetDistance + 0.5 && bubbleTimer >= retreatCooldownTicks.get()) {
-                // Reached bubble and retreat cooldown elapsed -> dart in for strike
+            boolean cooldownReady = bubbleTimer >= retreatCooldownTicks.get();
+            boolean shouldStrike = cooldownReady && (targetJustSwung || bubbleTimer >= retreatCooldownTicks.get() * 2);
+
+            if (dist <= targetDistance + 0.5 && shouldStrike) {
                 strikePhase = StrikePhase.STRIKE;
                 strikeTimer = 0;
                 if (followController != null) {
                     followController.follow(currentTarget, effectiveStrikeDist);
                 }
             } else {
-                // Stay in safety bubble phase
                 if (dist > targetDistance + 0.5 && followController != null) {
                     followController.follow(currentTarget, targetDistance);
                 }
