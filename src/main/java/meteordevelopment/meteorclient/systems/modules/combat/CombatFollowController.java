@@ -5,7 +5,6 @@ import baritone.api.IBaritone;
 import baritone.api.pathing.goals.GoalRunAway;
 import baritone.api.process.ICustomGoalProcess;
 import baritone.api.process.IFollowProcess;
-import baritone.api.utils.input.Input;
 import net.minecraft.world.entity.Entity;
 
 import java.util.UUID;
@@ -75,10 +74,11 @@ public class CombatFollowController {
         BaritoneAPI.getSettings().followRadius.value = Math.max(1, (int) Math.ceil(distance));
         BaritoneAPI.getSettings().followOffsetDistance.value = 0.0;
 
-        // Force sprint and disable humanizeMovements (prevents 2%/tick random sprint drop)
-        // so baritone sprints continuously toward the target rather than intermittently.
-        baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, true);
-        BaritoneAPI.getSettings().humanizeMovements.value = false;
+        // Sprinting: reverted to baritone's DEFAULT behavior (no forced SPRINT
+        // input, humanizeMovements left at its default). Forcing the sprint
+        // input made baritone's PathExecutor see a permanent SPRINT request it
+        // kept clearing/restarting, which suppressed sprinting rather than
+        // enabling it. Baritone sprints on its own when the path allows.
 
         // Mob avoidance: route the approach AROUND clusters instead of through
         // them. Avoidance.create() adds a spherical path-cost bump (coefficient
@@ -119,9 +119,8 @@ public class CombatFollowController {
         followUuid = null;
         followDistance = -1.0;
 
-        // Release forced sprint override and restore humanizeMovements to its default.
-        baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, false);
-        BaritoneAPI.getSettings().humanizeMovements.value = true;
+        // No sprint override to release (reverted to default baritone sprint);
+        // only disable the mob avoidance toggle we own.
         BaritoneAPI.getSettings().avoidance.value = false;
 
         followProcess.cancel();
