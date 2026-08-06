@@ -147,7 +147,10 @@ public class AutoTool extends Module {
     @EventHandler(priority = EventPriority.HIGH)
     private void onStartBreakingBlock(StartBreakingBlockEvent event) {
         if (Modules.get().isActive(InfinityMiner.class)) return;
-        if (mc.player.isCreative()) return;
+        // NOTE: the upstream creative-mode guard was removed intentionally —
+        // baritone-driven mining in creative still benefits from tool switching
+        // (CombatBrain enables AutoTool alongside AutoWeapon; AutoWeapon would
+        // otherwise leave a sword equipped while the bot digs).
 
         // Get blockState
         BlockState blockState = mc.level.getBlockState(event.blockPos);

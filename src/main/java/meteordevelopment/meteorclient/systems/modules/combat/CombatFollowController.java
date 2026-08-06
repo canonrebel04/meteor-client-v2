@@ -18,6 +18,8 @@ public class CombatFollowController {
 
     private Entity currentTarget;
     private FollowMode mode;
+    private UUID followUuid;
+    private double followDistance;
 
     public enum FollowMode {
         FOLLOW,
@@ -30,6 +32,7 @@ public class CombatFollowController {
         this.followProcess = baritone.getFollowProcess();
         this.goalProcess = baritone.getCustomGoalProcess();
         this.mode = FollowMode.NONE;
+        this.followDistance = -1.0;
     }
 
     public void follow(Entity target, double distance) {
@@ -40,6 +43,19 @@ public class CombatFollowController {
             stop();
             return;
         }
+
+        // Only restart the follow process when the target or the desired
+        // distance actually changed. doEngageTick re-invokes follow() every
+        // 2 ticks while chasing; cancelling + re-following each time restarts
+        // baritone's path from scratch, which resets its sprint cadence
+        // (sprint only engages once the path stabilizes) and causes the
+        // "barely sprints" behavior.
+        UUID uuid = target.getUUID();
+        if (followUuid != null && followUuid.equals(uuid) && Math.abs(followDistance - distance) < 0.01) {
+            return;
+        }
+        followUuid = uuid;
+        followDistance = distance;
 
         // H3 fix: cancel the existing follow process BEFORE mutating settings so
         // the restarted FollowProcess picks up the new radius/offset. Mutating
@@ -93,6 +109,8 @@ public class CombatFollowController {
     public void stop() {
         mode = FollowMode.NONE;
         currentTarget = null;
+        followUuid = null;
+        followDistance = -1.0;
 
         // Release forced sprint override and restore humanizeMovements to its default.
         baritone.getInputOverrideHandler().setInputForceState(Input.SPRINT, false);

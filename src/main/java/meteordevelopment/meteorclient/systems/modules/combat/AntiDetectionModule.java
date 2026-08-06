@@ -79,12 +79,21 @@ public class AntiDetectionModule extends Module {
         double range = rotationRandomness.get();
         if (range > 0) {
             double sqrtDt = Math.sqrt(OU_DT);
+            // OU process: mean-reverting jitter. Stationary std = OU_SIGMA/sqrt(2*OU_THETA)
+            // ≈ 0.55 in OU units. Normalize to unit variance and scale by the user's
+            // degree setting so `range` behaves as DEGREES of jitter, not radians.
+            // (Previous code multiplied raw OU units by range → up to ~1.1 rad ≈ 63°
+            // of camera shake with the default 2.0 setting.)
+            double ouNorm = OU_SIGMA / Math.sqrt(2.0 * OU_THETA);
             ouYaw += OU_THETA * (0.0 - ouYaw) * OU_DT + OU_SIGMA * random.nextGaussian() * sqrtDt;
             ouPitch += OU_THETA * (0.0 - ouPitch) * OU_DT + OU_SIGMA * random.nextGaussian() * sqrtDt;
 
-            mc.player.setYRot(mc.player.getYRot() + (float) (ouYaw * range));
+            double yawDeg = (ouYaw / ouNorm) * range;
+            double pitchDeg = (ouPitch / ouNorm) * range;
+
+            mc.player.setYRot(mc.player.getYRot() + (float) Math.toRadians(yawDeg));
             mc.player.setXRot(net.minecraft.util.Mth.clamp(
-                mc.player.getXRot() + (float) (ouPitch * range), -90.0f, 90.0f));
+                mc.player.getXRot() + (float) Math.toRadians(pitchDeg), -90.0f, 90.0f));
         }
 
         sneakTimer++;
