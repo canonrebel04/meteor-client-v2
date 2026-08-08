@@ -19,3 +19,6 @@
 ## 2024-05-14 - Optimizing Entity Iteration Streams
 **Learning:** Using `Streams.stream()` to wrap Iterables (like `mc.level.entitiesForRendering()`) in hot paths like `Step` module's tick calculations causes significant overhead due to stream creation and lambda allocations. Replacing the stream with a standard `for-each` loop halves the execution time.
 **Action:** Avoid using `Streams.stream()` for hot path entity iteration; use standard `for-each` loops instead.
+## 2024-08-08 - Avoid Math.pow and Redundant Getters in Hot Loops
+**Learning:** Using `Math.pow(setting.get(), 2)` inside an entity iteration loop in high-frequency methods (like `setTargets` during TickEvents) introduces unnecessary JNI overhead and redundant setting getter invocations.
+**Action:** Pre-calculate the value outside the loop and use primitive multiplication (e.g., `double range = setting.get(); double rangeSq = range * range;`) instead of `Math.pow()` for squared distance checks to minimize CPU overhead in hot loops.

@@ -348,8 +348,12 @@ public class HoleFiller extends Module {
     private void setTargets() {
         targets.clear();
 
+        // ⚡ Bolt: Pre-calculate squared range outside loop and use primitive multiplication to avoid JNI overhead
+        double range = targetRange.get();
+        double rangeSq = range * range;
+
         for (Player player : mc.level.players()) {
-            if (player.distanceToSqr(mc.player) > Math.pow(targetRange.get(), 2) ||
+            if (player.distanceToSqr(mc.player) > rangeSq ||
                 player.isCreative() ||
                 player == mc.player ||
                 player.isDeadOrDying() ||
