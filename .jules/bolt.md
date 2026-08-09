@@ -1,3 +1,6 @@
+
+
+
 ## 2024-06-25 - Prevent auto-boxing in `Comparator.comparing` on tick render path
 **Learning:** In Minecraft rendering logic (`onTick`/`onRender` in things like `Nametags.java`), sorting entity lists runs every frame. Using standard `Comparator.comparing(e -> e.distanceToSqr(pos))` boxes the resulting `double` to a `Double` object. This causes a massive amount of garbage generation every tick.
 **Action:** Always use primitive specific comparators like `Comparator.comparingDouble` when sorting using methods that return primitives (`double`, `int`, etc.), especially in render/tick loops to prevent allocation overhead and reduce GC pressure.
@@ -22,3 +25,12 @@
 ## 2024-08-09 - Avoid JNI overhead from Math.pow() in hot loops
 **Learning:** Using `Math.pow(variable, 2)` to calculate squared distance limits or thresholds incurs unnecessary JNI overhead and floating point calculations.
 **Action:** Always pre-calculate squared limits using primitive multiplication (e.g. `double rangeSq = range * range`) outside of loops, and use primitive multiplication instead of `Math.pow()` for powers of 2.
+
+
+## 2024-08-07 - Avoid Math.pow for Distance Thresholds
+**Learning:** Performance-critical distance checks in Java applications that use `Math.pow(x, 2)` incur JNI overhead and floating point precision work that is entirely unnecessary when working with squared distances.
+**Action:** Always replace `Math.pow(x, 2)` with direct double multiplication `x * x` in distance threshold checks (`squaredDistanceTo`) to improve execution speed in combat logic loops.
+
+## 2024-08-07 - Avoid Math.pow for Distance Thresholds in AutoCity
+**Learning:** Performance-critical distance checks in Java applications that use `Math.pow(x, 2)` incur JNI overhead and floating point precision work that is entirely unnecessary when working with squared distances.
+**Action:** Always replace `Math.pow(x, 2)` with direct double multiplication `x * x` in distance threshold checks (`squaredDistanceTo`) to improve execution speed in combat logic loops.
