@@ -81,10 +81,7 @@ public class Main {
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                     Desktop.getDesktop().browse(url.toURI());
                 } else {
-                    String[] cmd = getFallbackCommand(url);
-                    if (cmd != null) {
-                        Runtime.getRuntime().exec(cmd);
-                    }
+                    System.err.println("Opening URLs is not supported on this platform.");
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -104,28 +101,10 @@ public class Main {
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
                     Desktop.getDesktop().open(file);
                 } else {
-                    open(file.toURI().toURL());
+                    System.err.println("Opening files is not supported on this platform.");
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-            }
-        }
-
-        private String[] getFallbackCommand(URL url) {
-            String string = url.toString();
-            if ("file".equals(url.getProtocol())) {
-                string = string.replace("file:", "file://");
-            }
-
-            switch (this) {
-                case WINDOWS:
-                    return new String[]{"rundll32", "url.dll,FileProtocolHandler", string};
-                case OSX:
-                    return new String[]{"open", string};
-                case LINUX:
-                    return new String[]{"xdg-open", string};
-                default:
-                    return null;
             }
         }
     }
