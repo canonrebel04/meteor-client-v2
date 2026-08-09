@@ -160,7 +160,7 @@ public class ProfilesTab extends Tab {
             }
 
             File profileFolder = p.getFile().getCanonicalFile();
-            if (!profileFolder.getParentFile().equals(Profiles.FOLDER.getCanonicalFile())) {
+            if (!profileFolder.getParentFile().equals(Profiles.FOLDER.getCanonicalFile()) || ((String)p.name.get()).contains("..") || ((String)p.name.get()).contains("/") || ((String)p.name.get()).contains("\\")) { // 🛡️ Sentinel: added directory traversal checks
                 throw new IllegalStateException("Imported profile does not have a valid location.");
             }
 
