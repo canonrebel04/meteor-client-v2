@@ -37,7 +37,7 @@ public class PathManagerTab extends Tab {
 
         @Override
         public void initWidgets() {
-            WTextBox filter = add(theme.textBox("")).minWidth(400).expandX().widget();
+            WTextBox filter = add(theme.textBox("", "Search...")).minWidth(400).expandX().widget();
             filter.setFocused(true);
             filter.action = () -> {
                 clear();
