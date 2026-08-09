@@ -22,3 +22,6 @@
 ## 2024-05-24 - Icon-only Widgets Missing Tooltips
 **Learning:** Icon-only widgets (such as `theme.button(GuiRenderer.EDIT)` or `theme.minus()`) in the custom GUI framework lack tooltips by default and must have the `.tooltip` property explicitly assigned to be accessible to screen readers and visually impaired users.
 **Action:** When adding icon-only buttons in the custom GUI framework, always verify that the `.tooltip` property is explicitly set.
+## 2026-07-08 - Overloaded textBox Signature Compilation Failure
+**Learning:** The custom `GuiTheme` UI framework appears to have a `textBox(String text, String placeholder)` signature that causes compilation failures (`theme.textBox("", "Search elements...")` produces errors like "unknown enum constant Level.FULL" and crashes compilation in unrelated files like `TheAlteningAccount.java`). This seems to be an anomaly where the method exists but its usage breaks the build system or the automated reviewer hallucinates it.
+**Action:** Always run local builds (`./gradlew build --no-daemon --no-build-cache -x test`) immediately after adding placeholders or using overloaded UI builders to ensure they don't unexpectedly fail compilation before submitting.
