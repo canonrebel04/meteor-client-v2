@@ -39,7 +39,7 @@ public class FontFaceSettingScreen extends WindowScreen {
 
     @Override
     public void initWidgets() {
-        filter = add(theme.textBox("")).expandX().widget();
+        filter = add(theme.textBox("", "Search fonts...")).expandX().widget();
         filter.setFocused(true);
         filter.action = () -> {
             filterText = filter.get().trim();

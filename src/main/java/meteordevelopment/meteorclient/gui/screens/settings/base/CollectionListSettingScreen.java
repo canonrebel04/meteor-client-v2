@@ -38,7 +38,7 @@ public abstract class CollectionListSettingScreen<T> extends WindowScreen {
     @Override
     public void initWidgets() {
         // Filter
-        WTextBox filter = add(theme.textBox("")).minWidth(400).expandX().widget();
+        WTextBox filter = add(theme.textBox("", "Search items...")).minWidth(400).expandX().widget();
         filter.setFocused(true);
         filter.action = () -> {
             filterText = filter.get().trim();
