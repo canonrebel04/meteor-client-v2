@@ -38,3 +38,7 @@
 **Vulnerability:** A compilation error related to `WaybackAuthLib` which was preventing CI checks from passing. It's not a security vulnerability but a pre-existing broken build issue.
 **Learning:** Even if the memory states the compilation error is a known issue, it might cause the CI pipeline to fail, preventing the PR from being merged.
 **Prevention:** Fix compilation errors even if memory suggests to ignore them if they fail CI checks.
+## 2024-05-18 - Upgrade HTTP to HTTPS for TheAltening Authentication
+**Vulnerability:** The `TheAlteningAccount` class uses unencrypted HTTP endpoints (`http://sessionserver.thealtening.com` and `http://authserver.thealtening.com`) for authentication, potentially exposing sensitive data (tokens/passwords) to man-in-the-middle (MITM) attacks during transit.
+**Learning:** Hardcoded environment configurations should always use HTTPS endpoints by default to ensure secure transmission of credentials.
+**Prevention:** Avoid hardcoding `http://` for any service that handles authentication, tokens, or sensitive user data. Always default to `https://`.
