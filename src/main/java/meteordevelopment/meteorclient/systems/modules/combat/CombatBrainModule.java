@@ -61,17 +61,25 @@ public class CombatBrainModule extends Module {
 
     // --- Targeting ---
 
-    private final Setting<Set<EntityType<?>>> targetEntities = sgTargeting.add(new EntityTypeListSetting.Builder()
-        .name("target-entities")
-        .description("Entity types to target.")
-        .defaultValue(EntityType.ZOMBIE, EntityType.SKELETON, EntityType.SPIDER, EntityType.CREEPER, EntityType.ENDERMAN, EntityType.PIGLIN)
+    private final Setting<Set<EntityType<?>>> entities = sgTargeting.add(new EntityTypeListSetting.Builder()
+        .name("entities")
+        .description("Entities to attack.")
+        .onlyAttackable()
+        .defaultValue(
+            EntityType.PLAYER,
+            EntityType.ZOMBIE, EntityType.SKELETON, EntityType.SPIDER, EntityType.CREEPER, EntityType.ENDERMAN,
+            EntityType.PIGLIN, EntityType.ZOMBIFIED_PIGLIN, EntityType.DROWNED, EntityType.HUSK, EntityType.STRAY,
+            EntityType.WITHER_SKELETON, EntityType.SLIME, EntityType.MAGMA_CUBE, EntityType.BLAZE, EntityType.GHAST,
+            EntityType.WITCH, EntityType.PILLAGER, EntityType.VINDICATOR, EntityType.RAVAGER, EntityType.EVOKER,
+            EntityType.WARDEN, EntityType.WITHER, EntityType.ENDER_DRAGON, EntityType.BREEZE, EntityType.BOGGED
+        )
         .build()
     );
 
     private final Setting<Boolean> targetPlayers = sgTargeting.add(new BoolSetting.Builder()
         .name("target-players")
         .description("Target other players.")
-        .defaultValue(false)
+        .defaultValue(true)
         .build()
     );
 
@@ -424,6 +432,27 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    final Setting<Boolean> autoWeapon = sgAutomator.add(new BoolSetting.Builder()
+        .name("auto-weapon")
+        .description("Auto enable AutoWeapon when engaging targets.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> autoArmor = sgAutomator.add(new BoolSetting.Builder()
+        .name("auto-armor")
+        .description("Auto enable AutoArmor when engaging targets.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> shieldSwap = sgAutomator.add(new BoolSetting.Builder()
+        .name("shield-swap")
+        .description("Auto enable ShieldAutoSwap to block incoming attacks.")
+        .defaultValue(true)
+        .build()
+    );
+
     // --- Analysis ---
 
     private final Setting<Boolean> analyzeGear = sgAnalysis.add(new BoolSetting.Builder()
@@ -527,7 +556,7 @@ public class CombatBrainModule extends Module {
     }
 
     public CombatBrainModule() {
-        super(Categories.Combat, "combat-brain", "Advanced combat AI brain. Auto-manages all combat modules, target selection, pathing, and threat analysis.");
+        super(Categories.Combat, "combat-mode", "Autonomous combat AI brain. Auto-manages target selection, Baritone pathing, bubble hit-and-run, crystal fighting, and defensive abilities.", "combat-brain", "smart-combat");
     }
 
     @Override
@@ -890,32 +919,32 @@ public class CombatBrainModule extends Module {
             // Acquire targets up to acquireRange (default 64) so long-range targets are locked onto and pathed to
             if (le.distanceToSqr(mc.player) > acquireRangeSq) return false;
 
-            // Check entity type filter (mobs). Self-heal: if the saved config
-            // has an EMPTY target-entities list (observed — the module then
-            // never acquires anything and combat never engages), fall back to
-            // the built-in default set instead of matching nothing.
-            Set<EntityType<?>> types = targetEntities.get();
+            Set<EntityType<?>> types = entities.get();
             if (types.isEmpty()) {
                 types = Set.of(
-                    EntityType.ZOMBIE, EntityType.SKELETON, EntityType.SPIDER,
-                    EntityType.CREEPER, EntityType.ENDERMAN, EntityType.PIGLIN
+                    EntityType.PLAYER,
+                    EntityType.ZOMBIE, EntityType.SKELETON, EntityType.SPIDER, EntityType.CREEPER, EntityType.ENDERMAN,
+                    EntityType.PIGLIN, EntityType.ZOMBIFIED_PIGLIN, EntityType.DROWNED, EntityType.HUSK, EntityType.STRAY,
+                    EntityType.WITHER_SKELETON, EntityType.SLIME, EntityType.MAGMA_CUBE, EntityType.BLAZE, EntityType.GHAST,
+                    EntityType.WITCH, EntityType.PILLAGER, EntityType.VINDICATOR, EntityType.RAVAGER, EntityType.EVOKER,
+                    EntityType.WARDEN, EntityType.WITHER, EntityType.ENDER_DRAGON, EntityType.BREEZE, EntityType.BOGGED
                 );
             }
-            if (types.contains(le.getType())) return true;
+            if (!types.contains(le.getType())) return false;
 
-            // Player targeting
+            // Player targeting safety checks
             if (le instanceof Player player) {
                 if (!targetPlayers.get()) return false;
-                if (Friends.get().isFriend(player)) return false;
+                if (player.isCreative()) return false;
+                if (!Friends.get().shouldAttack(player)) return false;
                 if (targetFriendly.get()) {
                     // Only attack if they hit us recently or we hit them
                     Long lastAttack = lastAttackedTimestamps.get(player.getUUID());
                     if (lastAttack == null || tickCounter - lastAttack > 600) return false;
                 }
-                return true;
             }
 
-            return false;
+            return true;
         };
 
         // Fallback: single-target LowestDistance mode if multi-target is disabled
@@ -1135,8 +1164,7 @@ public class CombatBrainModule extends Module {
         ((Setting<Boolean>) (Setting<?>) killAura.settings.get("auto-switch")).set(true);
         ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).set(false);
 
-        Set<EntityType<?>> killAuraEntities = new java.util.HashSet<>(savedEntities);
-        killAuraEntities.addAll(targetEntities.get());
+        Set<EntityType<?>> killAuraEntities = new java.util.HashSet<>(entities.get());
         if (targetPlayers.get()) killAuraEntities.add(EntityType.PLAYER);
         ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(killAuraEntities);
         ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(3);
@@ -1178,9 +1206,10 @@ public class CombatBrainModule extends Module {
         syncKillAura();
 
         enableModule(KillAura.class);
-        enableModule(AutoArmor.class);
-        enableModule(AutoWeapon.class);
+        if (autoArmor.get()) enableModule(AutoArmor.class);
+        if (autoWeapon.get()) enableModule(AutoWeapon.class);
         enableModule(AutoTool.class);
+        if (shieldSwap.get()) enableModule(ShieldAutoSwapModule.class);
 
         if (criticals.get()) enableModule(Criticals.class);
     }
@@ -1192,7 +1221,7 @@ public class CombatBrainModule extends Module {
         disableModule(AutoArmor.class);
         disableModule(AutoWeapon.class);
         disableModule(AutoTool.class);
-
+        disableModule(ShieldAutoSwapModule.class);
         disableModule(Criticals.class);
     }
 
@@ -1203,6 +1232,7 @@ public class CombatBrainModule extends Module {
         disableModule(AutoArmor.class);
         disableModule(AutoWeapon.class);
         disableModule(AutoTool.class);
+        disableModule(ShieldAutoSwapModule.class);
         disableModule(Criticals.class);
         disableModule(HoleFiller.class);
         disableModule(Surround.class);
@@ -1434,6 +1464,30 @@ public class CombatBrainModule extends Module {
 
     public BrainState getState() {
         return state;
+    }
+
+    public LivingEntity getCurrentTarget() {
+        return currentTarget;
+    }
+
+    public StrikePhase getStrikePhase() {
+        return strikePhase;
+    }
+
+    public int getKillsInCombat() {
+        return killedInCombat;
+    }
+
+    public int getKillsInARow() {
+        return killsInARow;
+    }
+
+    public int getTrackedEntityCount() {
+        return trackedEntityCount;
+    }
+
+    public double getCurrentTargetScore() {
+        return currentTargetScore;
     }
 
     @Override

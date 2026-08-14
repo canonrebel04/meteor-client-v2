@@ -12,7 +12,7 @@ import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
-import meteordevelopment.meteorclient.systems.modules.combat.SmartCombatModule;
+import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.render.MeteorToast;
 import meteordevelopment.orbit.EventHandler;
@@ -83,7 +83,7 @@ public class CombatNotificationManager extends Module {
     private void onTick(TickEvent.Post event) {
         if (mc.player == null || mc.level == null) return;
 
-        SmartCombatModule sc = Modules.get().get(SmartCombatModule.class);
+        CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
 
         // --- Kill detection via entity tracking ---
         if (notifyKills.get()) {
@@ -116,8 +116,8 @@ public class CombatNotificationManager extends Module {
         }
 
         // --- Target switch detection ---
-        if (notifyTargetSwitches.get() && sc.isActive()) {
-            Entity currentTarget = sc.getTarget();
+        if (notifyTargetSwitches.get() && cb != null && cb.isActive()) {
+            Entity currentTarget = cb.getCurrentTarget();
             if (currentTarget != null && !currentTarget.equals(lastTarget)) {
                 String name = currentTarget instanceof LivingEntity living
                     ? living.getName().getString()

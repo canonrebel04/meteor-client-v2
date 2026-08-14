@@ -12,7 +12,7 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
-import meteordevelopment.meteorclient.systems.modules.combat.SmartCombatModule;
+import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
@@ -75,17 +75,17 @@ public class TargetESP extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        SmartCombatModule sc = Modules.get().get(SmartCombatModule.class);
-        if (sc == null || !sc.isActive()) {
+        CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+        if (cb == null || !cb.isActive()) {
             target = null;
             attacking = false;
             inRange = false;
             return;
         }
 
-        target = sc.getTarget();
-        attacking = sc.getAttackTimer() > 0;
-        inRange = target != null && mc.player != null && mc.player.distanceTo(target) <= sc.getRange();
+        target = cb.getCurrentTarget();
+        attacking = cb.getStrikePhase() == CombatBrainModule.StrikePhase.STRIKE;
+        inRange = target != null && mc.player != null && mc.player.distanceTo(target) <= 4.5;
     }
 
     @EventHandler

@@ -12,7 +12,7 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
-import meteordevelopment.meteorclient.systems.modules.combat.SmartCombatModule;
+import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
 import meteordevelopment.meteorclient.systems.modules.combat.TacticalBrain;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
@@ -74,27 +74,18 @@ public class CombatDecisionOverlay extends Module {
 
     @EventHandler
     private void onRender2D(Render2DEvent event) {
-        SmartCombatModule sc = Modules.get().get(SmartCombatModule.class);
-        TacticalBrain brain = Modules.get().get(TacticalBrain.class);
         CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+        TacticalBrain brain = Modules.get().get(TacticalBrain.class);
 
-        if (sc == null && cb == null) return;
+        if (cb == null && brain == null) return;
 
         // Build text lines
         String title = "Combat Decision";
-        String modeStr;
-        if (cb != null && cb.isActive()) {
-            modeStr = "Mode: " + cb.getCombatMode().name();
-        } else if (sc != null) {
-            modeStr = "Mode: " + (sc.isActive() ? sc.getCombatStrategy().name() : "DISABLED");
-        } else {
-            modeStr = "Mode: DISABLED";
-        }
-        String mode = modeStr;
-        String status = "Status: " + ((cb != null && cb.isActive()) || (sc != null && sc.isActive()) ? "Running" : "Idle");
+        String mode = "Mode: " + (cb != null && cb.isActive() ? cb.getCombatMode().name() : "IDLE");
+        String status = "Status: " + (cb != null && cb.isActive() ? "Active (" + cb.getState().name() + ")" : "Idle");
 
         String targetLine;
-        Entity target = sc != null ? sc.getTarget() : null;
+        Entity target = cb != null ? cb.getCurrentTarget() : null;
         if (target != null && mc.player != null) {
             double dist = Math.round(mc.player.distanceTo(target) * 10.0) / 10.0;
             targetLine = "Target: " + target.getName().getString() + " (" + dist + "m)";
@@ -102,8 +93,8 @@ public class CombatDecisionOverlay extends Module {
             targetLine = "Target: none";
         }
 
-        String timerLine = "Attack in: " + (sc != null ? sc.getAttackTimer() : 0) + " ticks";
-        String rangeLine = "Range: " + (sc != null ? sc.getRange() : 0) + "m";
+        String timerLine = "Phase: " + (cb != null && cb.isActive() ? cb.getStrikePhase().name() : "N/A");
+        String rangeLine = "Kills: " + (cb != null ? cb.getKillsInCombat() + " (Streak: " + cb.getKillsInARow() + ")" : "0");
 
         String brainAction = "AI Action: " + (cb != null && cb.isActive() ? cb.getInfoString() : (brain != null && brain.isActive() ? brain.getInfoString() : "N/A"));
 

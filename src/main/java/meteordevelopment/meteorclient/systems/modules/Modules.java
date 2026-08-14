@@ -427,9 +427,6 @@ public class Modules extends System<Modules> {
         add(new Surround());
         add(new TacticalBrain());
         add(new CombatBrainModule());
-        // SmartCombat system (legacy — replaced by CombatBrainModule)
-        // SmartCombat system
-        add(new SmartCombatModule());
         add(new AntiDetectionModule());
         add(new ShieldAutoSwapModule());
         add(new PathVisualizationOverlay());
