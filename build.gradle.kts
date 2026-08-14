@@ -141,7 +141,12 @@ loom {
 }
 
 fun toMinecraftCompat(version: String): String {
-    return ">=26.1 <=26.2"
+    val match = Regex("""^(\d{2})\.([1-9]\d*)(?:\.([1-9]\d*))?$""")
+        .matchEntire(version)
+        ?: error("Invalid Minecraft version format: $version. Expected YY.D or YY.D.H")
+
+    val (year, drop, _) = match.destructured
+    return "~$year.$drop"
 }
 
 tasks {
