@@ -34,3 +34,7 @@
 ## 2024-08-07 - Avoid Math.pow for Distance Thresholds in AutoCity
 **Learning:** Performance-critical distance checks in Java applications that use `Math.pow(x, 2)` incur JNI overhead and floating point precision work that is entirely unnecessary when working with squared distances.
 **Action:** Always replace `Math.pow(x, 2)` with direct double multiplication `x * x` in distance threshold checks (`squaredDistanceTo`) to improve execution speed in combat logic loops.
+
+## 2024-08-14 - Avoid Math.pow for Distance Thresholds in ESP
+**Learning:** Performance-critical distance checks in Java render loops that use `Math.pow(x, 2)` incur JNI overhead and floating point precision work that is entirely unnecessary when working with squared distances.
+**Action:** Always replace `Math.pow(x, 2)` with direct double multiplication `x * x` in distance threshold checks (`squaredDistanceToCamera`) to improve execution speed in render logic loops.
