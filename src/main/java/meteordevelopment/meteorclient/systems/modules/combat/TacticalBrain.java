@@ -60,6 +60,8 @@ public class TacticalBrain extends Module {
 
     private CombatPathManager pathManager;
     private TacticalAction currentAction = TacticalAction.IDLE;
+    private int actionDwellTimer = 0;
+    private static final int MIN_ACTION_DWELL_TICKS = 12; // ~600ms hysteresis hold
 
     public TacticalBrain() {
         super(Categories.Combat, "tactical-brain", "Manages combat action transitions and humanized Baritone integration.");
@@ -71,6 +73,7 @@ public class TacticalBrain extends Module {
             pathManager = new CombatPathManager();
         }
         currentAction = TacticalAction.IDLE;
+        actionDwellTimer = 0;
     }
 
     @Override
@@ -79,6 +82,7 @@ public class TacticalBrain extends Module {
             pathManager.stop();
         }
         currentAction = TacticalAction.IDLE;
+        actionDwellTimer = 0;
         teardownAllCombatModules();
     }
 
@@ -88,6 +92,8 @@ public class TacticalBrain extends Module {
             pathManager = new CombatPathManager();
         }
 
+        actionDwellTimer++;
+
         // 1. Gather Threat & Terrain Profiles
         ThreatSnapshot threat = new ThreatSnapshot(15.0);
         TerrainProfile terrain = new TerrainProfile(5);
@@ -95,9 +101,13 @@ public class TacticalBrain extends Module {
         // 2. Compute Target TacticalAction
         TacticalAction nextAction = computeNextAction(threat, terrain);
 
-        // 3. Apply state change if target action differs
+        // 3. Apply state change if target action differs and dwell time satisfied (or emergency)
         if (nextAction != currentAction) {
-            transitionTo(nextAction, threat, terrain);
+            boolean isEmergency = nextAction == TacticalAction.EMERGENCY_LOG || nextAction == TacticalAction.EMERGENCY_HOLE;
+            if (isEmergency || actionDwellTimer >= MIN_ACTION_DWELL_TICKS || currentAction == TacticalAction.IDLE) {
+                transitionTo(nextAction, threat, terrain);
+                actionDwellTimer = 0;
+            }
         }
     }
 
@@ -190,13 +200,16 @@ public class TacticalBrain extends Module {
                 break;
             case ENGAGE_CRYSTAL:
                 disableModule(CrystalAura.class);
+                disableModule(AutoTotem.class);
                 break;
             case RETREAT_PARKOUR:
                 pathManager.stop();
+                disableModule(AutoTotem.class);
                 break;
             case EMERGENCY_HOLE:
                 pathManager.stop();
                 disableModule(Surround.class);
+                disableModule(AutoTotem.class);
                 break;
             case EMERGENCY_LOG:
             case IDLE:
@@ -212,6 +225,7 @@ public class TacticalBrain extends Module {
         disableModule(CrystalAura.class);
         disableModule(Surround.class);
         disableModule(Scaffold.class);
+        disableModule(AutoTotem.class);
     }
 
     private void enableModule(Class<? extends Module> klass) {

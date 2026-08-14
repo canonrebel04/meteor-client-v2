@@ -882,12 +882,13 @@ public class CombatBrainModule extends Module {
         if (mc.level == null || mc.player == null) return null;
 
         // Candidate predicate: handles BOTH players and mobs
+        double acquireRangeSq = acquireRange.get() * acquireRange.get();
         java.util.function.Predicate<Entity> candidatePredicate = entity -> {
             if (!(entity instanceof LivingEntity le)) return false;
             if (le == mc.player) return false;
             if (!le.isAlive()) return false;
             // Acquire targets up to acquireRange (default 64) so long-range targets are locked onto and pathed to
-            if (le.distanceTo(mc.player) > acquireRange.get()) return false;
+            if (le.distanceToSqr(mc.player) > acquireRangeSq) return false;
 
             // Check entity type filter (mobs). Self-heal: if the saved config
             // has an EMPTY target-entities list (observed — the module then
@@ -943,12 +944,6 @@ public class CombatBrainModule extends Module {
         trackedEntityCount = candidateCount;
 
         // Anti-flicker / switch-delay logic with target-cycling:
-        // Initial target acquisition (currentTarget == null) bypasses switch delay.
-        // Post-acquisition switches require switch-delay ticks to elapse and:
-        //   - either new best score exceeds current by margin 0.15, OR
-        //   - target has been held >= 2 * switchDelay ticks (e.g. 40 ticks), allowing cycling
-        //     to the highest-scoring candidate (bestScore > currentScore) so skeletons/ranged
-        //     mobs get tracked instead of being permanently locked out by nearby zombies.
         if (currentTarget != null && isTargetValid(currentTarget)) {
             int ticksSinceLastSwitch = tickCounter - lastSwitchTick;
             switchTimer = ticksSinceLastSwitch;
@@ -1209,6 +1204,9 @@ public class CombatBrainModule extends Module {
         disableModule(AutoWeapon.class);
         disableModule(AutoTool.class);
         disableModule(Criticals.class);
+        disableModule(HoleFiller.class);
+        disableModule(Surround.class);
+        disableModule(ArrowDodge.class);
         if (automator != null) {
             automator.shutdown();
         }
@@ -1402,7 +1400,7 @@ public class CombatBrainModule extends Module {
                 disableModule(ArrowDodge.class);
                 enableModule(Surround.class);
                 enableModule(HoleFiller.class);
-                transitionTo(BrainState.IDLE);
+                transitionTo(BrainState.HEALING);
             }
             case FLEE -> {
                 info("Emergency: fleeing");
@@ -1413,7 +1411,7 @@ public class CombatBrainModule extends Module {
                 if (followController != null && currentTarget != null) {
                     followController.flee(currentTarget, fleeDistance.get() * 2.0);
                 }
-                transitionTo(BrainState.IDLE);
+                transitionTo(BrainState.FLEEING);
             }
         }
     }

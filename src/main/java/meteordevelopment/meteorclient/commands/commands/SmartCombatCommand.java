@@ -11,7 +11,7 @@ import meteordevelopment.meteorclient.commands.Command;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.SmartCombatModule;
-import meteordevelopment.meteorclient.systems.modules.combat.SmartCombatModule.CombatMode;
+import meteordevelopment.meteorclient.systems.modules.combat.SmartCombatModule.CombatStrategy;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -41,8 +41,8 @@ public class SmartCombatCommand extends Command {
                     .executes(context -> {
                         SmartCombatModule module = Modules.get().get(SmartCombatModule.class);
                         @SuppressWarnings("unchecked")
-                        Setting<CombatMode> setting = (Setting<CombatMode>) (Setting<?>) module.settings.get("combat-mode");
-                        setting.set(CombatMode.SMART);
+                        Setting<CombatStrategy> setting = (Setting<CombatStrategy>) (Setting<?>) module.settings.get("strategy");
+                        setting.set(CombatStrategy.SMART);
                         info("Combat mode set to smart.");
                         return SINGLE_SUCCESS;
                     })
@@ -51,8 +51,8 @@ public class SmartCombatCommand extends Command {
                     .executes(context -> {
                         SmartCombatModule module = Modules.get().get(SmartCombatModule.class);
                         @SuppressWarnings("unchecked")
-                        Setting<CombatMode> setting = (Setting<CombatMode>) (Setting<?>) module.settings.get("combat-mode");
-                        setting.set(CombatMode.AGGRESSIVE);
+                        Setting<CombatStrategy> setting = (Setting<CombatStrategy>) (Setting<?>) module.settings.get("strategy");
+                        setting.set(CombatStrategy.AGGRESSIVE);
                         info("Combat mode set to aggressive.");
                         return SINGLE_SUCCESS;
                     })
@@ -61,8 +61,8 @@ public class SmartCombatCommand extends Command {
                     .executes(context -> {
                         SmartCombatModule module = Modules.get().get(SmartCombatModule.class);
                         @SuppressWarnings("unchecked")
-                        Setting<CombatMode> setting = (Setting<CombatMode>) (Setting<?>) module.settings.get("combat-mode");
-                        setting.set(CombatMode.DEFENSIVE);
+                        Setting<CombatStrategy> setting = (Setting<CombatStrategy>) (Setting<?>) module.settings.get("strategy");
+                        setting.set(CombatStrategy.DEFENSIVE);
                         info("Combat mode set to defensive.");
                         return SINGLE_SUCCESS;
                     })

@@ -15,7 +15,7 @@ import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
 import baritone.api.utils.BetterBlockPos;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.LivingEntity;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
@@ -28,7 +28,7 @@ public class CombatPathManager {
     private PathingCommandType activeCommandType = null;
     private boolean combatModeActive = false;
 
-    private Player activeTarget = null;
+    private LivingEntity activeTarget = null;
     private BlockPos activeHole = null;
 
     public CombatPathManager() {
@@ -37,7 +37,7 @@ public class CombatPathManager {
         this.baritone.getPathingControlManager().registerProcess(process);
     }
 
-    public void startRetreat(BlockPos hole, Player enemy) {
+    public void startRetreat(BlockPos hole, LivingEntity enemy) {
         this.activeTarget = enemy;
         this.activeHole = hole;
         this.activeGoal = new GoalGetToBlock(hole);
@@ -47,7 +47,7 @@ public class CombatPathManager {
         enableCombatMode(true);
     }
 
-    public void startFlee(Player enemy, double distance) {
+    public void startFlee(LivingEntity enemy, double distance) {
         this.activeTarget = enemy;
         this.activeHole = null;
         
@@ -102,6 +102,9 @@ public class CombatPathManager {
 
     public void enableCombatMode(boolean enabled) {
         this.combatModeActive = enabled;
+        try {
+            BaritoneAPI.getSettings().combatMode.value = enabled;
+        } catch (Exception ignored) {}
         // Fresh goal command: cancel stale pathing so the next SET_GOAL_AND_PATH
         // from CombatProcess starts clean instead of inheriting an old path.
         if (enabled) {

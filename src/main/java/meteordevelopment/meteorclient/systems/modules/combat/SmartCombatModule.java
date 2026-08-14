@@ -30,10 +30,10 @@ public class SmartCombatModule extends Module {
 
     // General
 
-    private final Setting<CombatMode> combatMode = sgGeneral.add(new EnumSetting.Builder<CombatMode>()
-        .name("combat-mode")
+    private final Setting<CombatStrategy> combatStrategy = sgGeneral.add(new EnumSetting.Builder<CombatStrategy>()
+        .name("strategy")
         .description("Combat strategy: SMART adapts, AGGRESSIVE prioritizes attack speed, DEFENSIVE prioritizes safety.")
-        .defaultValue(CombatMode.SMART)
+        .defaultValue(CombatStrategy.SMART)
         .build()
     );
 
@@ -103,7 +103,9 @@ public class SmartCombatModule extends Module {
         Rotations.rotate(Rotations.getYaw(currentTarget), Rotations.getPitch(currentTarget, Target.Body));
 
         double dist = mc.player.distanceTo(currentTarget);
-        if (attackTimer <= 0 && dist <= range.get()) {
+        boolean weaponReady = mc.player.getAttackStrengthScale(0.5f) >= 0.9f;
+
+        if (attackTimer <= 0 && dist <= range.get() && (weaponReady || combatStrategy.get() == CombatStrategy.AGGRESSIVE)) {
             mc.gameMode.attack(mc.player, currentTarget);
             mc.player.swing(InteractionHand.MAIN_HAND);
             attackTimer = delay.get();
@@ -122,8 +124,8 @@ public class SmartCombatModule extends Module {
         return currentTarget;
     }
 
-    public CombatMode getCombatMode() {
-        return combatMode.get();
+    public CombatStrategy getCombatStrategy() {
+        return combatStrategy.get();
     }
 
     public double getRange() {
@@ -138,7 +140,7 @@ public class SmartCombatModule extends Module {
         return attackTimer;
     }
 
-    public enum CombatMode {
+    public enum CombatStrategy {
         SMART,
         AGGRESSIVE,
         DEFENSIVE

@@ -86,7 +86,7 @@ public class CombatDecisionOverlay extends Module {
         if (cb != null && cb.isActive()) {
             modeStr = "Mode: " + cb.getCombatMode().name();
         } else if (sc != null) {
-            modeStr = "Mode: " + (sc.isActive() ? sc.getCombatMode().name() : "DISABLED");
+            modeStr = "Mode: " + (sc.isActive() ? sc.getCombatStrategy().name() : "DISABLED");
         } else {
             modeStr = "Mode: DISABLED";
         }

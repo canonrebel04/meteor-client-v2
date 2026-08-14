@@ -5,8 +5,12 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.systems.friends.Friends;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -14,14 +18,31 @@ import net.minecraft.world.item.Items;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class ThreatSnapshot {
-    private final Player target;
+    private final LivingEntity target;
     private final double distance;
     private final double threatLevel;
 
     public ThreatSnapshot(double scanRange) {
-        this.target = TargetUtils.getPlayerTarget(scanRange, SortPriority.LowestDistance);
-        if (target != null) {
-            this.distance = mc.player.distanceTo(target);
+        if (mc.player == null) {
+            this.target = null;
+            this.distance = Double.MAX_VALUE;
+            this.threatLevel = 0.0;
+            return;
+        }
+
+        double scanRangeSq = scanRange * scanRange;
+        Entity t = TargetUtils.get(entity -> {
+            if (!(entity instanceof LivingEntity le) || !le.isAlive() || le == mc.player) return false;
+            if (le.distanceToSqr(mc.player) > scanRangeSq) return false;
+            if (le instanceof Player player) {
+                return !Friends.get().isFriend(player);
+            }
+            return le.getType().getCategory() == MobCategory.MONSTER;
+        }, SortPriority.LowestDistance);
+
+        this.target = t instanceof LivingEntity le ? le : null;
+        if (this.target != null) {
+            this.distance = mc.player.distanceTo(this.target);
             this.threatLevel = calculateThreat();
         } else {
             this.distance = Double.MAX_VALUE;
@@ -29,7 +50,7 @@ public class ThreatSnapshot {
         }
     }
 
-    public Player getTarget() {
+    public LivingEntity getTarget() {
         return target;
     }
 

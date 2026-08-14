@@ -70,8 +70,7 @@ public class ModuleAutomator {
         evalBedRule(target);
         evalLowHealthRule();
         evalWaterRule(target);
-        evalHoleRule();
-        evalSwarmSurroundRule();
+        evalSurroundRule();
         evalScaffoldFleeRule();
     }
 
@@ -178,9 +177,16 @@ public class ModuleAutomator {
     private void evalNoTotemRule() {
         boolean active = false;
         if (brain.autoTotemSetting.get() && mc.player != null) {
-            float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
-            int totems = countTotems();
-            if (totems == 0 && health < 10.0f) {
+            boolean offhandHasTotem = mc.player.getOffhandItem().getItem() == Items.TOTEM_OF_UNDYING;
+            boolean hasTotemInInv = false;
+            for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+                if (mc.player.getInventory().getItem(i).getItem() == Items.TOTEM_OF_UNDYING) {
+                    hasTotemInInv = true;
+                    break;
+                }
+            }
+            // AutoTotem should activate if the offhand lacks a totem but one exists in inventory
+            if (!offhandHasTotem && hasTotemInInv) {
                 active = true;
             }
         }
@@ -276,23 +282,17 @@ public class ModuleAutomator {
         return false;
     }
 
-    private void evalHoleRule() {
-        boolean active = false;
-        if (brain.holeDetect.get() && mc.player != null) {
-            active = isIn1x1Hole();
-        }
-        setModuleState(Surround.class, active);
-        if (active) activeRuleNames.add("HoleDetect");
-    }
-
     /**
-     * Swarm-surround: when 3+ hostiles are within 4 blocks, box ourselves in
-     * with Surround so the crowd can't all land hits at once. This is distinct
-     * from the hole rule (which only fires when standing in a 1x1 hole) — it
-     * protects in open ground against mob swarms.
+     * Unified surround rule evaluating both 1x1 hole containment and open-field mob swarm defense.
      */
-    private void evalSwarmSurroundRule() {
-        boolean active = false;
+    private void evalSurroundRule() {
+        boolean holeActive = false;
+        if (brain.holeDetect.get() && mc.player != null) {
+            holeActive = isIn1x1Hole();
+            if (holeActive) activeRuleNames.add("HoleDetect");
+        }
+
+        boolean swarmActive = false;
         if (brain.swarmSurround.get() && mc.player != null && mc.level != null) {
             int hostiles = 0;
             for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
@@ -302,10 +302,11 @@ public class ModuleAutomator {
                 if (!hostile) continue;
                 if (le.distanceToSqr(mc.player) <= 4.0 * 4.0) hostiles++;
             }
-            active = hostiles >= 3;
+            swarmActive = hostiles >= 3;
+            if (swarmActive) activeRuleNames.add("SwarmSurround");
         }
-        setModuleState(Surround.class, active);
-        if (active) activeRuleNames.add("SwarmSurround");
+
+        setModuleState(Surround.class, holeActive || swarmActive);
     }
 
     /**

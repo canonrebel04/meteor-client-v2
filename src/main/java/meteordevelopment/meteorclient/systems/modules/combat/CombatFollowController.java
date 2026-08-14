@@ -71,7 +71,7 @@ public class CombatFollowController {
         // inside hills, producing the wander/dig behavior. GoalNear(radius)
         // accepts ANY position within `distance` blocks, so the bot approaches
         // naturally and stops just outside the target's effective range.
-        BaritoneAPI.getSettings().followRadius.value = Math.max(1, (int) Math.ceil(distance));
+        BaritoneAPI.getSettings().followRadius.value = distance <= 3.5 ? Math.max(1, (int) Math.floor(distance)) : Math.max(1, (int) Math.ceil(distance));
         BaritoneAPI.getSettings().followOffsetDistance.value = 0.0;
 
         // Sprinting: reverted to baritone's DEFAULT behavior (no forced SPRINT
@@ -86,15 +86,6 @@ public class CombatFollowController {
         // destination, but baritone won't path straight through a 20-zombie
         // swarm to get there.
         BaritoneAPI.getSettings().avoidance.value = true;
-
-        // ANTICHEAT: humanize look direction. Baritone walks perfect lines and
-        // keeps a perfectly stable look — a tell for automation on predictive
-        // anticheats (Grim et al). randomLooking adds slight yaw/pitch wander
-        // (community-verified: `#set randomLooking 1` is the known fix for
-        // baritone being flagged). antiCheatCompatibility is already true in
-        // this fork. Restored to the user's value in stop().
-        BaritoneAPI.getSettings().randomLooking.value = Math.max(
-            BaritoneAPI.getSettings().randomLooking.value, 0.5);
 
         // H2 fix: match by UUID instead of reference equality (`e == target`).
         // Entity instances are replaced on respawn / dimension switch / ID
@@ -114,8 +105,14 @@ public class CombatFollowController {
         }
 
         net.minecraft.world.phys.Vec3 targetVel = target.getDeltaMovement();
-        net.minecraft.world.phys.Vec3 predictedPos = target.position().add(targetVel.scale(20.0));
-        net.minecraft.core.BlockPos predictedBlock = net.minecraft.core.BlockPos.containing(predictedPos);
+        double decay = (1.0 - Math.pow(0.91, 10)) / (1.0 - 0.91); // 10-tick horizon with ground/air friction
+        double predX = target.getX() + targetVel.x * decay;
+        double predZ = target.getZ() + targetVel.z * decay;
+        net.minecraft.core.BlockPos predictedBlock = new net.minecraft.core.BlockPos(
+            (int) Math.floor(predX),
+            target.getBlockY(),
+            (int) Math.floor(predZ)
+        );
 
         GoalRunAway runAwayGoal = new GoalRunAway(distance, predictedBlock);
         goalProcess.setGoalAndPath(runAwayGoal);
@@ -128,10 +125,8 @@ public class CombatFollowController {
         followUuid = null;
         followDistance = -1.0;
 
-        // No sprint override to release (reverted to default baritone sprint);
-        // only disable the toggles we own: mob avoidance + randomLooking.
+        // Reset toggles
         BaritoneAPI.getSettings().avoidance.value = false;
-        BaritoneAPI.getSettings().randomLooking.value = 0.01;
 
         followProcess.cancel();
         baritone.getPathingBehavior().cancelEverything();

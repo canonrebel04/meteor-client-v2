@@ -111,7 +111,7 @@ public class SmartCombatHud extends HudElement {
 
         String title = (cb != null && cb.isActive()) ? "CombatBrain" : "SmartCombat";
         String status = (cb != null && cb.isActive()) ? "Enabled" : (module != null && module.isActive() ? "Enabled" : "Disabled");
-        String mode = "Mode: " + ((cb != null && cb.isActive()) ? cb.getCombatMode().name() : (module != null ? module.getCombatMode().name() : "N/A"));
+        String mode = "Mode: " + ((cb != null && cb.isActive()) ? cb.getCombatMode().name() : (module != null ? module.getCombatStrategy().name() : "N/A"));
         String targetLine = "Target: none";
         String timerLine = "Timer: --";
 
@@ -174,7 +174,7 @@ public class SmartCombatHud extends HudElement {
         y += lineHeight;
 
         // Mode
-        String modeName = (cb != null && cb.isActive()) ? cb.getCombatMode().name() : (module != null ? module.getCombatMode().name() : "N/A");
+        String modeName = (cb != null && cb.isActive()) ? cb.getCombatMode().name() : (module != null ? module.getCombatStrategy().name() : "N/A");
         renderer.text("Mode: " + modeName, x, y, secondaryColor.get(), false, getScale());
         y += lineHeight;
 

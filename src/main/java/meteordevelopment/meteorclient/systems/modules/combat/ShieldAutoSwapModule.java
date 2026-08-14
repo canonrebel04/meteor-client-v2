@@ -28,8 +28,9 @@ public class ShieldAutoSwapModule extends Module {
         .build()
     );
 
-    private ItemStack previousItem;
+    private ItemStack previousItem = ItemStack.EMPTY;
     private int swapTimer;
+    private int swapCooldown = 0;
 
     public ShieldAutoSwapModule() {
         super(Categories.Combat, "shield-auto-swap", "Automatically swaps to shield when taking damage and swaps back when attacking.");
@@ -37,19 +38,26 @@ public class ShieldAutoSwapModule extends Module {
 
     @Override
     public void onActivate() {
-        previousItem = mc.player.getOffhandItem().copy();
+        previousItem = ItemStack.EMPTY;
         swapTimer = 0;
+        swapCooldown = 0;
     }
 
     @Override
     public void onDeactivate() {
-        previousItem = null;
+        previousItem = ItemStack.EMPTY;
         swapTimer = 0;
+        swapCooldown = 0;
     }
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
         if (!Utils.canUpdate()) return;
+
+        if (swapCooldown > 0) {
+            swapCooldown--;
+            return;
+        }
 
         boolean takingDamage = mc.player.hurtTime > 0;
         boolean hasShield = mc.player.getOffhandItem().getItem() == Items.SHIELD;
@@ -57,16 +65,22 @@ public class ShieldAutoSwapModule extends Module {
         if (takingDamage && !hasShield) {
             FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD);
             if (shield.found()) {
+                previousItem = mc.player.getOffhandItem().copy();
                 InvUtils.move().from(shield.slot()).toOffhand();
+                swapCooldown = 4;
             }
             swapTimer = 0;
         } else if (!takingDamage && hasShield) {
             swapTimer++;
-            if (swapTimer >= swapDelay.get() && previousItem != null) {
-                FindItemResult prev = InvUtils.find(itemStack -> itemStack.getItem() == previousItem.getItem());
-                if (prev.found()) {
-                    InvUtils.move().from(prev.slot()).toOffhand();
+            if (swapTimer >= Math.max(1, swapDelay.get())) {
+                if (previousItem != null && !previousItem.isEmpty()) {
+                    FindItemResult prev = InvUtils.find(itemStack -> itemStack.getItem() == previousItem.getItem());
+                    if (prev.found()) {
+                        InvUtils.move().from(prev.slot()).toOffhand();
+                        swapCooldown = 4;
+                    }
                 }
+                previousItem = ItemStack.EMPTY;
                 swapTimer = 0;
             }
         } else {

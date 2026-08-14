@@ -98,9 +98,9 @@ public class AntiDetectionModule extends Module {
             yawDeg = Math.round(yawDeg * 2.0) / 2.0;
             pitchDeg = Math.round(pitchDeg * 2.0) / 2.0;
 
-            mc.player.setYRot(mc.player.getYRot() + (float) Math.toRadians(yawDeg));
+            mc.player.setYRot(mc.player.getYRot() + (float) yawDeg);
             mc.player.setXRot(net.minecraft.util.Mth.clamp(
-                mc.player.getXRot() + (float) Math.toRadians(pitchDeg), -90.0f, 90.0f));
+                mc.player.getXRot() + (float) pitchDeg, -90.0f, 90.0f));
         }
 
         sneakTimer++;

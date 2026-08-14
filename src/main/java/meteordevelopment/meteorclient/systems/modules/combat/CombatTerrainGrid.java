@@ -59,8 +59,18 @@ public class CombatTerrainGrid {
         this.grid3D = new byte[dim * yLevels * dim];
     }
 
+    private long lastUpdateTick = -1;
+    private Entity lastTarget = null;
+
     public void update(Entity target) {
         if (mc.player == null || mc.level == null) return;
+
+        long currentTick = mc.level.getGameTime();
+        if (currentTick == lastUpdateTick && target == lastTarget) {
+            return;
+        }
+        lastUpdateTick = currentTick;
+        lastTarget = target;
 
         centerX = mc.player.blockPosition().getX();
         centerY = mc.player.blockPosition().getY();
@@ -124,7 +134,8 @@ public class CombatTerrainGrid {
         if (state.isAir()) return CELL_AIR;
         if (state.is(Blocks.WATER)) return CELL_WATER;
         if (state.is(Blocks.LAVA)) return CELL_LAVA;
-        return CELL_SOLID;
+        if (state.canOcclude() && !state.getCollisionShape(mc.level, pos).isEmpty()) return CELL_SOLID;
+        return CELL_AIR;
     }
 
     public String getGridString() {
@@ -239,7 +250,7 @@ public class CombatTerrainGrid {
 
         for (BlockPos pos : voxels) {
             BlockState state = mc.level.getBlockState(pos);
-            if (!state.isAir() && !state.is(Blocks.WATER) && !state.is(Blocks.LAVA)) {
+            if (!state.isAir() && !state.is(Blocks.WATER) && !state.is(Blocks.LAVA) && state.canOcclude() && !state.getCollisionShape(mc.level, pos).isEmpty()) {
                 if (seen.add(pos.asLong())) {
                     blockers.add(pos);
                 }
@@ -253,18 +264,17 @@ public class CombatTerrainGrid {
         if (mc.player == null || mc.level == null || target == null) return false;
 
         Vec3 start = mc.player.getEyePosition();
-        Vec3 end = new Vec3(target.blockPosition().getX() + 0.5, target.blockPosition().getY() + 1.0, target.blockPosition().getZ() + 0.5);
+        Vec3 end = target.getEyePosition();
 
-        List<BlockPos> voxels = raycastDDA(start, end);
+        net.minecraft.world.phys.BlockHitResult hit = mc.level.clip(new net.minecraft.world.level.ClipContext(
+            start,
+            end,
+            net.minecraft.world.level.ClipContext.Block.COLLIDER,
+            net.minecraft.world.level.ClipContext.Fluid.NONE,
+            mc.player
+        ));
 
-        for (BlockPos pos : voxels) {
-            BlockState state = mc.level.getBlockState(pos);
-            if (!state.isAir() && !state.is(Blocks.WATER) && !state.is(Blocks.LAVA)) {
-                return false;
-            }
-        }
-
-        return true;
+        return hit.getType() == net.minecraft.world.phys.HitResult.Type.MISS;
     }
 
     public boolean isTargetBehindCover(Entity target) {
