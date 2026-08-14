@@ -21,9 +21,11 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluids;
@@ -120,10 +122,18 @@ public class ModuleAutomator {
         boolean active = false;
         double range = brain.crystalDetectRange.get();
         if (range > 0 && isCrystalNearby(range)) {
-            active = true;
+            // Only enable CrystalAura if the player actually has end crystals
+            if (hasEndCrystals()) {
+                active = true;
+            }
         }
         setModuleState(CrystalAura.class, active);
         if (active) activeRuleNames.add("CrystalDetect");
+    }
+
+    private boolean hasEndCrystals() {
+        if (mc.player == null) return false;
+        return InvUtils.find(Items.END_CRYSTAL).found();
     }
 
     private boolean isCrystalNearby(double range) {
@@ -306,7 +316,11 @@ public class ModuleAutomator {
             if (swarmActive) activeRuleNames.add("SwarmSurround");
         }
 
-        setModuleState(Surround.class, holeActive || swarmActive);
+        // Only enable Surround if player actually has blocks to place (need at
+        // least 4 for feet placement). Enabling with no blocks is a no-op that
+        // wastes module state and confuses the user.
+        boolean shouldSurround = (holeActive || swarmActive) && hasPlaceableBlocks(4);
+        setModuleState(Surround.class, shouldSurround);
     }
 
     /**
@@ -332,11 +346,30 @@ public class ModuleAutomator {
                         break;
                     }
                 }
-                active = overGap;
+                // Scaffold needs at least 3 blocks in hotbar to be useful
+                active = overGap && hasPlaceableBlocks(3);
             }
         }
         setModuleState(Scaffold.class, active);
         if (active) activeRuleNames.add("ScaffoldFlee");
+    }
+
+    /**
+     * Checks if the player has at least {@code minCount} total placeable blocks
+     * in the hotbar slots (0-8). Only hotbar matters since that's what block
+     * placement modules use.
+     */
+    private boolean hasPlaceableBlocks(int minCount) {
+        if (mc.player == null) return false;
+        int count = 0;
+        for (int i = 0; i < 9; i++) {
+            ItemStack stack = mc.player.getInventory().getItem(i);
+            if (!stack.isEmpty() && Block.byItem(stack.getItem()) != Blocks.AIR) {
+                count += stack.getCount();
+                if (count >= minCount) return true;
+            }
+        }
+        return false;
     }
 
     private boolean isIn1x1Hole() {

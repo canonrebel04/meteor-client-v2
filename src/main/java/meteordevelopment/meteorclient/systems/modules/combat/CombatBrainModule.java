@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import baritone.api.BaritoneAPI;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.pathing.PathManagers;
 import meteordevelopment.meteorclient.settings.*;
@@ -14,6 +15,7 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
+import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.meteorclient.mixin.LevelAccessor;
 import net.minecraft.core.BlockPos;
@@ -23,9 +25,11 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import meteordevelopment.meteorclient.systems.modules.player.AutoTool;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.level.block.state.BlockState;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +45,7 @@ public class CombatBrainModule extends Module {
         RETREATING,
         HEALING,
         FLEEING,
+        EMERGENCY_HOLE,  // Navigate to nearest safe 1x1 hole then surround
         EMERGENCY_LOG
     }
 
@@ -161,6 +166,16 @@ public class CombatBrainModule extends Module {
         .min(0.0)
         .max(2.0)
         .sliderMax(2.0)
+        .build()
+    );
+
+    private final Setting<Double> targetSameLevelWeight = sgScoring.add(new DoubleSetting.Builder()
+        .name("same-level-weight")
+        .description("Bonus score for targets at the same Y-level as the player. Higher values strongly prefer targets reachable without digging.")
+        .defaultValue(0.35)
+        .min(0.0)
+        .max(1.0)
+        .sliderMax(1.0)
         .build()
     );
 
@@ -533,6 +548,14 @@ public class CombatBrainModule extends Module {
     private final Map<BrainState, Integer> lastStateExitPass = new HashMap<>();
     private int passCounter;
 
+    // AllowBreak saved value
+    private boolean savedAllowBreak = true;
+    private int allowBreakCheckTimer = 0;
+
+    // Emergency hole state
+    private BlockPos emergencyHoleTarget = null;
+    private int emergencyHoleTimer = 0;
+
     // KillAura settings save/restore state
     private boolean savedKillAura = false;
     private boolean savedKillAuraState = false;
@@ -586,6 +609,13 @@ public class CombatBrainModule extends Module {
         stealthAntiDetectionEnabled = false;
         lastAttackedTimestamps.clear();
         stuckHealTicks = 0;
+        emergencyHoleTarget = null;
+        emergencyHoleTimer = 0;
+
+        // Save and apply AllowBreak based on tool availability
+        savedAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
+        allowBreakCheckTimer = 0;
+        updateAllowBreak();
 
         // Immediate target acquisition on activation so pathing starts instantly
         if (mc.player != null && mc.level != null) {
@@ -595,7 +625,7 @@ public class CombatBrainModule extends Module {
             }
         }
 
-        info("CombatBrain AI enabled");
+        info("Combat Mode AI enabled");
     }
 
     @Override
@@ -617,6 +647,32 @@ public class CombatBrainModule extends Module {
         passCounter = 0;
         killsInARow = 0;
         trackedEntityCount = 0;
+        emergencyHoleTarget = null;
+
+        // Restore AllowBreak to saved value
+        BaritoneAPI.getSettings().allowBreak.value = savedAllowBreak;
+    }
+
+    /**
+     * Post-tick sprint forcer: runs AFTER Baritone moves the player.
+     * Baritone's path executor clears sprint during path restarts; re-asserting
+     * it here ensures continuous sprinting toward the target.
+     */
+    @EventHandler
+    private void onTickPost(TickEvent.Post event) {
+        if (mc.player == null) return;
+        if (followController != null) followController.tick();
+
+        // Force sprint when actively chasing a target that isn't in arm range yet
+        if (state == BrainState.ENGAGING && currentTarget != null) {
+            double dist = mc.player.distanceTo(currentTarget);
+            if (dist > strikeDistance.get() + 0.5) {
+                mc.player.setSprinting(true);
+            }
+        } else if (state == BrainState.RETREATING || state == BrainState.FLEEING
+                   || state == BrainState.HEALING || state == BrainState.EMERGENCY_HOLE) {
+            mc.player.setSprinting(true);
+        }
     }
 
     @EventHandler
@@ -775,7 +831,19 @@ public class CombatBrainModule extends Module {
                     threatLowTicks = 0;
                 }
 
-                // Try to heal first
+                // Critically low health: try emergency hole first, then heal
+                if (health < 6.0f && !isReentryCooldownActive(BrainState.EMERGENCY_HOLE)) {
+                    // Only enter EMERGENCY_HOLE if a safe hole actually exists nearby
+                    BlockPos hole = findNearestSafeHole(16);
+                    if (hole != null) {
+                        emergencyHoleTarget = hole;
+                        emergencyHoleTimer = 0;
+                        transitionTo(BrainState.EMERGENCY_HOLE);
+                        break;
+                    }
+                }
+
+                // Try to heal
                 if (health < 10.0f) {
                     if (!isReentryCooldownActive(BrainState.HEALING)) {
                         transitionTo(BrainState.HEALING);
@@ -820,9 +888,32 @@ public class CombatBrainModule extends Module {
                 doFleeTick();
                 break;
 
+            case EMERGENCY_HOLE:
+                if (currentTarget == null || !isTargetValid(currentTarget)) {
+                    // Target gone, exit to scanning
+                    emergencyHoleTarget = null;
+                    transitionTo(BrainState.SCANNING);
+                    break;
+                }
+                // Exit when threat drops
+                if (isInvincible() || threat < engageThreshold.get()) {
+                    emergencyHoleTarget = null;
+                    transitionTo(BrainState.SCANNING);
+                    break;
+                }
+                doEmergencyHoleTick();
+                break;
+
             case EMERGENCY_LOG:
                 doEmergencyLog();
                 break;
+        }
+
+        // Every 20 ticks, re-evaluate AllowBreak based on tool inventory
+        allowBreakCheckTimer += 2;
+        if (allowBreakCheckTimer >= 20) {
+            allowBreakCheckTimer = 0;
+            updateAllowBreak();
         }
 
         // Stuck detection: if same state > 200 ticks with no progress, reset
@@ -887,6 +978,10 @@ public class CombatBrainModule extends Module {
             case FLEEING:
                 info("Fleeing");
                 break;
+            case EMERGENCY_HOLE:
+                info("Emergency: pathing to safe hole");
+                if (autoModules.get()) disableCombatModules(); // Pause attacking while retreating to hole
+                break;
             case EMERGENCY_LOG:
                 info("Emergency log triggered");
                 break;
@@ -899,6 +994,11 @@ public class CombatBrainModule extends Module {
         switch (s) {
             case ENGAGING:
                 if (autoModules.get()) disableCombatModules();
+                break;
+            case EMERGENCY_HOLE:
+                // Reset the hole timer and target when leaving emergency hole state
+                emergencyHoleTimer = 0;
+                // Don't reset emergencyHoleTarget here - doEmergencyHoleTick does that
                 break;
             default:
                 break;
@@ -1005,11 +1105,13 @@ public class CombatBrainModule extends Module {
 
     /**
      * Helper method to compute smart multi-target engagement score for a candidate entity.
+     * Incorporates a Y-level proximity bonus: targets at the same level as the player
+     * (within ±2 blocks) are heavily preferred to avoid Baritone digging underground.
      */
     private double scoreTarget(LivingEntity target) {
         CombatTargetAnalyzer.TargetAnalysis analysis = CombatTargetAnalyzer.analyze(target);
         if (analysis == null) return 0.0;
-        return CombatTargetAnalyzer.targetScore(
+        double baseScore = CombatTargetAnalyzer.targetScore(
             analysis,
             targetDistanceWeight.get(),
             targetHealthWeight.get(),
@@ -1017,6 +1119,23 @@ public class CombatBrainModule extends Module {
             targetWeaponWeight.get(),
             acquireRange.get()
         );
+
+        // Y-level proximity bonus: strongly prefer targets at the same height.
+        // This prevents the brain from Baritone-digging down to a zombie 3 floors
+        // below while a player at eye level is nearby.
+        double yDiff = Math.abs(target.getY() - mc.player.getY());
+        double sameLevelBonus;
+        if (yDiff <= 2.0) {
+            sameLevelBonus = targetSameLevelWeight.get(); // Full bonus within 2 blocks
+        } else if (yDiff <= 6.0) {
+            // Linear decay from 2→6 blocks vertical
+            sameLevelBonus = targetSameLevelWeight.get() * (1.0 - (yDiff - 2.0) / 4.0);
+        } else {
+            // Penalty beyond 6 blocks vertical: 0.05 per extra block
+            sameLevelBonus = -0.05 * (yDiff - 6.0);
+        }
+
+        return baseScore + sameLevelBonus;
     }
 
     private boolean isTargetValid(LivingEntity entity) {
@@ -1209,7 +1328,14 @@ public class CombatBrainModule extends Module {
         if (autoArmor.get()) enableModule(AutoArmor.class);
         if (autoWeapon.get()) enableModule(AutoWeapon.class);
         enableModule(AutoTool.class);
-        if (shieldSwap.get()) enableModule(ShieldAutoSwapModule.class);
+
+        // Only enable ShieldAutoSwap if the player actually has a shield somewhere
+        // in their inventory — enabling it with no shield is a silent no-op that
+        // confuses the user (module shows active, does nothing).
+        if (shieldSwap.get()) {
+            boolean hasShield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD).found();
+            if (hasShield) enableModule(ShieldAutoSwapModule.class);
+        }
 
         if (criticals.get()) enableModule(Criticals.class);
     }
@@ -1426,10 +1552,15 @@ public class CombatBrainModule extends Module {
             }
             case BURROW -> {
                 info("Emergency: burrowing");
+                // Only enable block-placement modules if blocks are available
                 disableModule(KillAura.class);
                 disableModule(ArrowDodge.class);
-                enableModule(Surround.class);
-                enableModule(HoleFiller.class);
+                if (hasPlaceableBlocksInHotbar(4)) {
+                    enableModule(Surround.class);
+                    enableModule(HoleFiller.class);
+                } else {
+                    info("Burrow skipped: no blocks in hotbar");
+                }
                 transitionTo(BrainState.HEALING);
             }
             case FLEE -> {
@@ -1444,6 +1575,172 @@ public class CombatBrainModule extends Module {
                 transitionTo(BrainState.FLEEING);
             }
         }
+    }
+
+    /**
+     * Tick handler for EMERGENCY_HOLE state: navigate to the nearest safe 1x1
+     * bedrock/obsidian hole and enable Surround once inside. Falls back to FLEEING
+     * if no hole is found within the search radius or after 100 ticks.
+     */
+    private void doEmergencyHoleTick() {
+        emergencyHoleTimer += 2;
+
+        // Timeout: if we haven't reached a hole in 100 ticks, flee instead
+        if (emergencyHoleTimer > 100) {
+            emergencyHoleTarget = null;
+            transitionTo(BrainState.FLEEING);
+            return;
+        }
+
+        // Search for or reuse the hole target
+        if (emergencyHoleTarget == null) {
+            emergencyHoleTarget = findNearestSafeHole(16);
+            if (emergencyHoleTarget == null) {
+                // No safe hole nearby — just flee
+                transitionTo(BrainState.FLEEING);
+                return;
+            }
+            info("Emergency hole found at " + emergencyHoleTarget.toShortString());
+        }
+
+        // Check if we're inside the hole
+        if (mc.player != null) {
+            BlockPos playerPos = mc.player.blockPosition();
+            if (playerPos.equals(emergencyHoleTarget) || playerPos.equals(emergencyHoleTarget.above())) {
+                // Inside the hole: enable Surround if blocks available, then heal
+                if (hasPlaceableBlocksInHotbar(4)) {
+                    enableModule(Surround.class);
+                } else {
+                    info("In hole but no blocks for Surround");
+                }
+                emergencyHoleTarget = null;
+                transitionTo(BrainState.HEALING);
+                return;
+            }
+        }
+
+        // Path to the hole using Baritone's GoalBlock
+        baritone.api.BaritoneAPI.getProvider().getPrimaryBaritone()
+            .getCustomGoalProcess()
+            .setGoalAndPath(new baritone.api.pathing.goals.GoalBlock(
+                emergencyHoleTarget.getX(), emergencyHoleTarget.getY(), emergencyHoleTarget.getZ()));
+    }
+
+    /**
+     * Searches for the nearest safe 1x1 hole (surrounded by bedrock or obsidian
+     * on all 4 sides) within {@code radius} blocks of the player.
+     * The floor of the hole must also be bedrock or obsidian.
+     *
+     * @param radius search radius in blocks
+     * @return the BlockPos of the floor of the nearest safe hole, or null
+     */
+    private BlockPos findNearestSafeHole(int radius) {
+        if (mc.player == null || mc.level == null) return null;
+        BlockPos playerPos = mc.player.blockPosition();
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                for (int y = -4; y <= 4; y++) {
+                    BlockPos candidate = playerPos.offset(x, y, z);
+                    if (isSafeHole(candidate)) {
+                        double dist = candidate.distSqr(playerPos);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            best = candidate;
+                        }
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Returns true if {@code pos} is a valid safe hole: the block at pos and
+     * one above are air, and all 4 cardinal sides plus the floor are blast-resistant
+     * (bedrock or obsidian).
+     */
+    private boolean isSafeHole(BlockPos pos) {
+        if (mc.level == null) return false;
+        // Floor and walls must be blast-resistant
+        BlockPos floor = pos.below();
+        if (!isBlastResistant(mc.level.getBlockState(floor))) return false;
+        // Cardinal walls
+        for (BlockPos wall : new BlockPos[]{pos.north(), pos.south(), pos.east(), pos.west()}) {
+            if (!isBlastResistant(mc.level.getBlockState(wall))) return false;
+            if (!isBlastResistant(mc.level.getBlockState(wall.above()))) return false;
+        }
+        // The hole itself must be air (2 blocks tall)
+        if (!mc.level.getBlockState(pos).isAir()) return false;
+        if (!mc.level.getBlockState(pos.above()).isAir()) return false;
+        return true;
+    }
+
+    private boolean isBlastResistant(BlockState state) {
+        net.minecraft.world.level.block.Block block = state.getBlock();
+        return block == net.minecraft.world.level.block.Blocks.BEDROCK
+            || block == net.minecraft.world.level.block.Blocks.OBSIDIAN
+            || block == net.minecraft.world.level.block.Blocks.CRYING_OBSIDIAN
+            || block == net.minecraft.world.level.block.Blocks.REINFORCED_DEEPSLATE;
+    }
+
+    /**
+     * Checks if the player has at least {@code minCount} total solid placeable
+     * blocks in hotbar slots 0-8.
+     */
+    private boolean hasPlaceableBlocksInHotbar(int minCount) {
+        if (mc.player == null) return false;
+        int count = 0;
+        for (int i = 0; i < 9; i++) {
+            ItemStack stack = mc.player.getInventory().getItem(i);
+            if (!stack.isEmpty()) {
+                net.minecraft.world.level.block.Block b = net.minecraft.world.level.block.Block.byItem(stack.getItem());
+                if (b != net.minecraft.world.level.block.Blocks.AIR) {
+                    count += stack.getCount();
+                    if (count >= minCount) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Updates BaritoneAPI.allowBreak based on whether the player has a digging
+     * tool (pickaxe, axe, or shovel) in their hotbar or main inventory.
+     * Prevents Baritone from slowly hand-mining stone or obsidian.
+     */
+    private void updateAllowBreak() {
+        if (mc.player == null) return;
+        boolean hasTool = hasDiggingTool();
+        BaritoneAPI.getSettings().allowBreak.value = hasTool;
+    }
+
+    /**
+     * Returns true if the player has a digging tool (pickaxe, axe, shovel, or
+     * hoe) anywhere in their inventory. Uses direct item identity checks since
+     * PickaxeItem/ShovelItem classes are not exposed in this MC version.
+     */
+    private boolean hasDiggingTool() {
+        if (mc.player == null) return false;
+        for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+            ItemStack stack = mc.player.getInventory().getItem(i);
+            if (stack.isEmpty()) continue;
+            net.minecraft.world.item.Item item = stack.getItem();
+            if (isDiggingTool(item)) return true;
+        }
+        return false;
+    }
+
+    private static boolean isDiggingTool(net.minecraft.world.item.Item item) {
+        return item == Items.WOODEN_PICKAXE || item == Items.STONE_PICKAXE
+            || item == Items.IRON_PICKAXE   || item == Items.GOLDEN_PICKAXE
+            || item == Items.DIAMOND_PICKAXE || item == Items.NETHERITE_PICKAXE
+            || item == Items.WOODEN_SHOVEL   || item == Items.STONE_SHOVEL
+            || item == Items.IRON_SHOVEL     || item == Items.GOLDEN_SHOVEL
+            || item == Items.DIAMOND_SHOVEL  || item == Items.NETHERITE_SHOVEL
+            || item instanceof net.minecraft.world.item.AxeItem;
     }
 
     // --- Utilities ---

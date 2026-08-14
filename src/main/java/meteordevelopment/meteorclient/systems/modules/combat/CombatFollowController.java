@@ -20,6 +20,12 @@ public class CombatFollowController {
     private UUID followUuid;
     private double followDistance;
 
+    // Minimum ticks between FollowProcess restarts. Re-issuing follow() every
+    // 2-tick pass cancels Baritone's path before it stabilises, resetting the
+    // sprint cadence. Wait at least this many ticks between restarts.
+    private static final int MIN_RESTART_INTERVAL_TICKS = 10;
+    private int ticksSinceLastRestart = 0;
+
     public enum FollowMode {
         FOLLOW,
         FLEE,
@@ -34,6 +40,16 @@ public class CombatFollowController {
         this.followDistance = -1.0;
     }
 
+    /**
+     * Called every tick (before state machine) so restart-interval tracking works
+     * even when follow()/flee() isn't called this tick.
+     */
+    public void tick() {
+        if (ticksSinceLastRestart < MIN_RESTART_INTERVAL_TICKS) {
+            ticksSinceLastRestart++;
+        }
+    }
+
     public void follow(Entity target, double distance) {
         mode = FollowMode.FOLLOW;
         currentTarget = target;
@@ -43,54 +59,42 @@ public class CombatFollowController {
             return;
         }
 
-        // Only restart the follow process when the target or the desired
-        // distance actually changed. doEngageTick re-invokes follow() every
-        // 2 ticks while chasing; cancelling + re-following each time restarts
-        // baritone's path from scratch, which resets its sprint cadence
-        // (sprint only engages once the path stabilizes) and causes the
-        // "barely sprints" behavior.
         UUID uuid = target.getUUID();
-        if (followUuid != null && followUuid.equals(uuid) && Math.abs(followDistance - distance) < 0.01) {
-            return;
+        boolean sameTarget = followUuid != null && followUuid.equals(uuid);
+        boolean sameDistance = Math.abs(followDistance - distance) < 0.01;
+
+        // Only restart when the target or distance changed AND we've waited
+        // long enough for Baritone to stabilise the current path.
+        if (sameTarget && sameDistance && ticksSinceLastRestart < MIN_RESTART_INTERVAL_TICKS) {
+            return; // Path is still running — don't disrupt it
         }
+
+        // Only restart if target or distance actually changed, or forced restart
+        if (sameTarget && sameDistance) {
+            return; // Already following with same parameters, path is stable
+        }
+
         followUuid = uuid;
         followDistance = distance;
+        ticksSinceLastRestart = 0;
 
-        // H3 fix: cancel the existing follow process BEFORE mutating settings so
-        // the restarted FollowProcess picks up the new radius/offset. Mutating
-        // settings first (old order) let a stale REQUEST_PAUSE / running process
-        // swallow the new values.
+        // Cancel existing follow before mutating settings so the restarted
+        // FollowProcess picks up the new radius. (H3 fix)
         followProcess.cancel();
 
-        // Configure follow distance via baritone settings
-        // Combat follow strategy: use a GoalNear RADIUS around the target, not a
-        // fixed-direction offset. The offset mode (followOffsetDistance +
-        // followOffsetDirection, default 0 = north) anchored the goal at a fixed
-        // compass offset from the mob — as the mob moved, baritone re-pathed and
-        // mined through terrain toward a position that was often behind walls or
-        // inside hills, producing the wander/dig behavior. GoalNear(radius)
-        // accepts ANY position within `distance` blocks, so the bot approaches
-        // naturally and stops just outside the target's effective range.
-        BaritoneAPI.getSettings().followRadius.value = distance <= 3.5 ? Math.max(1, (int) Math.floor(distance)) : Math.max(1, (int) Math.ceil(distance));
+        // followRadius: use floor for close (≤3.5 m) and ceil for further away
+        BaritoneAPI.getSettings().followRadius.value = distance <= 3.5
+            ? Math.max(1, (int) Math.floor(distance))
+            : Math.max(1, (int) Math.ceil(distance));
         BaritoneAPI.getSettings().followOffsetDistance.value = 0.0;
 
-        // Sprinting: reverted to baritone's DEFAULT behavior (no forced SPRINT
-        // input, humanizeMovements left at its default). Forcing the sprint
-        // input made baritone's PathExecutor see a permanent SPRINT request it
-        // kept clearing/restarting, which suppressed sprinting rather than
-        // enabling it. Baritone sprints on its own when the path allows.
-
-        // Mob avoidance: route the approach AROUND clusters instead of through
-        // them. Avoidance.create() adds a spherical path-cost bump (coefficient
-        // 1.5, radius 8) around every mob; the follow goal still wins at the
-        // destination, but baritone won't path straight through a 20-zombie
-        // swarm to get there.
-        BaritoneAPI.getSettings().avoidance.value = true;
+        // Avoidance DISABLED: avoidance routes Baritone around every nearby mob
+        // in a radius-8 cost sphere, causing massive arc detours that delay and
+        // suppress sprinting. KillAura handles mobs in weapon range; we want a
+        // direct beeline to the primary target.
+        BaritoneAPI.getSettings().avoidance.value = false;
 
         // H2 fix: match by UUID instead of reference equality (`e == target`).
-        // Entity instances are replaced on respawn / dimension switch / ID
-        // reallocation, which silently killed the follow. UUID matching survives
-        // those cases.
         UUID targetUuid = target.getUUID();
         followProcess.follow(e -> e != null && e.getUUID().equals(targetUuid));
     }
@@ -124,8 +128,9 @@ public class CombatFollowController {
         currentTarget = null;
         followUuid = null;
         followDistance = -1.0;
+        ticksSinceLastRestart = 0;
 
-        // Reset toggles
+        // Restore avoidance default (false)
         BaritoneAPI.getSettings().avoidance.value = false;
 
         followProcess.cancel();

@@ -13,7 +13,6 @@ import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
-import meteordevelopment.meteorclient.systems.modules.combat.TacticalBrain;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
@@ -75,17 +74,16 @@ public class CombatDecisionOverlay extends Module {
     @EventHandler
     private void onRender2D(Render2DEvent event) {
         CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
-        TacticalBrain brain = Modules.get().get(TacticalBrain.class);
 
-        if (cb == null && brain == null) return;
+        if (cb == null) return;
 
         // Build text lines
         String title = "Combat Decision";
-        String mode = "Mode: " + (cb != null && cb.isActive() ? cb.getCombatMode().name() : "IDLE");
-        String status = "Status: " + (cb != null && cb.isActive() ? "Active (" + cb.getState().name() + ")" : "Idle");
+        String mode = "Mode: " + (cb.isActive() ? cb.getCombatMode().name() : "IDLE");
+        String status = "Status: " + (cb.isActive() ? "Active (" + cb.getState().name() + ")" : "Idle");
 
         String targetLine;
-        Entity target = cb != null ? cb.getCurrentTarget() : null;
+        Entity target = cb.getCurrentTarget();
         if (target != null && mc.player != null) {
             double dist = Math.round(mc.player.distanceTo(target) * 10.0) / 10.0;
             targetLine = "Target: " + target.getName().getString() + " (" + dist + "m)";
@@ -93,10 +91,10 @@ public class CombatDecisionOverlay extends Module {
             targetLine = "Target: none";
         }
 
-        String timerLine = "Phase: " + (cb != null && cb.isActive() ? cb.getStrikePhase().name() : "N/A");
-        String rangeLine = "Kills: " + (cb != null ? cb.getKillsInCombat() + " (Streak: " + cb.getKillsInARow() + ")" : "0");
+        String timerLine = "Phase: " + (cb.isActive() ? cb.getStrikePhase().name() : "N/A");
+        String rangeLine = "Kills: " + cb.getKillsInCombat() + " (Streak: " + cb.getKillsInARow() + ")";
 
-        String brainAction = "AI Action: " + (cb != null && cb.isActive() ? cb.getInfoString() : (brain != null && brain.isActive() ? brain.getInfoString() : "N/A"));
+        String brainAction = "AI Action: " + (cb.isActive() ? cb.getInfoString() : "N/A");
 
         TextRenderer text = TextRenderer.get();
         text.begin(scale.get());
