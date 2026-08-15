@@ -556,6 +556,11 @@ public class CombatBrainModule extends Module {
     private BlockPos emergencyHoleTarget = null;
     private int emergencyHoleTimer = 0;
 
+    // Group awareness and tactical positioning
+    private CombatGroupAwareness.GroupSnapshot lastGroupSnapshot = null;
+    private CombatTacticalPositioner tacticalPositioner = null;
+    private int groupAwarenessTimer = 0;
+
     // KillAura settings save/restore state
     private boolean savedKillAura = false;
     private boolean savedKillAuraState = false;
@@ -606,6 +611,9 @@ public class CombatBrainModule extends Module {
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
+        tacticalPositioner = new CombatTacticalPositioner();
+        lastGroupSnapshot = null;
+        groupAwarenessTimer = 0;
         stealthAntiDetectionEnabled = false;
         lastAttackedTimestamps.clear();
         stuckHealTicks = 0;
@@ -631,6 +639,7 @@ public class CombatBrainModule extends Module {
     @Override
     public void onDeactivate() {
         if (followController != null) followController.stop();
+        if (tacticalPositioner != null) tacticalPositioner.stop();
         if (automator != null) automator.shutdown();
         if (stealthAntiDetectionEnabled) {
             disableModule(AntiDetectionModule.class);
@@ -642,6 +651,8 @@ public class CombatBrainModule extends Module {
         modeHoldTimer = 0;
         currentTarget = null;
         followController = null;
+        tacticalPositioner = null;
+        lastGroupSnapshot = null;
         automator = null;
         lastStateExitPass.clear();
         passCounter = 0;
@@ -654,25 +665,16 @@ public class CombatBrainModule extends Module {
     }
 
     /**
-     * Post-tick sprint forcer: runs AFTER Baritone moves the player.
-     * Baritone's path executor clears sprint during path restarts; re-asserting
-     * it here ensures continuous sprinting toward the target.
+     * Post-tick event: tick the follow controller so its restart-interval
+     * counter stays current. Sprint is now handled entirely by Baritone's
+     * CalculationContext (canSprint gate fixed for Creative) and PathingBehavior
+     * (sprint maintained during A* calculation gaps) — setSprinting() here was
+     * a no-op because the mixin intercepts Input.sprint() before it takes effect.
      */
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
         if (mc.player == null) return;
         if (followController != null) followController.tick();
-
-        // Force sprint when actively chasing a target that isn't in arm range yet
-        if (state == BrainState.ENGAGING && currentTarget != null) {
-            double dist = mc.player.distanceTo(currentTarget);
-            if (dist > strikeDistance.get() + 0.5) {
-                mc.player.setSprinting(true);
-            }
-        } else if (state == BrainState.RETREATING || state == BrainState.FLEEING
-                   || state == BrainState.HEALING || state == BrainState.EMERGENCY_HOLE) {
-            mc.player.setSprinting(true);
-        }
     }
 
     @EventHandler
@@ -1286,7 +1288,12 @@ public class CombatBrainModule extends Module {
         Set<EntityType<?>> killAuraEntities = new java.util.HashSet<>(entities.get());
         if (targetPlayers.get()) killAuraEntities.add(EntityType.PLAYER);
         ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(killAuraEntities);
-        ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(3);
+        // Set max-targets to the full group size so KillAura attacks ALL threats,
+        // not just 1 or 3. Cap at 10 to avoid absurd values.
+        int groupSize = (lastGroupSnapshot != null && !lastGroupSnapshot.targets().isEmpty())
+            ? Math.min(10, Math.max(3, lastGroupSnapshot.targets().size()))
+            : 3;
+        ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(groupSize);
 
         // ANTICHEAT: clamp KillAura attack range to 2.9 (vanilla reach is 3.0,
         // Grim allows 3.01 but ADDS the player's current velocity to the reach
@@ -1387,8 +1394,32 @@ public class CombatBrainModule extends Module {
     private void doEngageTick() {
         if (currentTarget == null) return;
 
-        // Re-analyze target periodically (or on target change) so the dynamic
-        // follow distance tracks reach/potion/gear changes.
+        // --- Gather the full threat group every 4 ticks ---
+        groupAwarenessTimer += 2;
+        if (lastGroupSnapshot == null || groupAwarenessTimer >= 4) {
+            groupAwarenessTimer = 0;
+            // Build scored list of ALL valid threats (same predicate as findBestTarget)
+            java.util.List<LivingEntity> allThreats = new java.util.ArrayList<>();
+            double acquireRangeSq = acquireRange.get() * acquireRange.get();
+            if (mc.level != null) {
+                for (net.minecraft.world.entity.Entity e : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+                    if (!(e instanceof LivingEntity le) || le == mc.player || !le.isAlive()) continue;
+                    if (le.distanceToSqr(mc.player) > acquireRangeSq) continue;
+                    Set<EntityType<?>> types = entities.get();
+                    if (!types.isEmpty() && !types.contains(le.getType())) continue;
+                    if (le instanceof Player p) {
+                        if (!targetPlayers.get() || p.isCreative() || !Friends.get().shouldAttack(p)) continue;
+                    }
+                    allThreats.add(le);
+                }
+                // Sort by score descending so primaryTarget() == highest-scored
+                allThreats.sort((a, b) -> Double.compare(scoreTarget(b), scoreTarget(a)));
+            }
+            lastGroupSnapshot = CombatGroupAwareness.compute(
+                (net.minecraft.client.player.LocalPlayer) mc.player, allThreats);
+        }
+
+        // --- Re-analyze primary target periodically ---
         if (lastAnalysis == null
             || lastAnalysis.entity() != currentTarget
             || followRecalcTimer >= followRecalcTicks.get()) {
@@ -1397,25 +1428,33 @@ public class CombatBrainModule extends Module {
         }
         followRecalcTimer++;
 
-        // Resolve follow distance: dynamic (reach/potion/weapon aware) or manual override (safety bubble)
+        // Resolve follow / strike distance
         double targetDistance = followDistance.get();
         if (dynamicFollow.get() && lastAnalysis != null) {
             targetDistance = CombatTargetAnalyzer.computeDynamicFollowDistance(lastAnalysis, CombatMode.modePadding(combatMode));
         }
+        double effectiveStrikeDist = Math.min(strikeDistance.get(), targetDistance);
 
-        // If hit-and-run is disabled, use standard follow behavior
-        if (!hitAndRun.get()) {
+        // --- Tactical positioning: group-aware bubble movement ---
+        // When the tactical positioner is active it takes over Baritone goal
+        // management from CombatFollowController. We only fall back to the simple
+        // follow if the snapshot is single-target and already in arm range.
+        boolean useTacticalPositioner = tacticalPositioner != null
+            && lastGroupSnapshot != null
+            && lastGroupSnapshot.targets().size() > 1;
+
+        if (useTacticalPositioner) {
+            tacticalPositioner.tick(
+                (net.minecraft.client.player.LocalPlayer) mc.player,
+                lastGroupSnapshot,
+                effectiveStrikeDist,
+                targetDistance * 3.0  // flee distance: 3x the engagement distance
+            );
+        } else if (!hitAndRun.get()) {
+            // --- Non-hit-and-run single target follow ---
             if (terrainGrid != null) {
                 terrainGrid.update(currentTarget);
-                List<BlockPos> blockers = terrainGrid.getPathBlocks();
-                if (!blockers.isEmpty()) {
-                    if (followController != null) {
-                        followController.follow(currentTarget, targetDistance);
-                    }
-                    return;
-                }
             }
-
             double dist = mc.player.distanceTo(currentTarget);
             if (dist > targetDistance + 0.5 && followController != null) {
                 followController.follow(currentTarget, targetDistance);
@@ -1423,22 +1462,10 @@ public class CombatBrainModule extends Module {
             return;
         }
 
-        // Hit-and-run strike cycle — cooldown-synchronized
-        double effectiveStrikeDist = Math.min(strikeDistance.get(), targetDistance);
-
-        // Terrain obstacle check using active phase's distance
+        // --- Hit-and-run strike cycle (single target or small group in range) ---
         if (terrainGrid != null) {
             terrainGrid.update(currentTarget);
-            List<BlockPos> blockers = terrainGrid.getPathBlocks();
-            if (!blockers.isEmpty()) {
-                if (followController != null) {
-                    double activeDist = (strikePhase == StrikePhase.STRIKE) ? effectiveStrikeDist : targetDistance;
-                    followController.follow(currentTarget, activeDist);
-                }
-                return;
-            }
         }
-
         double dist = mc.player.distanceTo(currentTarget);
 
         double myAtkSpeed = 1.6;
@@ -1453,40 +1480,37 @@ public class CombatBrainModule extends Module {
             targetJustSwung = targetPlayer.getAttackStrengthScale(0.0f) < 0.3f;
         }
 
+        // Group size-aware swarm gate: never dive into STRIKE when surrounded
+        int nearbyCount = lastGroupSnapshot != null ? lastGroupSnapshot.targets().size() : 1;
+        boolean swarmClear = nearbyCount <= 1 && countNearbyHostiles(2.0) == 0;
+        boolean safeWindow = nearbyCount <= 2 && countNearbyHostiles(3.0) <= 1 && targetJustSwung;
+
         if (strikePhase == StrikePhase.STRIKE) {
             if (strikeTimer >= activeStrikeDuration) {
                 strikePhase = StrikePhase.BUBBLE;
                 strikeTimer = 0;
                 bubbleTimer = 0;
-                if (followController != null && dist > targetDistance + 0.5) {
+                if (!useTacticalPositioner && followController != null && dist > targetDistance + 0.5) {
                     followController.follow(currentTarget, targetDistance);
                 }
             } else {
-                if (followController != null) {
+                if (!useTacticalPositioner && followController != null) {
                     followController.follow(currentTarget, effectiveStrikeDist);
                 }
                 strikeTimer += 2;
             }
         } else { // BUBBLE phase
             boolean cooldownReady = bubbleTimer >= retreatCooldownTicks.get();
-            // targetJustSwung already computed above (line ~1171) from
-            // currentTarget.getAttackStrengthScale — reuse it for the swarm gate.
-            // Never dive into STRIKE while surrounded: attacking into a swarm
-            // guarantees we get hit by the crowd. Only strike when the immediate
-            // vicinity (2 blocks) has 0 other hostiles, or at most 1 total when
-            // the primary target just swung (safe trade window).
-            boolean swarmClear = countNearbyHostiles(2.0) == 0;
-            boolean safeWindow = countNearbyHostiles(3.0) <= 1 && targetJustSwung;
             boolean shouldStrike = cooldownReady && (swarmClear || safeWindow);
 
             if (dist <= targetDistance + 0.5 && shouldStrike) {
                 strikePhase = StrikePhase.STRIKE;
                 strikeTimer = 0;
-                if (followController != null) {
+                if (!useTacticalPositioner && followController != null) {
                     followController.follow(currentTarget, effectiveStrikeDist);
                 }
             } else {
-                if (dist > targetDistance + 0.5 && followController != null) {
+                if (!useTacticalPositioner && dist > targetDistance + 0.5 && followController != null) {
                     followController.follow(currentTarget, targetDistance);
                 }
                 bubbleTimer += 2;
