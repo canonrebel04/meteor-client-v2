@@ -1394,11 +1394,17 @@ public class CombatBrainModule extends Module {
     private void doEngageTick() {
         if (currentTarget == null) return;
 
+        float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+        int totems = countTotems();
+        boolean canTakeRisk = isInvincible()
+            || totems > 0
+            || health >= 14.0f
+            || (combatMode == CombatMode.AGGRESSIVE && health >= 10.0f);
+
         // --- Gather the full threat group every 4 ticks ---
         groupAwarenessTimer += 2;
         if (lastGroupSnapshot == null || groupAwarenessTimer >= 4) {
             groupAwarenessTimer = 0;
-            // Build scored list of ALL valid threats (same predicate as findBestTarget)
             java.util.List<LivingEntity> allThreats = new java.util.ArrayList<>();
             double acquireRangeSq = acquireRange.get() * acquireRange.get();
             if (mc.level != null) {
@@ -1412,11 +1418,18 @@ public class CombatBrainModule extends Module {
                     }
                     allThreats.add(le);
                 }
-                // Sort by score descending so primaryTarget() == highest-scored
                 allThreats.sort((a, b) -> Double.compare(scoreTarget(b), scoreTarget(a)));
             }
             lastGroupSnapshot = CombatGroupAwareness.compute(
                 (net.minecraft.client.player.LocalPlayer) mc.player, allThreats);
+
+            // Favor frontline threat as currentTarget when engaging groups
+            if (lastGroupSnapshot != null && lastGroupSnapshot.frontlineTarget() != null) {
+                LivingEntity front = lastGroupSnapshot.frontlineTarget();
+                if (isTargetValid(front)) {
+                    currentTarget = front;
+                }
+            }
         }
 
         // --- Re-analyze primary target periodically ---
@@ -1433,41 +1446,35 @@ public class CombatBrainModule extends Module {
         if (dynamicFollow.get() && lastAnalysis != null) {
             targetDistance = CombatTargetAnalyzer.computeDynamicFollowDistance(lastAnalysis, CombatMode.modePadding(combatMode));
         }
-        double effectiveStrikeDist = Math.min(strikeDistance.get(), targetDistance);
+        double effectiveStrikeDist = Math.min(2.4, Math.min(strikeDistance.get(), targetDistance));
 
-        // --- Tactical positioning: group-aware bubble movement ---
-        // When the tactical positioner is active it takes over Baritone goal
-        // management from CombatFollowController. We only fall back to the simple
-        // follow if the snapshot is single-target and already in arm range.
-        boolean useTacticalPositioner = tacticalPositioner != null
-            && lastGroupSnapshot != null
-            && lastGroupSnapshot.targets().size() > 1;
-
-        if (useTacticalPositioner) {
+        // --- Tactical positioning: group-aware bubble movement & distance gauging ---
+        if (tacticalPositioner != null && lastGroupSnapshot != null && lastGroupSnapshot.targets().size() > 1) {
             tacticalPositioner.tick(
                 (net.minecraft.client.player.LocalPlayer) mc.player,
+                followController,
                 lastGroupSnapshot,
+                canTakeRisk,
                 effectiveStrikeDist,
-                targetDistance * 3.0  // flee distance: 3x the engagement distance
+                targetDistance
             );
-        } else if (!hitAndRun.get()) {
-            // --- Non-hit-and-run single target follow ---
-            if (terrainGrid != null) {
-                terrainGrid.update(currentTarget);
-            }
-            double dist = mc.player.distanceTo(currentTarget);
-            if (dist > targetDistance + 0.5 && followController != null) {
-                followController.follow(currentTarget, targetDistance);
-            }
-            return;
         }
 
-        // --- Hit-and-run strike cycle (single target or small group in range) ---
         if (terrainGrid != null) {
             terrainGrid.update(currentTarget);
         }
         double dist = mc.player.distanceTo(currentTarget);
 
+        // If hit-and-run is disabled, maintain direct follow
+        if (!hitAndRun.get()) {
+            double followDist = canTakeRisk ? effectiveStrikeDist : targetDistance;
+            if (followController != null) {
+                followController.follow(currentTarget, followDist);
+            }
+            return;
+        }
+
+        // --- Hit-and-run strike cycle ---
         double myAtkSpeed = 1.6;
         try {
             myAtkSpeed = mc.player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_SPEED);
@@ -1475,43 +1482,34 @@ public class CombatBrainModule extends Module {
         int optimalStrikeTicks = (int) Math.ceil(20.0 / myAtkSpeed) + 4;
         int activeStrikeDuration = Math.max(optimalStrikeTicks, strikeDurationTicks.get());
 
-        boolean targetJustSwung = false;
-        if (currentTarget instanceof Player targetPlayer) {
-            targetJustSwung = targetPlayer.getAttackStrengthScale(0.0f) < 0.3f;
-        }
-
-        // Group size-aware swarm gate: never dive into STRIKE when surrounded
-        int nearbyCount = lastGroupSnapshot != null ? lastGroupSnapshot.targets().size() : 1;
-        boolean swarmClear = nearbyCount <= 1 && countNearbyHostiles(2.0) == 0;
-        boolean safeWindow = nearbyCount <= 2 && countNearbyHostiles(3.0) <= 1 && targetJustSwung;
+        boolean cooldownReady = bubbleTimer >= retreatCooldownTicks.get();
+        boolean shouldStrike = cooldownReady || canTakeRisk || dist <= 3.2;
 
         if (strikePhase == StrikePhase.STRIKE) {
-            if (strikeTimer >= activeStrikeDuration) {
+            if (strikeTimer >= activeStrikeDuration && !canTakeRisk) {
                 strikePhase = StrikePhase.BUBBLE;
                 strikeTimer = 0;
                 bubbleTimer = 0;
-                if (!useTacticalPositioner && followController != null && dist > targetDistance + 0.5) {
+                if (followController != null) {
                     followController.follow(currentTarget, targetDistance);
                 }
             } else {
-                if (!useTacticalPositioner && followController != null) {
+                if (followController != null) {
                     followController.follow(currentTarget, effectiveStrikeDist);
                 }
                 strikeTimer += 2;
             }
         } else { // BUBBLE phase
-            boolean cooldownReady = bubbleTimer >= retreatCooldownTicks.get();
-            boolean shouldStrike = cooldownReady && (swarmClear || safeWindow);
-
-            if (dist <= targetDistance + 0.5 && shouldStrike) {
+            if (shouldStrike) {
                 strikePhase = StrikePhase.STRIKE;
                 strikeTimer = 0;
-                if (!useTacticalPositioner && followController != null) {
+                if (followController != null) {
                     followController.follow(currentTarget, effectiveStrikeDist);
                 }
             } else {
-                if (!useTacticalPositioner && dist > targetDistance + 0.5 && followController != null) {
-                    followController.follow(currentTarget, targetDistance);
+                double bufferDist = canTakeRisk ? Math.min(2.7, targetDistance) : targetDistance;
+                if (followController != null) {
+                    followController.follow(currentTarget, bufferDist);
                 }
                 bubbleTimer += 2;
             }
