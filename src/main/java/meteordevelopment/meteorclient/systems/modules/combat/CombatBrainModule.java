@@ -30,6 +30,10 @@ import net.minecraft.world.item.Items;
 import meteordevelopment.meteorclient.systems.modules.player.AutoTool;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.level.block.state.BlockState;
+import meteordevelopment.meteorclient.utils.player.Rotations;
+import meteordevelopment.meteorclient.utils.player.FindItemResult;
+import meteordevelopment.meteorclient.utils.entity.Target;
+import net.minecraft.world.entity.monster.Creeper;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -290,6 +294,20 @@ public class CombatBrainModule extends Module {
         .min(0)
         .max(200)
         .sliderMax(200)
+        .build()
+    );
+
+    private final Setting<Boolean> creeperDefense = sgEngagement.add(new BoolSetting.Builder()
+        .name("creeper-defense")
+        .description("Detect swelling creepers, face them directly, raise shield to block explosions, or sprint away if no shield.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> bhop = sgEngagement.add(new BoolSetting.Builder()
+        .name("bhop")
+        .description("Jump-sprint (bunny hop) while moving forward on open ground to gain momentum and emulate player movement.")
+        .defaultValue(true)
         .build()
     );
 
@@ -572,6 +590,9 @@ public class CombatBrainModule extends Module {
     private KillAura.RotationMode savedRotate = KillAura.RotationMode.Always;
     private Set<EntityType<?>> savedEntities = null;
 
+    // Creeper defense state
+    private boolean shieldRaisedForCreeper = false;
+
     // Target tracking statistics
     private int trackedEntityCount = 0;
     private int killedInCombat = 0;
@@ -608,6 +629,7 @@ public class CombatBrainModule extends Module {
         trackedEntityCount = 0;
         lastKillTick = -999;
         savedKillAura = false;
+        shieldRaisedForCreeper = false;
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
@@ -645,6 +667,10 @@ public class CombatBrainModule extends Module {
             disableModule(AntiDetectionModule.class);
             stealthAntiDetectionEnabled = false;
         }
+        if (shieldRaisedForCreeper) {
+            mc.options.keyUse.setDown(false);
+            shieldRaisedForCreeper = false;
+        }
         disableAllManagedModules();
         state = BrainState.IDLE;
         combatMode = CombatMode.AGGRESSIVE;
@@ -665,16 +691,101 @@ public class CombatBrainModule extends Module {
     }
 
     /**
-     * Post-tick event: tick the follow controller so its restart-interval
-     * counter stays current. Sprint is now handled entirely by Baritone's
-     * CalculationContext (canSprint gate fixed for Creative) and PathingBehavior
-     * (sprint maintained during A* calculation gaps) — setSprinting() here was
-     * a no-op because the mixin intercepts Input.sprint() before it takes effect.
+     * Dedicated Creeper Defense: detects swelling/exploding creepers nearby (< 7m).
+     * Automatically equips shield, rotates player to face the blast directly (180° shield arc),
+     * and holds right-click to block 100% of explosion damage, or flees if no shield is available.
+     */
+    private void handleCreeperDefense() {
+        if (mc.level == null || mc.player == null) return;
+        if (!creeperDefense.get()) {
+            if (shieldRaisedForCreeper) {
+                mc.options.keyUse.setDown(false);
+                shieldRaisedForCreeper = false;
+            }
+            return;
+        }
+
+        Creeper imminentCreeper = null;
+        double closestDist = Double.MAX_VALUE;
+
+        for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (entity instanceof Creeper creeper && creeper.isAlive()) {
+                double dist = creeper.distanceTo(mc.player);
+                if (dist > 7.0) continue;
+
+                boolean isSwelling = creeper.getSwellDir() > 0 || creeper.getSwelling(0.0f) > 0.05f || creeper.isIgnited();
+                if (isSwelling || dist < 3.2) {
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        imminentCreeper = creeper;
+                    }
+                }
+            }
+        }
+
+        if (imminentCreeper == null) {
+            if (shieldRaisedForCreeper) {
+                mc.options.keyUse.setDown(false);
+                shieldRaisedForCreeper = false;
+            }
+            return;
+        }
+
+        // 1. Ensure shield is equipped in offhand
+        boolean hasShieldEquipped = mc.player.getOffhandItem().getItem() == Items.SHIELD
+            || mc.player.getMainHandItem().getItem() == Items.SHIELD;
+
+        if (!hasShieldEquipped) {
+            FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD);
+            if (shield.found()) {
+                InvUtils.move().from(shield.slot()).toOffhand();
+                hasShieldEquipped = true;
+            }
+        }
+
+        // 2. Rotate player to face the creeper directly so the shield block arc covers the blast
+        double yaw = Rotations.getYaw(imminentCreeper);
+        double pitch = Rotations.getPitch(imminentCreeper, Target.Body);
+        Rotations.rotate(yaw, pitch, 100, true, null);
+        mc.player.setYRot((float) yaw);
+        mc.player.setXRot((float) pitch);
+
+        if (hasShieldEquipped) {
+            // 3. Raise shield
+            mc.options.keyUse.setDown(true);
+            shieldRaisedForCreeper = true;
+
+            // Step back slightly while keeping shield raised to avoid point-blank fuse acceleration
+            if (closestDist < 3.0 && followController != null) {
+                followController.follow(imminentCreeper, 3.5);
+            }
+        } else {
+            // 4. No shield: sprint / flee away from the creeper immediately
+            if (followController != null) {
+                followController.flee(imminentCreeper, 7.0);
+            }
+        }
+    }
+
+    /**
+     * Post-tick event: tick the follow controller, execute creeper defense,
+     * and handle BHop (jump-sprint) for human-like movement acceleration.
      */
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
         if (mc.player == null) return;
         if (followController != null) followController.tick();
+
+        handleCreeperDefense();
+
+        // Auto-BHop / Jump-Sprint when moving forward on ground to gain momentum and emulate player movement
+        if (bhop.get() && mc.player.onGround() && !mc.player.isInWater() && !mc.player.isCrouching()) {
+            boolean isMoving = mc.player.zza > 0 || (mc.player.getDeltaMovement().horizontalDistanceSqr() > 0.04);
+            boolean isSprint = mc.player.isSprinting() || (BaritoneAPI.getSettings().allowSprint.value && isMoving);
+            if (isMoving && isSprint && !mc.player.horizontalCollision) {
+                mc.player.jumpFromGround();
+            }
+        }
     }
 
     @EventHandler
