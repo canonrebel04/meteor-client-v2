@@ -900,9 +900,11 @@ public class CombatBrainModule extends Module {
         }
     }
 
+    private int bhopJumpCooldown = 0;
+
     /**
      * Post-tick event: tick follow controller, execute creeper defense,
-     * projectile deflection, evoker dodging, w-tap sprint reset, and BHop.
+     * projectile deflection, evoker dodging, w-tap sprint reset, and situational BHop.
      */
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
@@ -913,6 +915,10 @@ public class CombatBrainModule extends Module {
         handleProjectileDeflection();
         handleEvokerFangDodge();
         handleWTap();
+
+        if (bhopJumpCooldown > 0) {
+            bhopJumpCooldown--;
+        }
 
         // Warden stealth check: suppress jumping/sprinting near unalerted Warden to avoid vibrations
         boolean wardenNear = false;
@@ -925,30 +931,87 @@ public class CombatBrainModule extends Module {
             }
         }
 
-        // Situational BHop: strictly checks mining status, tunnel corridors, terrain slope, cliff edges, and combat distance
+        // Situational BHop: strictly checks mining status, path turns, distance to goal, terrain slope, and cadence
         if (canSituationalBHop(wardenNear)) {
             boolean isSprint = mc.player.isSprinting() || BaritoneAPI.getSettings().allowSprint.value;
             if (isSprint) {
                 mc.player.jumpFromGround();
+                bhopJumpCooldown = 4; // 4-tick jump cadence to prevent spam-jumping and runaway momentum
             }
         }
     }
 
     /**
+     * Checks if Baritone is currently executing a long, straight, flat path segment.
+     * If the path has an upcoming turn, elevation change, or non-traverse movement within the next 4 nodes,
+     * or is within 5 nodes of the destination, returns false to prevent overshooting the path.
+     */
+    private boolean isBaritonePathStraightAndFlat(baritone.api.IBaritone baritone) {
+        if (baritone == null || !baritone.getPathingBehavior().isPathing()) return true;
+
+        var current = baritone.getPathingBehavior().getCurrent();
+        if (current == null || current.getPath() == null) return false;
+
+        int posIdx = current.getPosition();
+        var positions = current.getPath().positions();
+        var movements = current.getPath().movements();
+
+        // If near the end of the path segment (< 5 nodes left), suppress bhop so we stop cleanly on the goal
+        if (positions.size() - posIdx < 5) return false;
+
+        // Check the current movement and next 3 movements
+        for (int i = posIdx; i < Math.min(posIdx + 4, movements.size()); i++) {
+            var mov = movements.get(i);
+            String movName = mov.getClass().getSimpleName();
+            // Only purely flat straight traversal is safe for high-speed bhopping
+            if (!movName.equals("MovementTraverse")) {
+                return false;
+            }
+        }
+
+        // Verify that the next 4 positions are in a straight collinear line on the same Y-axis
+        if (posIdx + 3 < positions.size()) {
+            var p0 = positions.get(posIdx);
+            var p1 = positions.get(posIdx + 1);
+            var p2 = positions.get(posIdx + 2);
+            var p3 = positions.get(posIdx + 3);
+
+            // Same Y level
+            if (p0.y != p1.y || p1.y != p2.y || p2.y != p3.y) return false;
+
+            // Same Direction vector (collinear)
+            int dx0 = p1.x - p0.x;
+            int dz0 = p1.z - p0.z;
+            int dx1 = p2.x - p1.x;
+            int dz1 = p2.z - p1.z;
+            int dx2 = p3.x - p2.x;
+            int dz2 = p3.z - p2.z;
+
+            if (dx0 != dx1 || dx1 != dx2 || dz0 != dz1 || dz1 != dz2) {
+                return false; // Turn ahead in the path! Suppress bhop so we turn cleanly
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Situational BHop validator:
      * Only allows bunny hopping when moving forward in straight corridors/tunnels (2x1, 3x1, 2x2, 3x3)
-     * or charging straight towards a distant enemy across flat ground.
+     * or charging straight towards a distant enemy across flat ground without upcoming turns.
      * Strictly suppresses BHop when:
-     * 1. Actively mining, digging down, or strip mining (prevents jumping over holes).
-     * 2. Fighting in tight spaces or close melee range (< 4.0 blocks).
-     * 3. Climbing steep mountains/slopes (prevents jumping off the side).
-     * 4. Approaching ledges or cliffs with dangerous drop-offs (> 3 blocks).
-     * 5. Near unalerted Warden (vibration avoidance).
+     * 1. On cadence cooldown (prevents spam jumping).
+     * 2. Baritone path has an upcoming turn, step, or is nearing the destination (prevents path overshooting).
+     * 3. Actively mining, digging down, or strip mining (prevents jumping over holes).
+     * 4. Fighting in close melee range (< 5.5 blocks) to maintain attack precision.
+     * 5. Climbing steep mountains/slopes or near parkour gaps/cliff edges (> 3 blocks).
+     * 6. Near unalerted Warden (vibration avoidance).
      */
     private boolean canSituationalBHop(boolean wardenNear) {
         if (mc.player == null || mc.level == null) return false;
         if (!bhop.get()) return false;
         if (wardenNear) return false;
+        if (bhopJumpCooldown > 0) return false;
         if (!mc.player.onGround() || mc.player.isInWater() || mc.player.isCrouching()) return false;
 
         // 1. SUPPRESSION: Mining / Digging / Breaking blocks & Parkour Movements
@@ -969,26 +1032,33 @@ public class CombatBrainModule extends Module {
                     || movementName.contains("Downward")
                     || movementName.contains("Pillar")
                     || movementName.contains("Descend")
-                    || movementName.contains("Fall")) {
+                    || movementName.contains("Fall")
+                    || movementName.contains("Diagonal")
+                    || movementName.contains("Ascend")) {
                     return false;
                 }
             }
-        }
 
-        // 2. Must be moving forward with forward momentum
-        boolean isMovingForward = mc.player.zza > 0.1 || (mc.player.getDeltaMovement().horizontalDistanceSqr() > 0.05);
-        if (!isMovingForward) return false;
-        if (mc.player.horizontalCollision) return false;
-
-        // 3. SUPPRESSION: Close-Quarters Melee Combat (< 4.0m) in tight caves
-        if (currentTarget != null && currentTarget.isAlive()) {
-            double dist = mc.player.distanceTo(currentTarget);
-            if (dist <= 4.0) {
+            // 2. Baritone Path Straightness: if there is an upcoming turn or goal in the next 4 nodes, suppress BHop!
+            if (!isBaritonePathStraightAndFlat(baritone)) {
                 return false;
             }
         }
 
-        // 4. Terrain & Safety Analysis Ahead
+        // 3. Must be moving forward with forward momentum
+        boolean isMovingForward = mc.player.zza > 0.1 || (mc.player.getDeltaMovement().horizontalDistanceSqr() > 0.05);
+        if (!isMovingForward) return false;
+        if (mc.player.horizontalCollision) return false;
+
+        // 4. SUPPRESSION: Close-Quarters Melee Combat (< 5.5m) to maintain stability and not overshoot target
+        if (currentTarget != null && currentTarget.isAlive()) {
+            double dist = mc.player.distanceTo(currentTarget);
+            if (dist <= 5.5) {
+                return false;
+            }
+        }
+
+        // 5. Terrain & Safety Analysis Ahead
         BlockPos feet = mc.player.blockPosition();
         float yaw = mc.player.getYRot();
         double rad = Math.toRadians(yaw);
@@ -1000,7 +1070,6 @@ public class CombatBrainModule extends Module {
         BlockPos inFront3 = feet.offset(dx * 3, 0, dz * 3);
 
         // Check for parkour gap ahead (1-to-3 block gap with solid landing platform across).
-        // Jumping early via BHop causes undershooting or overshooting the gap.
         boolean inFront1Empty = !mc.level.getBlockState(inFront1.below()).isSolidRender()
             && !mc.level.getBlockState(inFront1).isSolidRender();
         boolean inFront2Solid = mc.level.getBlockState(inFront2.below()).isSolidRender()
@@ -1008,7 +1077,7 @@ public class CombatBrainModule extends Module {
         boolean inFront3Solid = mc.level.getBlockState(inFront3.below()).isSolidRender()
             || mc.level.getBlockState(inFront3).isSolidRender();
         if (inFront1Empty && (inFront2Solid || inFront3Solid)) {
-            return false; // Suppress bhop so precision parkour jump executes properly at block edge
+            return false;
         }
 
         // Check for cliff / drop-off hazard (> 3 blocks drop in front)
@@ -1029,7 +1098,7 @@ public class CombatBrainModule extends Module {
             && mc.level.getBlockState(inFront1.above()).isSolidRender();
         if (isSteepClimb) return false;
 
-        // 5. ALLOW CONDITIONS:
+        // 6. ALLOW CONDITIONS:
         // A) Tunnel Detection (2x1, 3x1, 2x2, 3x3 corridors):
         BlockPos left = feet.offset(-dz, 0, dx);
         BlockPos right = feet.offset(dz, 0, -dx);
@@ -1040,11 +1109,11 @@ public class CombatBrainModule extends Module {
         boolean isTunnel = (hasSideWalls || hasCeiling) && (hasFloor1 && hasFloor2);
         if (isTunnel) return true;
 
-        // B) Straight Travel to distant enemy (> 4.5m) on fairly level ground:
+        // B) Straight Travel to distant enemy (> 5.5m) on fairly level ground:
         if (currentTarget != null && currentTarget.isAlive()) {
             double dist = mc.player.distanceTo(currentTarget);
             double yDiff = Math.abs(currentTarget.getY() - mc.player.getY());
-            if (dist > 4.5 && yDiff <= 1.5 && hasFloor1 && hasFloor2) {
+            if (dist > 5.5 && yDiff <= 1.5 && hasFloor1 && hasFloor2) {
                 return true;
             }
         }
