@@ -837,6 +837,10 @@ public class CombatBrainModule extends Module {
         if (mc.player == null || mc.level == null) return;
         if (currentTarget == null || !currentTarget.isAlive()) return;
 
+        // When traveling or pathing beyond close melee range (> 3.5m),
+        // let Baritone's LookBehavior smoothly guide the camera along the path!
+        if (currentTarget.distanceTo(mc.player) > 3.5) return;
+
         double targetYaw = Rotations.getYaw(currentTarget);
         double targetPitch = Rotations.getPitch(currentTarget, Target.Body);
 
@@ -1888,10 +1892,8 @@ public class CombatBrainModule extends Module {
         // Enable Shield breaking mode on KillAura so axes automatically disable enemy shields
         ((Setting<KillAura.ShieldMode>) (Setting<?>) killAura.settings.get("shield-mode")).set(KillAura.ShieldMode.Break);
 
-        // SMOOTH AIM & ZERO SNAP-BACK: set RotationMode to None because
-        // CombatBrainModule's handleSmoothCameraAim continuously and smoothly
-        // guides the player's view at the target with human mouse interpolation.
-        ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).set(KillAura.RotationMode.None);
+        // Set KillAura RotationMode to Always so KillAura aims at targets when in range
+        ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).set(KillAura.RotationMode.Always);
     }
 
     private void restoreKillAura() {
