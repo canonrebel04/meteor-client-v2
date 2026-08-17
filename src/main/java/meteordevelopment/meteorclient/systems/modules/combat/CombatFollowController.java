@@ -5,9 +5,14 @@ import baritone.api.IBaritone;
 import baritone.api.pathing.goals.GoalRunAway;
 import baritone.api.process.ICustomGoalProcess;
 import baritone.api.process.IFollowProcess;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.UUID;
+
+import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class CombatFollowController {
 
@@ -20,11 +25,9 @@ public class CombatFollowController {
     private UUID followUuid;
     private double followDistance;
 
-    // Minimum ticks between FollowProcess restarts. Re-issuing follow() every
-    // 2-tick pass cancels Baritone's path before it stabilises, resetting the
-    // sprint cadence. Wait at least this many ticks between restarts.
     private static final int MIN_RESTART_INTERVAL_TICKS = 10;
     private int ticksSinceLastRestart = 0;
+    private boolean directPursuitActive = false;
 
     public enum FollowMode {
         FOLLOW,
@@ -41,12 +44,136 @@ public class CombatFollowController {
     }
 
     /**
-     * Called every tick (before state machine) so restart-interval tracking works
-     * even when follow()/flee() isn't called this tick.
+     * Checks if there is a direct, walkable line of sight to the target
+     * with no impassable walls, pits, or obstacles in between.
+     */
+    private boolean isDirectWalkable(Entity target) {
+        if (mc.player == null || mc.level == null || target == null) return false;
+        double dx = target.getX() - mc.player.getX();
+        double dy = target.getY() - mc.player.getY();
+        double dz = target.getZ() - mc.player.getZ();
+        double distSq = dx * dx + dz * dz;
+
+        // If height difference is too steep (> 1.8 blocks), require Baritone parkour/pillar/stair pathing
+        if (Math.abs(dy) > 1.8) return false;
+
+        // Direct pursuit range up to 24 blocks (beyond this, use Baritone macro navigation)
+        if (distSq > 24.0 * 24.0) return false;
+
+        double dist = Math.sqrt(distSq);
+        if (dist < 0.5) return true;
+
+        int steps = Math.max(1, (int) Math.ceil(dist / 0.6));
+        double stepX = dx / steps;
+        double stepZ = dz / steps;
+
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        int playerY = mc.player.getBlockY();
+
+        for (int i = 1; i <= steps; i++) {
+            double checkX = mc.player.getX() + stepX * i;
+            double checkZ = mc.player.getZ() + stepZ * i;
+            int bx = (int) Math.floor(checkX);
+            int bz = (int) Math.floor(checkZ);
+
+            // Check floor below (playerY - 1)
+            pos.set(bx, playerY - 1, bz);
+            var floorState = mc.level.getBlockState(pos);
+            boolean hasFloor = !floorState.isAir() && !floorState.liquid();
+
+            // Check 1 block lower for step down
+            if (!hasFloor) {
+                pos.set(bx, playerY - 2, bz);
+                var lowerFloor = mc.level.getBlockState(pos);
+                hasFloor = !lowerFloor.isAir() && !lowerFloor.liquid();
+            }
+
+            if (!hasFloor) return false; // Pit / void / lava hole! Use Baritone A*
+
+            // Check headroom at feet (playerY) and head (playerY + 1)
+            pos.set(bx, playerY, bz);
+            var feetState = mc.level.getBlockState(pos);
+            if (feetState.blocksMotion() && feetState.isCollisionShapeFullBlock(mc.level, pos)) {
+                // Check if 1-block step up has clear headroom
+                pos.set(bx, playerY + 1, bz);
+                var stepUpHead = mc.level.getBlockState(pos);
+                if (stepUpHead.blocksMotion()) return false; // Wall! Use Baritone A*
+            }
+
+            pos.set(bx, playerY + 1, bz);
+            var headState = mc.level.getBlockState(pos);
+            if (headState.blocksMotion() && headState.isCollisionShapeFullBlock(mc.level, pos)) {
+                return false; // Solid wall/obstacle! Use Baritone A*
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Called every tick.
+     * Executes zero-latency Euclidean straight-line intercept pursuit when line-of-sight is clear,
+     * or falls back to Baritone A* when navigating around complex obstacles/walls.
      */
     public void tick() {
         if (ticksSinceLastRestart < MIN_RESTART_INTERVAL_TICKS) {
             ticksSinceLastRestart++;
+        }
+
+        if (mode == FollowMode.FOLLOW && currentTarget != null && currentTarget.isAlive() && mc.player != null) {
+            boolean directClear = isDirectWalkable(currentTarget);
+
+            if (directClear) {
+                // Cancel Baritone's discrete voxel FollowProcess so it doesn't fight inputs or zig-zag
+                if (!directPursuitActive) {
+                    followProcess.cancel();
+                    directPursuitActive = true;
+                }
+
+                Vec3 targetVel = currentTarget.getDeltaMovement();
+                double dist = currentTarget.distanceTo(mc.player);
+
+                // Lead intercept vector based on distance and velocity
+                double lead = Math.min(3.5, dist * 0.35);
+                double targetX = currentTarget.getX() + targetVel.x * lead;
+                double targetZ = currentTarget.getZ() + targetVel.z * lead;
+
+                double dx = targetX - mc.player.getX();
+                double dz = targetZ - mc.player.getZ();
+                float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
+
+                // Smoothly steer player movement yaw straight towards the intercept point
+                float currentYaw = mc.player.getYRot();
+                float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
+                mc.player.setYRot(currentYaw + Mth.clamp(deltaYaw * 0.65f, -45.0f, 45.0f));
+
+                if (dist > followDistance) {
+                    mc.options.keyUp.setDown(true);
+                    mc.player.setSprinting(true);
+
+                    // Auto-jump over 1-block obstacles while sprinting
+                    if (mc.player.horizontalCollision && mc.player.onGround()) {
+                        mc.options.keyJump.setDown(true);
+                    }
+                } else {
+                    mc.options.keyUp.setDown(false);
+                }
+            } else {
+                // Obstructed line of sight: fall back to Baritone's A* pathfinder
+                if (directPursuitActive) {
+                    directPursuitActive = false;
+                    mc.options.keyUp.setDown(false);
+                    ticksSinceLastRestart = MIN_RESTART_INTERVAL_TICKS; // Force immediate Baritone dispatch
+                    follow(currentTarget, followDistance);
+                }
+            }
+        } else {
+            if (directPursuitActive) {
+                directPursuitActive = false;
+                if (mc.options != null) {
+                    mc.options.keyUp.setDown(false);
+                }
+            }
         }
     }
 
@@ -63,38 +190,33 @@ public class CombatFollowController {
         boolean sameTarget = followUuid != null && followUuid.equals(uuid);
         boolean sameDistance = Math.abs(followDistance - distance) < 0.01;
 
-        // Only restart when the target or distance changed AND we've waited
-        // long enough for Baritone to stabilise the current path.
-        if (sameTarget && sameDistance && ticksSinceLastRestart < MIN_RESTART_INTERVAL_TICKS) {
-            return; // Path is still running — don't disrupt it
+        // If direct pursuit is active and path is clear, let direct Euclidean loop run without Baritone overhead
+        if (directPursuitActive && isDirectWalkable(target)) {
+            followUuid = uuid;
+            followDistance = distance;
+            return;
         }
 
-        // Only restart if target or distance actually changed, or forced restart
+        if (sameTarget && sameDistance && ticksSinceLastRestart < MIN_RESTART_INTERVAL_TICKS) {
+            return; // Path is still running
+        }
+
         if (sameTarget && sameDistance) {
-            return; // Already following with same parameters, path is stable
+            return;
         }
 
         followUuid = uuid;
         followDistance = distance;
         ticksSinceLastRestart = 0;
 
-        // Cancel existing follow before mutating settings so the restarted
-        // FollowProcess picks up the new radius. (H3 fix)
         followProcess.cancel();
 
-        // followRadius: use floor for close (≤3.5 m) and ceil for further away
         BaritoneAPI.getSettings().followRadius.value = distance <= 3.5
             ? Math.max(1, (int) Math.floor(distance))
             : Math.max(1, (int) Math.ceil(distance));
         BaritoneAPI.getSettings().followOffsetDistance.value = 0.0;
-
-        // Avoidance DISABLED: avoidance routes Baritone around every nearby mob
-        // in a radius-8 cost sphere, causing massive arc detours that delay and
-        // suppress sprinting. KillAura handles mobs in weapon range; we want a
-        // direct beeline to the primary target.
         BaritoneAPI.getSettings().avoidance.value = false;
 
-        // H2 fix: match by UUID instead of reference equality (`e == target`).
         UUID targetUuid = target.getUUID();
         followProcess.follow(e -> e != null && e.getUUID().equals(targetUuid));
     }
@@ -102,6 +224,7 @@ public class CombatFollowController {
     public void flee(Entity target, double distance) {
         mode = FollowMode.FLEE;
         currentTarget = target;
+        directPursuitActive = false;
 
         if (target == null) {
             stop();
@@ -109,7 +232,7 @@ public class CombatFollowController {
         }
 
         net.minecraft.world.phys.Vec3 targetVel = target.getDeltaMovement();
-        double decay = (1.0 - Math.pow(0.91, 10)) / (1.0 - 0.91); // 10-tick horizon with ground/air friction
+        double decay = (1.0 - Math.pow(0.91, 10)) / (1.0 - 0.91);
         double predX = target.getX() + targetVel.x * decay;
         double predZ = target.getZ() + targetVel.z * decay;
         net.minecraft.core.BlockPos predictedBlock = new net.minecraft.core.BlockPos(
@@ -129,16 +252,20 @@ public class CombatFollowController {
         followUuid = null;
         followDistance = -1.0;
         ticksSinceLastRestart = 0;
+        directPursuitActive = false;
 
-        // Restore avoidance default (false)
+        if (mc.options != null) {
+            mc.options.keyUp.setDown(false);
+            mc.options.keyJump.setDown(false);
+        }
+
         BaritoneAPI.getSettings().avoidance.value = false;
-
         followProcess.cancel();
         baritone.getPathingBehavior().cancelEverything();
     }
 
     public boolean isBusy() {
-        return baritone.getPathingBehavior().isPathing();
+        return directPursuitActive || baritone.getPathingBehavior().isPathing();
     }
 
     public Entity getCurrentTarget() {
