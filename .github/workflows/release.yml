@@ -23,7 +23,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '21'
+          java-version: '25'
           cache: 'gradle'
 
       - name: Checkout Baritone Dependency
@@ -32,15 +32,6 @@ jobs:
           repository: canonrebel04/baritone-v2
           ref: 26.1
           path: baritone-v2
-
-      - name: Fix Baritone Java Version
-        run: sed -i 's/java_version=25/java_version=21/g' baritone-v2/gradle.properties
-
-      - name: Setup Java 21 for Baritone toolchain build
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '21'
 
       - name: Build and Publish Baritone to MavenLocal
         run: |
@@ -56,13 +47,13 @@ jobs:
           node-version: 24
 
       - name: Build
-        run: ./gradlew build -Pversion=${{ github.ref_name }}
+        run: ./gradlew build -Pbuild_number=${{ github.ref_name }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: build/libs/meteor-client-${{ github.ref_name }}.jar
+          files: build/libs/meteor-client-26.1.2-${{ github.ref_name }}.jar
 
       - name: Publish
         run: ./gradlew publish -Pversion=${{ github.ref_name }}
