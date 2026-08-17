@@ -12,6 +12,7 @@ import meteordevelopment.meteorclient.systems.modules.movement.NoFall;
 import meteordevelopment.meteorclient.systems.modules.movement.Scaffold;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.movement.Jesus;
+import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
 import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
@@ -186,9 +187,47 @@ public class ModuleAutomator {
                 hasGap = hasGoldenApples();
             }
         }
-        setModuleState(AutoEat.class, active);
-        setModuleState(AutoGap.class, active && hasGap);
-        if (active) activeRuleNames.add("AutoHeal");
+
+        // CRITICAL COMBAT RULE: NEVER eat regular food in mainhand if an active threat is in melee range (< 5.5m)!
+        // Eating regular food slows the player down by 80%, prevents swinging weapon, cancels sprinting, and leads to death.
+        boolean threatInMeleeRange = false;
+        if (mc.level != null && mc.player != null) {
+            for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+                if (entity instanceof LivingEntity le && le != mc.player && le.isAlive()) {
+                    boolean isHostile = le.getType().getCategory() == MobCategory.MONSTER
+                        || (le instanceof Player && le != mc.player);
+                    if (isHostile && le.distanceTo(mc.player) <= 5.5) {
+                        threatInMeleeRange = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Only allow AutoEat if there is NO threat in melee range (or player is safely out of reach)
+        boolean allowAutoEat = active && !threatInMeleeRange;
+        // Gapping (Golden Apples) in offhand is safe during combat
+        boolean allowAutoGap = active && hasGap;
+
+        // Ensure AutoEat and AutoGap never pause Baritone or Auras during combat AI
+        AutoEat autoEat = Modules.get().get(AutoEat.class);
+        if (autoEat != null) {
+            Setting<Boolean> pb = (Setting<Boolean>) (Setting<?>) autoEat.settings.get("pause-baritone");
+            if (pb != null) pb.set(false);
+            Setting<Boolean> pa = (Setting<Boolean>) (Setting<?>) autoEat.settings.get("pause-auras");
+            if (pa != null) pa.set(false);
+        }
+        AutoGap autoGap = Modules.get().get(AutoGap.class);
+        if (autoGap != null) {
+            Setting<Boolean> pb = (Setting<Boolean>) (Setting<?>) autoGap.settings.get("pause-baritone");
+            if (pb != null) pb.set(false);
+            Setting<Boolean> pa = (Setting<Boolean>) (Setting<?>) autoGap.settings.get("pause-auras");
+            if (pa != null) pa.set(false);
+        }
+
+        setModuleState(AutoEat.class, allowAutoEat);
+        setModuleState(AutoGap.class, allowAutoGap);
+        if (allowAutoEat || allowAutoGap) activeRuleNames.add("AutoHeal");
     }
 
     private boolean hasGoldenApples() {

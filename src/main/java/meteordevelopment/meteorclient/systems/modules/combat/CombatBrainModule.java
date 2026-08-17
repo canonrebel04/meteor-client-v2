@@ -272,7 +272,7 @@ public class CombatBrainModule extends Module {
     private final Setting<Double> strikeDistance = sgEngagement.add(new DoubleSetting.Builder()
         .name("strike-distance")
         .description("Distance to get to target when darting in to attack.")
-        .defaultValue(2.5)
+        .defaultValue(2.9)
         .min(1.0)
         .max(6.0)
         .sliderMax(6.0)
@@ -641,8 +641,9 @@ public class CombatBrainModule extends Module {
     private KillAura.RotationMode savedRotate = KillAura.RotationMode.Always;
     private Set<EntityType<?>> savedEntities = null;
 
-    // Creeper defense state
+    // Creeper and Melee shield defense state
     private boolean shieldRaisedForCreeper = false;
+    private boolean shieldRaisedForMelee = false;
 
     // Target tracking statistics
     private int trackedEntityCount = 0;
@@ -681,6 +682,7 @@ public class CombatBrainModule extends Module {
         lastKillTick = -999;
         savedKillAura = false;
         shieldRaisedForCreeper = false;
+        shieldRaisedForMelee = false;
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
@@ -718,9 +720,10 @@ public class CombatBrainModule extends Module {
             disableModule(AntiDetectionModule.class);
             stealthAntiDetectionEnabled = false;
         }
-        if (shieldRaisedForCreeper) {
+        if (shieldRaisedForCreeper || shieldRaisedForMelee) {
             mc.options.keyUse.setDown(false);
             shieldRaisedForCreeper = false;
+            shieldRaisedForMelee = false;
         }
         disableAllManagedModules();
         state = BrainState.IDLE;
@@ -819,6 +822,69 @@ public class CombatBrainModule extends Module {
     }
 
     /**
+     * Active Melee & PvP Shield Defense:
+     * When fighting an active opponent (especially Players, Vindicators, Ravagers, Skeletons):
+     * 1. If shield is available, auto-equip to offhand.
+     * 2. While attack meter is recharging (< 0.85 scale) OR enemy is actively swinging / damaging us:
+     *    Raise the shield to block 100% of incoming damage!
+     * 3. The instant attack meter is full (>= 0.9 scale) and in reach:
+     *    Lower shield momentarily so KillAura lands the counter-attack with W-Tap knockback!
+     */
+    private void handleActiveMeleeShield() {
+        if (mc.player == null || mc.level == null) return;
+        if (!shieldSwap.get()) return;
+        if (shieldRaisedForCreeper) return; // Creeper explosion defense takes priority
+
+        if (currentTarget == null || !currentTarget.isAlive()) {
+            if (shieldRaisedForMelee) {
+                mc.options.keyUse.setDown(false);
+                shieldRaisedForMelee = false;
+            }
+            return;
+        }
+
+        double dist = currentTarget.distanceTo(mc.player);
+        if (dist > 4.5) {
+            if (shieldRaisedForMelee) {
+                mc.options.keyUse.setDown(false);
+                shieldRaisedForMelee = false;
+            }
+            return;
+        }
+
+        boolean hasShieldInOffhand = mc.player.getOffhandItem().is(Items.SHIELD);
+        if (!hasShieldInOffhand) {
+            FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD);
+            if (shield.found()) {
+                InvUtils.move().from(shield.slot()).toOffhand();
+                hasShieldInOffhand = true;
+            }
+        }
+
+        if (!hasShieldInOffhand) {
+            if (shieldRaisedForMelee) {
+                mc.options.keyUse.setDown(false);
+                shieldRaisedForMelee = false;
+            }
+            return;
+        }
+
+        float attackCooldown = mc.player.getAttackStrengthScale(0.5f);
+        boolean isTargetAttacking = currentTarget.attackAnim > 0 || (currentTarget instanceof Player p && p.attackAnim > 0);
+        boolean isTakingDamage = mc.player.hurtTime > 0;
+
+        // If attack cooldown is recharging OR enemy is swinging at us OR we just took damage, RAISE SHIELD
+        if (attackCooldown < 0.85f || isTargetAttacking || isTakingDamage) {
+            mc.options.keyUse.setDown(true);
+            shieldRaisedForMelee = true;
+        } else {
+            // Lower shield momentarily to allow weapon strike
+            mc.options.keyUse.setDown(false);
+            shieldRaisedForMelee = false;
+        }
+    }
+
+    /**
      * Dedicated Projectile Deflection: detects incoming Ghast fireballs,
      * Breeze wind charges, dragon fireballs, etc. heading towards the player,
      * locks onto them, and performs a melee swing to reflect them back to sender.
@@ -904,7 +970,7 @@ public class CombatBrainModule extends Module {
 
     /**
      * Post-tick event: tick follow controller, execute creeper defense,
-     * projectile deflection, evoker dodging, w-tap sprint reset, and situational BHop.
+     * active melee shield, projectile deflection, evoker dodging, w-tap sprint reset, and situational BHop.
      */
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
@@ -912,6 +978,7 @@ public class CombatBrainModule extends Module {
         if (followController != null) followController.tick();
 
         handleCreeperDefense();
+        handleActiveMeleeShield();
         handleProjectileDeflection();
         handleEvokerFangDodge();
         handleWTap();
@@ -1758,13 +1825,13 @@ public class CombatBrainModule extends Module {
             : 3;
         ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(groupSize);
 
-        // ANTICHEAT: clamp KillAura attack range to 2.9 (vanilla reach is 3.0,
-        // Grim allows 3.01 but ADDS the player's current velocity to the reach
-        // calc — a sprinting bot attacking at 3.0 exceeds it on first contact).
-        // The 0.1 margin absorbs movement; the brain's follow bubble handles
-        // positioning. Never attack beyond vanilla reach.
-        ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(Math.min(
-            ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).get(), 2.9));
+        // ANTICHEAT: set KillAura attack range to 3.15 (vanilla max survival reach)
+        // so enemy players cannot out-range or combo the bot from beyond reach.
+        ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(Math.max(
+            ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).get(), 3.15));
+
+        // Enable Shield breaking mode on KillAura so axes automatically disable enemy shields
+        ((Setting<KillAura.ShieldMode>) (Setting<?>) killAura.settings.get("shield-mode")).set(KillAura.ShieldMode.Break);
 
         // ANTICHEAT: force rotation mode to OnHit (rotate only at the moment of
         // attack) instead of Always. Constant per-tick aim-lock at the target's
@@ -1811,6 +1878,20 @@ public class CombatBrainModule extends Module {
     }
 
     private void disableCombatModules() {
+        // If an enemy is actively within 5.5 blocks pursuing us, DO NOT disarm!
+        // Keep KillAura, AutoWeapon, AutoArmor, and Shield active so the bot fights back and knocks the pursuer away.
+        if (currentTarget != null && currentTarget.isAlive() && mc.player != null && mc.player.distanceTo(currentTarget) <= 5.5) {
+            syncKillAura();
+            enableModule(KillAura.class);
+            if (autoArmor.get()) enableModule(AutoArmor.class);
+            if (autoWeapon.get()) enableModule(AutoWeapon.class);
+            if (shieldSwap.get()) {
+                boolean hasShield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD).found();
+                if (hasShield) enableModule(ShieldAutoSwapModule.class);
+            }
+            return;
+        }
+
         restoreKillAura();
 
         disableModule(KillAura.class);
@@ -1909,7 +1990,7 @@ public class CombatBrainModule extends Module {
         if (dynamicFollow.get() && lastAnalysis != null) {
             targetDistance = CombatTargetAnalyzer.computeDynamicFollowDistance(lastAnalysis, CombatMode.modePadding(combatMode));
         }
-        double effectiveStrikeDist = Math.min(2.4, Math.min(strikeDistance.get(), targetDistance));
+        double effectiveStrikeDist = Math.min(strikeDistance.get(), targetDistance);
 
         // --- Tactical positioning: group-aware bubble movement, 1v1 circle strafing & ranged kiting ---
         if (tacticalPositioner != null && lastGroupSnapshot != null && !lastGroupSnapshot.targets().isEmpty()) {
