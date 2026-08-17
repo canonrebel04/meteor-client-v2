@@ -15,6 +15,8 @@
 package meteordevelopment.meteorclient.systems.modules.misc;
 
 import baritone.api.BaritoneAPI;
+import baritone.api.IBaritone;
+import baritone.api.pathing.goals.Goal;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -23,6 +25,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import meteordevelopment.meteorclient.commands.Commands;
 import meteordevelopment.meteorclient.events.game.SendMessageEvent;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
 import meteordevelopment.meteorclient.settings.IntSetting;
@@ -32,6 +35,7 @@ import meteordevelopment.meteorclient.settings.StringSetting;
 import meteordevelopment.meteorclient.systems.config.Config;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.utils.entity.EntityUtils;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
@@ -43,6 +47,8 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 public class AIChat extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -76,7 +82,14 @@ public class AIChat extends Module {
     private final Setting<String> systemPrompt = sgGeneral.add(new StringSetting.Builder()
         .name("system-prompt")
         .description("System prompt that defines the AI's behavior. Mention the command prefix so it knows how to run commands.")
-        .defaultValue("You are an AI companion living inside Minecraft chat. You think and talk through chat. To run a command, output it on its own line starting with '!' — use 'b <command>' for Baritone commands (e.g. '!b goto 100 64 100', '!b mine diamond_ore 32', '!b follow <name>') and plain Meteor commands otherwise (e.g. '!toggle killaura'). Keep replies short and in character.")
+        .defaultValue("You are an AI companion living inside Minecraft chat. You think and talk through chat. To run a command, output it on its own line starting with '!' — use 'b <command>' for Baritone commands (e.g. '!b goto 100 64 100', '!b mine diamond_ore 32', '!b follow <name>', '!b cancel') and plain Meteor commands otherwise (e.g. '!toggle killaura'). You can query your state with '!status' (position, health, pathing). Example exchange: [chat] Steve: assistant, go to my base at 100 64 100 → you reply with '!b goto 100 64 100' followed by a short confirmation. Keep replies short and in character.")
+        .build()
+    );
+
+    private final Setting<String> ignoreRegex = sgGeneral.add(new StringSetting.Builder()
+        .name("ignore-regex")
+        .description("Chat lines matching this regex are excluded from context and never trigger a response (e.g. 'Set the time to|joined the game'). Empty = nothing ignored.")
+        .defaultValue("")
         .build()
     );
 
@@ -152,6 +165,7 @@ public class AIChat extends Module {
     private boolean busy;
     private boolean aiSending;
     private String lastSent = "";
+    private int statusFeedbackTicks = 0;
 
     public AIChat() {
         super(Categories.Misc, "ai-chat", "LLM companion that thinks and talks through Minecraft chat and can run Baritone/Meteor commands.");
@@ -163,12 +177,14 @@ public class AIChat extends Module {
         busy = false;
         aiSending = false;
         lastSent = "";
+        statusFeedbackTicks = 0;
     }
 
     @Override
     public void onDeactivate() {
         busy = false;
         aiSending = false;
+        statusFeedbackTicks = 0;
     }
 
     /** Public entry point for the .ai command. */
@@ -188,6 +204,7 @@ public class AIChat extends Module {
         if (!(event.packet instanceof ClientboundSystemChatPacket packet)) return;
         String text = packet.content().getString();
         if (text.isBlank()) return;
+        if (isNoise(text)) return; // command echoes + ignore-regex (mindcraft/Voyager pattern)
 
         history.addLast(aiSending ? "[ai] " + text : "[chat] " + text);
         trimHistory();
@@ -197,6 +214,19 @@ public class AIChat extends Module {
         String trigger = triggerWord.get().toLowerCase();
         if (respondToAll.get() || (!trigger.isEmpty() && text.toLowerCase().contains(trigger))) {
             respond();
+        }
+    }
+
+    @EventHandler
+    private void onTick(TickEvent.Post event) {
+        // Delayed command-result feedback: snapshot Baritone state a few ticks after a
+        // command so the LLM sees the outcome in its next context (mindcraft ActionManager pattern).
+        if (statusFeedbackTicks > 0) {
+            statusFeedbackTicks--;
+            if (statusFeedbackTicks == 0) {
+                history.addLast("[status] " + snapshotStatus());
+                trimHistory();
+            }
         }
     }
 
@@ -257,9 +287,11 @@ public class AIChat extends Module {
 
         int from = Math.max(0, snapshot.length - contextSize.get());
         for (int i = from; i < snapshot.length; i++) {
+            String line = snapshot[i];
+            if (isNoise(line)) continue; // never leak command echoes into context
             JsonObject m = new JsonObject();
             m.addProperty("role", "user");
-            m.addProperty("content", snapshot[i]);
+            m.addProperty("content", line);
             messages.add(m);
         }
 
@@ -334,8 +366,26 @@ public class AIChat extends Module {
 
     private void executeCommand(String cmd) {
         if (cmd.startsWith("b ")) {
-            baritone(cmd.substring(2));
+            if (baritone(cmd.substring(2))) statusFeedbackTicks = 40;
             return;
+        }
+
+        // Client-side query commands (mindcraft pattern): give the LLM eyes on its state.
+        String q = cmd.toLowerCase();
+        switch (q) {
+            case "status", "pos", "path", "target", "pathstatus", "where" -> {
+                String status = snapshotStatus();
+                ChatUtils.infoPrefix("[AI]", "Status: %s", status);
+                history.addLast("[status] " + status);
+                trimHistory();
+                return;
+            }
+            case "stop", "cancel" -> {
+                if (!baritone("cancel") && !baritone("stop")) {
+                    ChatUtils.warningPrefix("[AI]", "Could not cancel pathing.");
+                }
+                return;
+            }
         }
 
         String meteorPrefix = Config.get().prefix.get();
@@ -350,7 +400,35 @@ public class AIChat extends Module {
 
         if (!baritone(cmd)) {
             ChatUtils.warningPrefix("[AI]", "Unknown command: %s", cmd);
+        } else {
+            statusFeedbackTicks = 40;
         }
+    }
+
+    /** Compact client state snapshot fed back to the LLM as [status] context. */
+    private String snapshotStatus() {
+        if (mc.player == null) return "not in game";
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format(Locale.US, "pos=%.1f,%.1f,%.1f health=%.0f",
+            mc.player.getX(), mc.player.getY(), mc.player.getZ(),
+            EntityUtils.getTotalHealth(mc.player)));
+        try {
+            IBaritone baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+            sb.append(" pathing=").append(baritone.getPathingBehavior().isPathing());
+            Goal goal = baritone.getPathingBehavior().getGoal();
+            if (goal != null) sb.append(" goal=").append(goal);
+            var pc = baritone.getPathingControlManager().mostRecentCommand();
+            if (pc.isPresent()) sb.append(" state=").append(pc.get().commandType);
+        } catch (Exception ignored) {
+            // Baritone not loaded or API changed — status still useful without it
+        }
+        return sb.toString();
+    }
+
+    private boolean isNoise(String line) {
+        if (line.startsWith("/")) return true; // command echoes (Voyager onChat pattern)
+        String regex = ignoreRegex.get();
+        return !regex.isEmpty() && Pattern.compile(regex).matcher(line).find();
     }
 
     private boolean baritone(String cmd) {
