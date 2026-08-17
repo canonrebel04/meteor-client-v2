@@ -34,3 +34,6 @@
 ## 2024-08-07 - Avoid Math.pow for Distance Thresholds in AutoCity
 **Learning:** Performance-critical distance checks in Java applications that use `Math.pow(x, 2)` incur JNI overhead and floating point precision work that is entirely unnecessary when working with squared distances.
 **Action:** Always replace `Math.pow(x, 2)` with direct double multiplication `x * x` in distance threshold checks (`squaredDistanceTo`) to improve execution speed in combat logic loops.
+## 2024-05-14 - Optimize Euclidean Distance Check with Squared Distance
+**Learning:** In high-frequency pathing or targeting loops (e.g., `HoleFiller.isCloseToHolePos`), performing `Math.sqrt()` introduces unnecessary floating-point calculation and JNI overhead.
+**Action:** Replace `Math.sqrt(dx^2 + dy^2 + dz^2) < limit` with `(dx^2 + dy^2 + dz^2) < limit * limit` whenever checking distances against a known threshold limit. Always add a comment referencing the "JNI overhead of Math.sqrt" or "squared distance optimization".
