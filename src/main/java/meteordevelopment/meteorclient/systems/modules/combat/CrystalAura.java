@@ -61,6 +61,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3d;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -383,6 +384,52 @@ public class CrystalAura extends Module {
         .build()
     );
 
+    // T1: burst-damage engine — ID-predict, SetDead, spawn timing
+
+    public enum SpawnTiming {
+        AddToWorld,
+        Packet
+    }
+
+    private final Setting<Boolean> idPredict = sgBreak.add(new BoolSetting.Builder()
+        .name("id-predict")
+        .description("Guesses the entity ID of the crystal you just placed and attacks it before the spawn packet arrives, enabling ~1-tick-faster doubles. Does not work on some servers (non-sequential entity IDs / plugins).")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> idPredictJitter = sgBreak.add(new IntSetting.Builder()
+        .name("id-predict-jitter")
+        .description("Random tick delay before the predicted attack. Randomization reduces pattern-detection risk.")
+        .defaultValue(0)
+        .range(0, 5)
+        .visible(idPredict::get)
+        .build()
+    );
+
+    private final Setting<Integer> idAttacks = sgBreak.add(new IntSetting.Builder()
+        .name("id-attacks")
+        .description("How many consecutive entity IDs to attack after placing. Higher = better predict chance, higher kick chance.")
+        .defaultValue(1)
+        .range(1, 3)
+        .visible(idPredict::get)
+        .build()
+    );
+
+    private final Setting<Boolean> setDead = sgBreak.add(new BoolSetting.Builder()
+        .name("set-dead")
+        .description("Discards hit crystals from the client world instantly so they stop blocking placement and rendering (CrystalAccelerator-style visual lag removal).")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<SpawnTiming> spawnTiming = sgBreak.add(new EnumSetting.Builder<SpawnTiming>()
+        .name("spawn-timing")
+        .description("When fast-break reacts to a crystal spawn. Packet reacts on the spawn packet (faster), AddToWorld reacts after the entity is added to the world (more consistent).")
+        .defaultValue(SpawnTiming.AddToWorld)
+        .build()
+    );
+
     // Pause
 
     public final Setting<PauseMode> pauseOnUse = sgPause.add(new EnumSetting.Builder<PauseMode>()
@@ -583,6 +630,11 @@ public class CrystalAura extends Module {
 
     private double serverYaw;
 
+    // T1: burst-damage engine state
+    private int lastSeenEntityId = 0;
+    private final List<int[]> idPredictActions = new ArrayList<>(); // {ticksLeft, entityId}
+    private final IntSet packetAttacked = new IntOpenHashSet();
+
     private LivingEntity bestTarget;
     private double bestTargetDamage;
     private int bestTargetTimer;
@@ -639,6 +691,8 @@ public class CrystalAura extends Module {
         waitingToExplode.clear();
 
         removed.clear();
+        packetAttacked.clear();
+        idPredictActions.clear();
 
         bestTarget = null;
     }
@@ -696,6 +750,16 @@ public class CrystalAura extends Module {
             }
         }
 
+        // Fire scheduled ID-predict attacks
+        for (Iterator<int[]> it = idPredictActions.iterator(); it.hasNext(); ) {
+            int[] action = it.next();
+            action[0]--;
+            if (action[0] <= 0) {
+                sendPredictedBreak(action[1]);
+                it.remove();
+            }
+        }
+
         // Set player eye pos
         ((IVec3) playerEyePos).meteor$set(mc.player.position().x, mc.player.position().y + mc.player.getEyeHeight(mc.player.getPose()), mc.player.position().z);
 
@@ -718,6 +782,14 @@ public class CrystalAura extends Module {
 
     @EventHandler
     private void onEntityAdded(EntityAddedEvent event) {
+        // Track the highest observed entity ID for ID-predict. Fires for ALL entity types
+        // since the server uses a single shared entity-ID counter across all spawns.
+        int eid = event.entity.getId();
+        if (eid > lastSeenEntityId) lastSeenEntityId = eid;
+
+        // New world: entity IDs restart, so reset the tracker when the player re-spawns.
+        if (event.entity == mc.player) lastSeenEntityId = 0;
+
         if (!(event.entity instanceof EndCrystal)) return;
 
         if (placing && event.entity.blockPosition().equals(placingCrystalBlockPos)) {
@@ -726,10 +798,37 @@ public class CrystalAura extends Module {
             placedCrystals.add(event.entity.getId());
         }
 
-        if (fastBreak.get() && !didRotateThisTick && attacks < attackFrequency.get()) {
+        // Bookkeeping if the Packet spawn-timing path already attacked this crystal
+        if (packetAttacked.remove(eid)) {
+            removed.add(eid);
+            attemptedBreaks.put(eid, attemptedBreaks.get(eid) + 1);
+            waitingToExplode.put(eid, 0);
+            return;
+        }
+
+        if (fastBreak.get() && spawnTiming.get() == SpawnTiming.AddToWorld && !didRotateThisTick && attacks < attackFrequency.get()) {
             float damage = getBreakDamage(event.entity, true);
             if (damage > minDamage.get()) doBreak(event.entity);
         }
+    }
+
+    @EventHandler
+    private void onPacketReceive(PacketEvent.Receive event) {
+        // Fast-break on the spawn packet itself (SpawnTiming.Packet): react before the entity
+        // exists client-side, by ID only — the server has already allocated and ticked it.
+        if (spawnTiming.get() != SpawnTiming.Packet || !fastBreak.get()) return;
+        if (!(event.packet instanceof ClientboundAddEntityPacket packet)) return;
+        if (packet.getType() != EntityType.END_CRYSTAL) return;
+        if (!placing || didRotateThisTick || attacks >= attackFrequency.get()) return;
+
+        BlockPos p = placingCrystalBlockPos;
+        if (Math.abs(packet.getX() - (p.getX() + 0.5)) > 0.1) return;
+        if (Math.abs(packet.getY() - (p.getY() + 1.0)) > 0.1) return;
+        if (Math.abs(packet.getZ() - (p.getZ() + 0.5)) > 0.1) return;
+
+        mc.player.connection.send(new ServerboundAttackPacket(packet.getId()));
+        packetAttacked.add(packet.getId());
+        attacks++;
     }
 
     @EventHandler
@@ -738,6 +837,7 @@ public class CrystalAura extends Module {
             placedCrystals.remove(event.entity.getId());
             removed.remove(event.entity.getId());
             waitingToExplode.remove(event.entity.getId());
+            packetAttacked.remove(event.entity.getId());
         }
     }
 
@@ -857,6 +957,9 @@ public class CrystalAura extends Module {
             attemptedBreaks.put(crystal.getId(), attemptedBreaks.get(crystal.getId()) + 1);
             waitingToExplode.put(crystal.getId(), 0);
 
+            // T1: discard the crystal client-side so it stops blocking placement/render (visual, server unaffected)
+            if (setDead.get()) crystal.discard();
+
             // Break render
             breakRenderPos.set(crystal.blockPosition().below());
             breakRenderTimer = breakRenderTime.get();
@@ -878,6 +981,19 @@ public class CrystalAura extends Module {
         if (swingMode.get().packet()) mc.getConnection().send(new ServerboundSwingPacket(hand));
 
         attacks++;
+    }
+
+    /**
+     * T1: attack the guessed entity ID(s) of a crystal that has been placed but whose
+     * spawn packet has not arrived yet. The server processes the attack after allocating
+     * the entity, yielding ~1-tick-faster doubles. Gambles idAttacks consecutive IDs.
+     */
+    private void sendPredictedBreak(int predictedId) {
+        if (mc.player == null || mc.getConnection() == null) return;
+        for (int i = 0; i < idAttacks.get(); i++) {
+            mc.player.connection.send(new ServerboundAttackPacket(predictedId + i));
+        }
+        attacks += idAttacks.get();
     }
 
     @EventHandler
@@ -1036,6 +1152,17 @@ public class CrystalAura extends Module {
         if (supportBlock == null) {
             // Place crystal
             mc.gameMode.startPrediction(mc.level, sequence -> new ServerboundUseItemOnPacket(hand, result, sequence));
+
+            // T1: ID-predict break — attack the guessed entity ID before the spawn packet arrives
+            if (idPredict.get()) {
+                int predictedId = lastSeenEntityId + 1;
+                int jitter = idPredictJitter.get();
+                if (jitter <= 0) {
+                    sendPredictedBreak(predictedId);
+                } else {
+                    idPredictActions.add(new int[] { jitter, predictedId });
+                }
+            }
 
             if (swingMode.get().client()) mc.player.swing(hand);
             if (swingMode.get().packet()) mc.getConnection().send(new ServerboundSwingPacket(hand));
