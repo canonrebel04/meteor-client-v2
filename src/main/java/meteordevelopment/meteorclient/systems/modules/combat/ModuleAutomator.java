@@ -8,13 +8,20 @@ package meteordevelopment.meteorclient.systems.modules.combat;
 import meteordevelopment.meteorclient.mixin.LevelAccessor;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.combat.Surround;
+import meteordevelopment.meteorclient.systems.modules.movement.NoFall;
 import meteordevelopment.meteorclient.systems.modules.movement.Scaffold;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.movement.Jesus;
 import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
 import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -23,6 +30,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
@@ -67,6 +75,10 @@ public class ModuleAutomator {
 
         // Priority order evaluation
         evalNoTotemRule();
+        evalWitherMilkRule();
+        evalFireResistanceRule(target);
+        evalWardenRule(target);
+        evalNoFallClutchRule();
         evalCrystalRule();
         evalBowRule(target);
         evalBedRule(target);
@@ -389,5 +401,98 @@ public class ModuleAutomator {
     private boolean isAirOrLiquid(BlockPos pos) {
         BlockState state = mc.level.getBlockState(pos);
         return state.isAir() || state.is(Blocks.WATER) || state.is(Blocks.LAVA) || state.canBeReplaced();
+    }
+
+    private void evalWitherMilkRule() {
+        if (!brain.witherMilk.get() || mc.player == null) return;
+        if (mc.player.hasEffect(MobEffects.WITHER)) {
+            FindItemResult milk = InvUtils.find(Items.MILK_BUCKET);
+            if (milk.found()) {
+                activeRuleNames.add("WitherMilk");
+                if (mc.player.getOffhandItem().is(Items.MILK_BUCKET)) {
+                    mc.options.keyUse.setDown(true);
+                } else {
+                    InvUtils.move().from(milk.slot()).toOffhand();
+                }
+                return;
+            }
+        }
+        if (mc.player.getOffhandItem().is(Items.MILK_BUCKET) && !mc.player.hasEffect(MobEffects.WITHER)) {
+            mc.options.keyUse.setDown(false);
+        }
+    }
+
+    private void evalFireResistanceRule(LivingEntity target) {
+        if (!brain.fireResPotion.get() || mc.player == null || mc.level == null) return;
+        if (mc.player.hasEffect(MobEffects.FIRE_RESISTANCE)) return;
+
+        boolean isFireThreat = (mc.level.dimension() == Level.NETHER)
+            || (target != null && (target.getType() == EntityType.BLAZE
+                || target.getType() == EntityType.GHAST
+                || target.getType() == EntityType.MAGMA_CUBE
+                || target.getType() == EntityType.WITHER_SKELETON));
+
+        if (isFireThreat) {
+            FindItemResult potionSlot = findPotionWithEffect(MobEffects.FIRE_RESISTANCE);
+            if (potionSlot.found()) {
+                activeRuleNames.add("FireResPotion");
+                if (mc.player.getOffhandItem().is(Items.POTION)) {
+                    mc.options.keyUse.setDown(true);
+                } else {
+                    InvUtils.move().from(potionSlot.slot()).toOffhand();
+                }
+            }
+        }
+    }
+
+    private void evalWardenRule(LivingEntity target) {
+        if (!brain.wardenCounter.get() || mc.player == null || mc.level == null) return;
+
+        boolean wardenNear = isWardenNearby(20.0);
+        if (wardenNear && !mc.player.hasEffect(MobEffects.RESISTANCE)) {
+            FindItemResult potionSlot = findPotionWithEffect(MobEffects.RESISTANCE);
+            if (potionSlot.found()) {
+                activeRuleNames.add("WardenResistance");
+                if (mc.player.getOffhandItem().is(Items.POTION)) {
+                    mc.options.keyUse.setDown(true);
+                } else {
+                    InvUtils.move().from(potionSlot.slot()).toOffhand();
+                }
+            }
+        }
+    }
+
+    private void evalNoFallClutchRule() {
+        boolean active = false;
+        if (brain.noFallClutch.get() && mc.player != null && mc.level != null) {
+            if (mc.player.getDeltaMovement().y < -0.6 && !mc.player.onGround() && !mc.player.isInWater()) {
+                active = true;
+            }
+        }
+        setModuleState(NoFall.class, active);
+        if (active) activeRuleNames.add("NoFallClutch");
+    }
+
+    private FindItemResult findPotionWithEffect(Holder<MobEffect> effect) {
+        return InvUtils.find(stack -> {
+            if (!stack.is(Items.POTION) && !stack.is(Items.SPLASH_POTION)) return false;
+            PotionContents contents = stack.get(DataComponents.POTION_CONTENTS);
+            if (contents == null) return false;
+            for (MobEffectInstance inst : contents.getAllEffects()) {
+                if (inst.getEffect().is(effect)) return true;
+            }
+            return false;
+        });
+    }
+
+    private boolean isWardenNearby(double range) {
+        if (mc.level == null || mc.player == null) return false;
+        double rangeSq = range * range;
+        for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (entity.getType() == EntityType.WARDEN && entity.distanceToSqr(mc.player) <= rangeSq) {
+                return true;
+            }
+        }
+        return false;
     }
 }

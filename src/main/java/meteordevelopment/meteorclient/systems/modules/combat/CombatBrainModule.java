@@ -30,9 +30,11 @@ import net.minecraft.world.item.Items;
 import meteordevelopment.meteorclient.systems.modules.player.AutoTool;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.level.block.state.BlockState;
+import meteordevelopment.meteorclient.events.entity.player.AttackEntityEvent;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.entity.Target;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.monster.Creeper;
 import java.util.HashMap;
 import java.util.List;
@@ -311,6 +313,27 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    private final Setting<Boolean> projectileDeflect = sgEngagement.add(new BoolSetting.Builder()
+        .name("projectile-deflect")
+        .description("Melee-swing to deflect incoming Ghast fireballs and Breeze wind charges back at senders.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> wTapSprintReset = sgEngagement.add(new BoolSetting.Builder()
+        .name("w-tap-sprint-reset")
+        .description("Reset sprint on attack impact to re-apply the sprint first-hit knockback bonus.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> circleStrafe = sgEngagement.add(new BoolSetting.Builder()
+        .name("circle-strafe")
+        .description("Orbit around single melee opponents in 1v1 engagements to avoid their forward swing cone.")
+        .defaultValue(true)
+        .build()
+    );
+
     private final Setting<Integer> threatHighDwell = sgEngagement.add(new IntSetting.Builder()
         .name("threat-high-dwell")
         .description("Consecutive FSM passes (threatDwell / stateDwell ticks) threat must stay above flee-threshold before retreating (threatHysteresis).")
@@ -482,6 +505,34 @@ public class CombatBrainModule extends Module {
     final Setting<Boolean> shieldSwap = sgAutomator.add(new BoolSetting.Builder()
         .name("shield-swap")
         .description("Auto enable ShieldAutoSwap to block incoming attacks.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> witherMilk = sgAutomator.add(new BoolSetting.Builder()
+        .name("wither-milk")
+        .description("Auto-drink milk when afflicted with Wither effect.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> fireResPotion = sgAutomator.add(new BoolSetting.Builder()
+        .name("fire-res-potion")
+        .description("Auto-drink Fire Resistance potion when fighting fire mobs (Blaze/Ghast/Magma Cube) or in the Nether.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> wardenCounter = sgAutomator.add(new BoolSetting.Builder()
+        .name("warden-counter")
+        .description("Auto-drink Resistance potion and stealthily sneak when a Warden is nearby.")
+        .defaultValue(true)
+        .build()
+    );
+
+    final Setting<Boolean> noFallClutch = sgAutomator.add(new BoolSetting.Builder()
+        .name("nofall-clutch")
+        .description("Auto-enable NoFall bucket clutch when launched airborne with high fall velocity.")
         .defaultValue(true)
         .build()
     );
@@ -768,8 +819,90 @@ public class CombatBrainModule extends Module {
     }
 
     /**
-     * Post-tick event: tick the follow controller, execute creeper defense,
-     * and handle BHop (jump-sprint) for human-like movement acceleration.
+     * Dedicated Projectile Deflection: detects incoming Ghast fireballs,
+     * Breeze wind charges, dragon fireballs, etc. heading towards the player,
+     * locks onto them, and performs a melee swing to reflect them back to sender.
+     */
+    private void handleProjectileDeflection() {
+        if (mc.level == null || mc.player == null) return;
+        if (!projectileDeflect.get()) return;
+
+        for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (!entity.isAlive()) continue;
+
+            EntityType<?> et = entity.getType();
+            boolean isDeflectable = et == EntityType.FIREBALL
+                || et == EntityType.SMALL_FIREBALL
+                || et == EntityType.DRAGON_FIREBALL
+                || et == EntityType.WIND_CHARGE
+                || et == EntityType.BREEZE_WIND_CHARGE;
+
+            if (!isDeflectable) continue;
+
+            double dist = entity.distanceTo(mc.player);
+            if (dist <= 4.2) {
+                var delta = entity.getDeltaMovement();
+                var relPos = mc.player.position().subtract(entity.position());
+                double dot = delta.x * relPos.x + delta.y * relPos.y + delta.z * relPos.z;
+                if (dot > 0 || dist <= 3.0) {
+                    double yaw = Rotations.getYaw(entity);
+                    double pitch = Rotations.getPitch(entity);
+                    Rotations.rotate(yaw, pitch, 110, true, null);
+
+                    if (mc.gameMode != null) {
+                        mc.gameMode.attack(mc.player, entity);
+                    }
+                    mc.player.swing(InteractionHand.MAIN_HAND);
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Evoker Fang Telegraph Dodging: detects when an Evoker is actively casting spell fangs,
+     * and performs a quick lateral impulse perpendicular to its gaze.
+     */
+    private void handleEvokerFangDodge() {
+        if (mc.level == null || mc.player == null) return;
+        for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (entity.getType() == EntityType.EVOKER && entity instanceof LivingEntity evoker && evoker.isAlive()) {
+                if (evoker.distanceTo(mc.player) <= 12.0) {
+                    double evokerYaw = Math.toRadians(evoker.getYRot());
+                    double perpX = -Math.cos(evokerYaw);
+                    double perpZ = -Math.sin(evokerYaw);
+                    mc.player.setDeltaMovement(
+                        mc.player.getDeltaMovement().add(perpX * 0.12, 0.08, perpZ * 0.12)
+                    );
+                    break;
+                }
+            }
+        }
+    }
+
+    private int wTapTicks = 0;
+
+    private void handleWTap() {
+        if (!wTapSprintReset.get() || mc.player == null) return;
+        if (wTapTicks > 0) {
+            wTapTicks--;
+            if (wTapTicks == 0) {
+                mc.player.setSprinting(true);
+            }
+        }
+    }
+
+    @EventHandler
+    private void onAttackEntity(AttackEntityEvent event) {
+        if (wTapSprintReset.get() && mc.player != null && mc.player.isSprinting()) {
+            mc.player.setSprinting(false);
+            wTapTicks = 2;
+        }
+    }
+
+    /**
+     * Post-tick event: tick follow controller, execute creeper defense,
+     * projectile deflection, evoker dodging, w-tap sprint reset, and BHop.
      */
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
@@ -777,9 +910,23 @@ public class CombatBrainModule extends Module {
         if (followController != null) followController.tick();
 
         handleCreeperDefense();
+        handleProjectileDeflection();
+        handleEvokerFangDodge();
+        handleWTap();
 
-        // Auto-BHop / Jump-Sprint when moving forward on ground to gain momentum and emulate player movement
-        if (bhop.get() && mc.player.onGround() && !mc.player.isInWater() && !mc.player.isCrouching()) {
+        // Warden stealth check: suppress jumping/sprinting near unalerted Warden to avoid vibrations
+        boolean wardenNear = false;
+        if (wardenCounter.get() && mc.level != null) {
+            for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+                if (entity.getType() == EntityType.WARDEN && entity.distanceTo(mc.player) <= 16.0) {
+                    wardenNear = true;
+                    break;
+                }
+            }
+        }
+
+        // Auto-BHop / Jump-Sprint when moving forward on ground to gain momentum (suppressed near Warden)
+        if (bhop.get() && !wardenNear && mc.player.onGround() && !mc.player.isInWater() && !mc.player.isCrouching()) {
             boolean isMoving = mc.player.zza > 0 || (mc.player.getDeltaMovement().horizontalDistanceSqr() > 0.04);
             boolean isSprint = mc.player.isSprinting() || (BaritoneAPI.getSettings().allowSprint.value && isMoving);
             if (isMoving && isSprint && !mc.player.horizontalCollision) {
@@ -1248,7 +1395,20 @@ public class CombatBrainModule extends Module {
             sameLevelBonus = -0.05 * (yDiff - 6.0);
         }
 
-        return baseScore + sameLevelBonus;
+        // Mob-specific tactical priorities:
+        // Heavily prioritize Evoker (+2.5) to stop it from spawning infinite Vexes.
+        // Lower priority on Vexes (-0.5) when higher-value targets exist.
+        double mobPriorityBonus = 0.0;
+        EntityType<?> type = target.getType();
+        if (type == EntityType.EVOKER) {
+            mobPriorityBonus += 2.5;
+        } else if (type == EntityType.VEX) {
+            mobPriorityBonus -= 0.5;
+        } else if (type == EntityType.GHAST || type == EntityType.BLAZE) {
+            mobPriorityBonus += 0.5;
+        }
+
+        return baseScore + sameLevelBonus + mobPriorityBonus;
     }
 
     private boolean isTargetValid(LivingEntity entity) {
@@ -1559,16 +1719,41 @@ public class CombatBrainModule extends Module {
         }
         double effectiveStrikeDist = Math.min(2.4, Math.min(strikeDistance.get(), targetDistance));
 
-        // --- Tactical positioning: group-aware bubble movement & distance gauging ---
-        if (tacticalPositioner != null && lastGroupSnapshot != null && lastGroupSnapshot.targets().size() > 1) {
+        // --- Tactical positioning: group-aware bubble movement, 1v1 circle strafing & ranged kiting ---
+        if (tacticalPositioner != null && lastGroupSnapshot != null && !lastGroupSnapshot.targets().isEmpty()) {
             tacticalPositioner.tick(
                 (net.minecraft.client.player.LocalPlayer) mc.player,
                 followController,
                 lastGroupSnapshot,
                 canTakeRisk,
                 effectiveStrikeDist,
-                targetDistance
+                targetDistance,
+                combatMode
             );
+        }
+
+        // --- Ranged Kite Combat Execution ---
+        if (combatMode == CombatMode.RANGED_KITE) {
+            FindItemResult ranged = InvUtils.find(Items.BOW, Items.CROSSBOW, Items.TRIDENT);
+            if (ranged.found() && !mc.player.getMainHandItem().is(Items.BOW)
+                && !mc.player.getMainHandItem().is(Items.CROSSBOW)
+                && !mc.player.getMainHandItem().is(Items.TRIDENT)) {
+                InvUtils.swap(ranged.slot(), false);
+            }
+
+            if (mc.player.getMainHandItem().is(Items.BOW)) {
+                double yaw = Rotations.getYaw(currentTarget);
+                double pitch = Rotations.getPitch(currentTarget, Target.Head);
+                Rotations.rotate(yaw, pitch, 100, true, null);
+
+                if (mc.player.getTicksUsingItem() >= 20) {
+                    mc.options.keyUse.setDown(false);
+                    mc.player.stopUsingItem();
+                } else {
+                    mc.options.keyUse.setDown(true);
+                }
+            }
+            return;
         }
 
         if (terrainGrid != null) {

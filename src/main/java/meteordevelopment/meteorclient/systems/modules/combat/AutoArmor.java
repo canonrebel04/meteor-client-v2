@@ -79,6 +79,13 @@ public class AutoArmor extends Module {
         .build()
     );
 
+    private final Setting<Boolean> piglinPacify = sgGeneral.add(new BoolSetting.Builder()
+        .name("piglin-pacify")
+        .description("Prioritizes a piece of gold armor when neutral Piglins are nearby to prevent them from aggroing.")
+        .defaultValue(true)
+        .build()
+    );
+
     private final Object2IntMap<Holder<Enchantment>> enchantments = new Object2IntOpenHashMap<>();
     private final ArmorPiece[] armorPieces = new ArmorPiece[4];
     private final ArmorPiece helmet = new ArmorPiece(EquipmentSlot.HEAD);
@@ -193,7 +200,35 @@ public class AutoArmor extends Module {
             }
         }
 
+        // Add priority bonus to golden armor if Piglins are nearby and player has no gold armor equipped
+        if (piglinPacify.get() && isGoldArmor(itemStack) && isPiglinNearby() && !isWearingGold()) {
+            score += 50;
+        }
+
         return score;
+    }
+
+    private boolean isGoldArmor(ItemStack stack) {
+        return stack.is(Items.GOLDEN_HELMET) || stack.is(Items.GOLDEN_CHESTPLATE)
+            || stack.is(Items.GOLDEN_LEGGINGS) || stack.is(Items.GOLDEN_BOOTS);
+    }
+
+    private boolean isWearingGold() {
+        if (mc.player == null) return false;
+        for (EquipmentSlot slot : new EquipmentSlot[] { EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET }) {
+            if (isGoldArmor(mc.player.getItemBySlot(slot))) return true;
+        }
+        return false;
+    }
+
+    private boolean isPiglinNearby() {
+        if (mc.level == null || mc.player == null) return false;
+        for (net.minecraft.world.entity.Entity entity : ((meteordevelopment.meteorclient.mixin.LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (entity instanceof net.minecraft.world.entity.monster.piglin.Piglin piglin && piglin.isAlive()) {
+                if (piglin.distanceTo(mc.player) <= 16.0) return true;
+            }
+        }
+        return false;
     }
 
     private boolean cannotSwap() {

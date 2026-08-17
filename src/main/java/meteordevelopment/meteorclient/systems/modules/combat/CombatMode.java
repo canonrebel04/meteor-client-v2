@@ -18,7 +18,8 @@ public enum CombatMode {
     BURROW,
     RETREAT_HEAL,
     SNIPE,
-    STEALTH;
+    STEALTH,
+    RANGED_KITE;
 
     /**
      * Evaluates tactical combat mode in priority order based on spec section 3 table.
@@ -58,6 +59,16 @@ public enum CombatMode {
 
         scores[RUSH.ordinal()] = Math.max(0.0, (1.0 - targetHpRatio) * viability);
 
+        // Ranged Kite evaluation: flying, elevated, or high-reach enemies
+        if (target != null && hasRangedWeapon()) {
+            boolean isAirborneOrFlying = isAirborneTarget(target);
+            var mc = net.minecraft.client.Minecraft.getInstance();
+            boolean isElevated = mc.player != null && (target.getY() - mc.player.getY() > 2.5);
+            if (isAirborneOrFlying || isElevated) {
+                scores[RANGED_KITE.ordinal()] = 0.85;
+            }
+        }
+
         double reachDeficit = targetReach - myReach;
         scores[KITE.ordinal()] = (reachDeficit > 0 && isMyWeaponMelee())
             ? Math.tanh(reachDeficit) * 0.7 : 0.0;
@@ -89,6 +100,7 @@ public enum CombatMode {
             case RETREAT_HEAL -> 2.0;
             case SNIPE -> 2.0;
             case STEALTH -> 1.5;
+            case RANGED_KITE -> 6.0;
         };
     }
 
@@ -105,6 +117,24 @@ public enum CombatMode {
         ItemStack off = target.getOffhandItem();
         return main.is(Items.BOW) || main.is(Items.CROSSBOW) || main.is(Items.TRIDENT)
             || off.is(Items.BOW) || off.is(Items.CROSSBOW) || off.is(Items.TRIDENT);
+    }
+
+    private static boolean hasRangedWeapon() {
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.player == null) return false;
+        return meteordevelopment.meteorclient.utils.player.InvUtils.find(Items.BOW, Items.CROSSBOW, Items.TRIDENT).found();
+    }
+
+    private static boolean isAirborneTarget(LivingEntity target) {
+        EntityType<?> type = target.getType();
+        return type == EntityType.GHAST
+            || type == EntityType.BLAZE
+            || type == EntityType.BREEZE
+            || type == EntityType.PHANTOM
+            || type == EntityType.ENDER_DRAGON
+            || type == EntityType.WITHER
+            || type == EntityType.BAT
+            || type == EntityType.VEX;
     }
 
     private static boolean isMyWeaponMelee() {

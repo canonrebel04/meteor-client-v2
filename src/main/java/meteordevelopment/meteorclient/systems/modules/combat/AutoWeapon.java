@@ -41,6 +41,13 @@ public class AutoWeapon extends Module {
         .build()
     );
 
+    private final Setting<Boolean> axeShieldDisable = sgGeneral.add(new BoolSetting.Builder()
+        .name("axe-shield-disable")
+        .description("Automatically swaps to an axe if the target is actively holding a shield to disable it.")
+        .defaultValue(true)
+        .build()
+    );
+
     public AutoWeapon() {
         super(Categories.Combat, "auto-weapon", "Finds the best weapon to use in your hotbar.");
     }
@@ -77,6 +84,12 @@ public class AutoWeapon extends Module {
                 }
             }
         }
+
+        // Prioritize axe if target is actively blocking with a shield to disable it
+        if (axeShieldDisable.get() && target.isUsingItem() && target.getUseItem().is(net.minecraft.world.item.Items.SHIELD)) {
+            if (damageA > 0) return slotA;
+        }
+
         if (weapon.get() == Weapon.Sword && threshold.get() > damageA - damageS) return slotS;
         else if (weapon.get() == Weapon.Axe && threshold.get() > damageS - damageA) return slotA;
         else if (weapon.get() == Weapon.Sword && threshold.get() < damageA - damageS) return slotA;
