@@ -644,6 +644,8 @@ public class CombatBrainModule extends Module {
     // Creeper and Melee shield defense state
     private boolean shieldRaisedForCreeper = false;
     private boolean shieldRaisedForMelee = false;
+    private int shieldDwellTicks = 0;
+    private int shieldCooldownTicks = 0;
 
     // Target tracking statistics
     private int trackedEntityCount = 0;
@@ -683,6 +685,8 @@ public class CombatBrainModule extends Module {
         savedKillAura = false;
         shieldRaisedForCreeper = false;
         shieldRaisedForMelee = false;
+        shieldDwellTicks = 0;
+        shieldCooldownTicks = 0;
         followController = new CombatFollowController();
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
@@ -725,6 +729,8 @@ public class CombatBrainModule extends Module {
             shieldRaisedForCreeper = false;
             shieldRaisedForMelee = false;
         }
+        shieldDwellTicks = 0;
+        shieldCooldownTicks = 0;
         disableAllManagedModules();
         state = BrainState.IDLE;
         combatMode = CombatMode.AGGRESSIVE;
@@ -822,23 +828,29 @@ public class CombatBrainModule extends Module {
     }
 
     /**
-     * Active Melee & PvP Shield Defense:
-     * When fighting an active opponent (especially Players, Vindicators, Ravagers, Skeletons):
+     * Active Melee & PvP Shield Defense with Anti-Cheat Dwell Timing:
+     * When fighting an active melee opponent (especially Players, Vindicators, Ravagers, Skeletons):
      * 1. If shield is available, auto-equip to offhand.
-     * 2. While attack meter is recharging (< 0.85 scale) OR enemy is actively swinging / damaging us:
-     *    Raise the shield to block 100% of incoming damage!
-     * 3. The instant attack meter is full (>= 0.9 scale) and in reach:
-     *    Lower shield momentarily so KillAura lands the counter-attack with W-Tap knockback!
+     * 2. When taking damage or under active melee pressure (< 4.0m):
+     *    Raise the shield with a human-like dwell time (at least 10 ticks) so it properly blocks hits
+     *    and does not spam use-item packets.
+     * 3. When attack meter is fully charged (>= 0.9 scale) and dwell time has elapsed:
+     *    Lower shield cleanly, counter-attack, and enforce a cooldown before raising again.
      */
     private void handleActiveMeleeShield() {
         if (mc.player == null || mc.level == null) return;
         if (!shieldSwap.get()) return;
         if (shieldRaisedForCreeper) return; // Creeper explosion defense takes priority
 
+        if (shieldCooldownTicks > 0) {
+            shieldCooldownTicks--;
+        }
+
         if (currentTarget == null || !currentTarget.isAlive()) {
             if (shieldRaisedForMelee) {
                 mc.options.keyUse.setDown(false);
                 shieldRaisedForMelee = false;
+                shieldDwellTicks = 0;
             }
             return;
         }
@@ -848,6 +860,7 @@ public class CombatBrainModule extends Module {
             if (shieldRaisedForMelee) {
                 mc.options.keyUse.setDown(false);
                 shieldRaisedForMelee = false;
+                shieldDwellTicks = 0;
             }
             return;
         }
@@ -865,22 +878,31 @@ public class CombatBrainModule extends Module {
             if (shieldRaisedForMelee) {
                 mc.options.keyUse.setDown(false);
                 shieldRaisedForMelee = false;
+                shieldDwellTicks = 0;
             }
             return;
         }
 
         float attackCooldown = mc.player.getAttackStrengthScale(0.5f);
-        boolean isTargetAttacking = currentTarget.attackAnim > 0 || (currentTarget instanceof Player p && p.attackAnim > 0);
         boolean isTakingDamage = mc.player.hurtTime > 0;
+        boolean isTargetAttacking = currentTarget.attackAnim > 0 || (currentTarget instanceof Player p && p.attackAnim > 0);
 
-        // If attack cooldown is recharging OR enemy is swinging at us OR we just took damage, RAISE SHIELD
-        if (attackCooldown < 0.85f || isTargetAttacking || isTakingDamage) {
-            mc.options.keyUse.setDown(true);
-            shieldRaisedForMelee = true;
+        if (shieldRaisedForMelee) {
+            shieldDwellTicks++;
+            // Hold shield for at least 10 ticks before considering lowering it for an attack
+            if (shieldDwellTicks >= 10 && attackCooldown >= 0.9f && !isTakingDamage) {
+                mc.options.keyUse.setDown(false);
+                shieldRaisedForMelee = false;
+                shieldDwellTicks = 0;
+                shieldCooldownTicks = 6; // 6-tick cooldown before shield can be re-raised
+            }
         } else {
-            // Lower shield momentarily to allow weapon strike
-            mc.options.keyUse.setDown(false);
-            shieldRaisedForMelee = false;
+            // Only raise shield if not on cooldown AND (taking damage OR target is swinging at us and we are not ready to strike)
+            if (shieldCooldownTicks == 0 && (isTakingDamage || (isTargetAttacking && attackCooldown < 0.85f))) {
+                mc.options.keyUse.setDown(true);
+                shieldRaisedForMelee = true;
+                shieldDwellTicks = 0;
+            }
         }
     }
 
@@ -1825,10 +1847,12 @@ public class CombatBrainModule extends Module {
             : 3;
         ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(groupSize);
 
-        // ANTICHEAT: set KillAura attack range to 3.15 (vanilla max survival reach)
-        // so enemy players cannot out-range or combo the bot from beyond reach.
-        ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(Math.max(
-            ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).get(), 3.15));
+        // ANTICHEAT: clamp KillAura attack range strictly to 2.95 (vanilla reach is 3.0).
+        // Attacking beyond 3.00 trips server anticheats (Minewind Cheater Spanker, GrimAC, Vulcan).
+        ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(2.95);
+
+        // Add 1-tick switch delay so swapping items doesn't trigger FastSwitch checks
+        ((Setting<Integer>) (Setting<?>) killAura.settings.get("switch-delay")).set(1);
 
         // Enable Shield breaking mode on KillAura so axes automatically disable enemy shields
         ((Setting<KillAura.ShieldMode>) (Setting<?>) killAura.settings.get("shield-mode")).set(KillAura.ShieldMode.Break);
