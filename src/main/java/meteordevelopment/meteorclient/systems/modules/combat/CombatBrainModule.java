@@ -951,8 +951,12 @@ public class CombatBrainModule extends Module {
         if (wardenNear) return false;
         if (!mc.player.onGround() || mc.player.isInWater() || mc.player.isCrouching()) return false;
 
-        // 1. SUPPRESSION: Mining / Digging / Breaking blocks (prevents jumping back and forth over a hole)
+        // 1. SUPPRESSION: Mining / Digging / Breaking blocks & Parkour Movements
         if (mc.gameMode != null && mc.gameMode.isDestroying()) return false;
+        if (Modules.get() != null && Modules.get().isActive(meteordevelopment.meteorclient.systems.modules.movement.Parkour.class)) {
+            return false;
+        }
+
         var baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
         if (baritone != null) {
             if (baritone.getMineProcess().isActive() || baritone.getBuilderProcess().isActive()) {
@@ -961,7 +965,11 @@ public class CombatBrainModule extends Module {
             var currentMovement = baritone.getPathingBehavior().getCurrent();
             if (currentMovement != null) {
                 String movementName = currentMovement.getClass().getSimpleName();
-                if (movementName.contains("Downward") || movementName.contains("Pillar") || movementName.contains("Descend")) {
+                if (movementName.contains("Parkour")
+                    || movementName.contains("Downward")
+                    || movementName.contains("Pillar")
+                    || movementName.contains("Descend")
+                    || movementName.contains("Fall")) {
                     return false;
                 }
             }
@@ -989,6 +997,19 @@ public class CombatBrainModule extends Module {
 
         BlockPos inFront1 = feet.offset(dx, 0, dz);
         BlockPos inFront2 = feet.offset(dx * 2, 0, dz * 2);
+        BlockPos inFront3 = feet.offset(dx * 3, 0, dz * 3);
+
+        // Check for parkour gap ahead (1-to-3 block gap with solid landing platform across).
+        // Jumping early via BHop causes undershooting or overshooting the gap.
+        boolean inFront1Empty = !mc.level.getBlockState(inFront1.below()).isSolidRender()
+            && !mc.level.getBlockState(inFront1).isSolidRender();
+        boolean inFront2Solid = mc.level.getBlockState(inFront2.below()).isSolidRender()
+            || mc.level.getBlockState(inFront2).isSolidRender();
+        boolean inFront3Solid = mc.level.getBlockState(inFront3.below()).isSolidRender()
+            || mc.level.getBlockState(inFront3).isSolidRender();
+        if (inFront1Empty && (inFront2Solid || inFront3Solid)) {
+            return false; // Suppress bhop so precision parkour jump executes properly at block edge
+        }
 
         // Check for cliff / drop-off hazard (> 3 blocks drop in front)
         boolean hasFloor1 = mc.level.getBlockState(inFront1.below()).isSolidRender()
