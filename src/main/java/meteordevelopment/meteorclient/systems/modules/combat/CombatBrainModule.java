@@ -887,7 +887,9 @@ public class CombatBrainModule extends Module {
         }
 
         double dist = currentTarget.distanceTo(mc.player);
-        if (dist > 4.5) {
+        // Only consider shield in close melee range (<= 2.5m). When closing distance,
+        // NEVER hold shield because using an item slows movement by 80% and cancels sprinting!
+        if (dist > 2.5) {
             if (shieldRaisedForMelee) {
                 mc.options.keyUse.setDown(false);
                 shieldRaisedForMelee = false;
@@ -920,15 +922,15 @@ public class CombatBrainModule extends Module {
 
         if (shieldRaisedForMelee) {
             shieldDwellTicks++;
-            // Hold shield for at least 10 ticks before considering lowering it for an attack
-            if (shieldDwellTicks >= 10 && attackCooldown >= 0.9f && !isTakingDamage) {
+            // Lower shield when attack is charged (>= 0.85) or no longer taking damage
+            if (shieldDwellTicks >= 8 && attackCooldown >= 0.85f && !isTakingDamage) {
                 mc.options.keyUse.setDown(false);
                 shieldRaisedForMelee = false;
                 shieldDwellTicks = 0;
                 shieldCooldownTicks = 6; // 6-tick cooldown before shield can be re-raised
             }
         } else {
-            // Only raise shield if not on cooldown AND (taking damage OR target is swinging at us and we are not ready to strike)
+            // Only raise shield if not on cooldown AND taking damage or enemy is swinging during our recharge
             if (shieldCooldownTicks == 0 && (isTakingDamage || (isTargetAttacking && attackCooldown < 0.85f))) {
                 mc.options.keyUse.setDown(true);
                 shieldRaisedForMelee = true;
@@ -983,19 +985,14 @@ public class CombatBrainModule extends Module {
 
     /**
      * Evoker Fang Telegraph Dodging: detects when an Evoker is actively casting spell fangs,
-     * and performs a quick lateral impulse perpendicular to its gaze.
+     * and triggers a quick lateral strafe key press.
      */
     private void handleEvokerFangDodge() {
         if (mc.level == null || mc.player == null) return;
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
             if (entity.getType() == EntityType.EVOKER && entity instanceof LivingEntity evoker && evoker.isAlive()) {
-                if (evoker.distanceTo(mc.player) <= 12.0) {
-                    double evokerYaw = Math.toRadians(evoker.getYRot());
-                    double perpX = -Math.cos(evokerYaw);
-                    double perpZ = -Math.sin(evokerYaw);
-                    mc.player.setDeltaMovement(
-                        mc.player.getDeltaMovement().add(perpX * 0.12, 0.08, perpZ * 0.12)
-                    );
+                if (evoker.distanceTo(mc.player) <= 10.0) {
+                    mc.options.keyLeft.setDown(true);
                     break;
                 }
             }
@@ -1042,6 +1039,9 @@ public class CombatBrainModule extends Module {
 
         if (bhopJumpCooldown > 0) {
             bhopJumpCooldown--;
+            if (bhopJumpCooldown == 2) {
+                mc.options.keyJump.setDown(false);
+            }
         }
 
         // Warden stealth check: suppress jumping/sprinting near unalerted Warden to avoid vibrations
@@ -1055,11 +1055,11 @@ public class CombatBrainModule extends Module {
             }
         }
 
-        // Situational BHop: strictly checks mining status, path turns, distance to goal, terrain slope, and cadence
+        // Situational BHop: uses legitimate keyJump keypresses to prevent server anticheat rubberbanding
         if (canSituationalBHop(wardenNear)) {
             boolean isSprint = mc.player.isSprinting() || BaritoneAPI.getSettings().allowSprint.value;
-            if (isSprint) {
-                mc.player.jumpFromGround();
+            if (isSprint && mc.player.onGround()) {
+                mc.options.keyJump.setDown(true);
                 bhopJumpCooldown = 4; // 4-tick jump cadence to prevent spam-jumping and runaway momentum
             }
         }
