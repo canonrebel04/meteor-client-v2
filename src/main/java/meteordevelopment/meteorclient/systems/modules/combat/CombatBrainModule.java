@@ -16,6 +16,7 @@ import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.meteorclient.mixin.LevelAccessor;
 import net.minecraft.core.BlockPos;
@@ -1595,6 +1596,13 @@ public class CombatBrainModule extends Module {
             // Acquire targets up to acquireRange (default 64) so long-range targets are locked onto and pathed to
             if (le.distanceToSqr(mc.player) > acquireRangeSq) return false;
 
+            // Wall awareness: only acquire targets we can actually see. Engaging a mob
+            // through a cave wall stops the dig and ends in swinging at stone; when the
+            // mob comes around the corner / breaks through, it becomes visible and is
+            // acquired normally. (A target that was already acquired stays valid while
+            // it moves behind cover mid-chase -- see isTargetValid.)
+            if (!PlayerUtils.canSeeEntity(entity)) return false;
+
             Set<EntityType<?>> types = entities.get();
             if (types.isEmpty()) {
                 types = Set.of(
@@ -1893,6 +1901,12 @@ public class CombatBrainModule extends Module {
 
         // Set KillAura RotationMode to Always so KillAura aims at targets when in range
         ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).set(KillAura.RotationMode.Always);
+
+        // Wall & digging awareness: only attack visible targets (walls-range 0) and
+        // pause attacks while mining/using items, so combat never swings through cave
+        // walls nor fights the left-click with baritone's digging.
+        ((Setting<Double>) (Setting<?>) killAura.settings.get("walls-range")).set(0.0);
+        ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-on-use")).set(true);
     }
 
     private void restoreKillAura() {
