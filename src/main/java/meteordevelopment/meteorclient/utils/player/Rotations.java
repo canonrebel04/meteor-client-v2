@@ -8,6 +8,7 @@ package meteordevelopment.meteorclient.utils.player;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.SendMovementPacketsEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.pathing.LookPriorityBridge;
 import meteordevelopment.meteorclient.systems.config.Config;
 import meteordevelopment.meteorclient.utils.PreInit;
 import meteordevelopment.meteorclient.utils.entity.Target;
@@ -94,6 +95,7 @@ public class Rotations {
 
             Rotation rotation = rotations.get(i);
             setupMovementPacketRotation(rotation);
+            LookPriorityBridge.sync(rotation.yaw, rotation.pitch);
 
             if (rotations.size() > 1) rotationPool.free(rotation);
 
@@ -102,12 +104,16 @@ public class Rotations {
             if (lastRotationTimer >= Config.get().rotationHoldTicks.get()) {
                 resetLastRotation();
                 rotating = false;
+                LookPriorityBridge.release();
             } else {
                 setupMovementPacketRotation(lastRotation);
                 sentLastRotation = true;
+                LookPriorityBridge.sync(lastRotation.yaw, lastRotation.pitch);
 
                 lastRotationTimer++;
             }
+        } else {
+            LookPriorityBridge.release();
         }
     }
 
