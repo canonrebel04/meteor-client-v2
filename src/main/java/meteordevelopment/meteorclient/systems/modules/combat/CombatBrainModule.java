@@ -925,14 +925,116 @@ public class CombatBrainModule extends Module {
             }
         }
 
-        // Auto-BHop / Jump-Sprint when moving forward on ground to gain momentum (suppressed near Warden)
-        if (bhop.get() && !wardenNear && mc.player.onGround() && !mc.player.isInWater() && !mc.player.isCrouching()) {
-            boolean isMoving = mc.player.zza > 0 || (mc.player.getDeltaMovement().horizontalDistanceSqr() > 0.04);
-            boolean isSprint = mc.player.isSprinting() || (BaritoneAPI.getSettings().allowSprint.value && isMoving);
-            if (isMoving && isSprint && !mc.player.horizontalCollision) {
+        // Situational BHop: strictly checks mining status, tunnel corridors, terrain slope, cliff edges, and combat distance
+        if (canSituationalBHop(wardenNear)) {
+            boolean isSprint = mc.player.isSprinting() || BaritoneAPI.getSettings().allowSprint.value;
+            if (isSprint) {
                 mc.player.jumpFromGround();
             }
         }
+    }
+
+    /**
+     * Situational BHop validator:
+     * Only allows bunny hopping when moving forward in straight corridors/tunnels (2x1, 3x1, 2x2, 3x3)
+     * or charging straight towards a distant enemy across flat ground.
+     * Strictly suppresses BHop when:
+     * 1. Actively mining, digging down, or strip mining (prevents jumping over holes).
+     * 2. Fighting in tight spaces or close melee range (< 4.0 blocks).
+     * 3. Climbing steep mountains/slopes (prevents jumping off the side).
+     * 4. Approaching ledges or cliffs with dangerous drop-offs (> 3 blocks).
+     * 5. Near unalerted Warden (vibration avoidance).
+     */
+    private boolean canSituationalBHop(boolean wardenNear) {
+        if (mc.player == null || mc.level == null) return false;
+        if (!bhop.get()) return false;
+        if (wardenNear) return false;
+        if (!mc.player.onGround() || mc.player.isInWater() || mc.player.isCrouching()) return false;
+
+        // 1. SUPPRESSION: Mining / Digging / Breaking blocks (prevents jumping back and forth over a hole)
+        if (mc.gameMode != null && mc.gameMode.isDestroying()) return false;
+        var baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+        if (baritone != null) {
+            if (baritone.getMineProcess().isActive() || baritone.getBuilderProcess().isActive()) {
+                return false;
+            }
+            var currentMovement = baritone.getPathingBehavior().getCurrent();
+            if (currentMovement != null) {
+                String movementName = currentMovement.getClass().getSimpleName();
+                if (movementName.contains("Downward") || movementName.contains("Pillar") || movementName.contains("Descend")) {
+                    return false;
+                }
+            }
+        }
+
+        // 2. Must be moving forward with forward momentum
+        boolean isMovingForward = mc.player.zza > 0.1 || (mc.player.getDeltaMovement().horizontalDistanceSqr() > 0.05);
+        if (!isMovingForward) return false;
+        if (mc.player.horizontalCollision) return false;
+
+        // 3. SUPPRESSION: Close-Quarters Melee Combat (< 4.0m) in tight caves
+        if (currentTarget != null && currentTarget.isAlive()) {
+            double dist = mc.player.distanceTo(currentTarget);
+            if (dist <= 4.0) {
+                return false;
+            }
+        }
+
+        // 4. Terrain & Safety Analysis Ahead
+        BlockPos feet = mc.player.blockPosition();
+        float yaw = mc.player.getYRot();
+        double rad = Math.toRadians(yaw);
+        int dx = -Mth.floor(Mth.sin((float) rad) + 0.5f);
+        int dz = Mth.floor(Mth.cos((float) rad) + 0.5f);
+
+        BlockPos inFront1 = feet.offset(dx, 0, dz);
+        BlockPos inFront2 = feet.offset(dx * 2, 0, dz * 2);
+
+        // Check for cliff / drop-off hazard (> 3 blocks drop in front)
+        boolean hasFloor1 = mc.level.getBlockState(inFront1.below()).isSolidRender()
+            || mc.level.getBlockState(inFront1).isSolidRender();
+        boolean hasFloor2 = mc.level.getBlockState(inFront2.below()).isSolidRender()
+            || mc.level.getBlockState(inFront2.below(2)).isSolidRender();
+
+        if (!hasFloor1 || !hasFloor2) {
+            boolean isDropOff = !mc.level.getBlockState(inFront1.below()).isSolidRender()
+                && !mc.level.getBlockState(inFront1.below(2)).isSolidRender()
+                && !mc.level.getBlockState(inFront1.below(3)).isSolidRender();
+            if (isDropOff) return false;
+        }
+
+        // Check for steep mountain / cliff ascend (2-block steep climb ahead)
+        boolean isSteepClimb = mc.level.getBlockState(inFront1).isSolidRender()
+            && mc.level.getBlockState(inFront1.above()).isSolidRender();
+        if (isSteepClimb) return false;
+
+        // 5. ALLOW CONDITIONS:
+        // A) Tunnel Detection (2x1, 3x1, 2x2, 3x3 corridors):
+        BlockPos left = feet.offset(-dz, 0, dx);
+        BlockPos right = feet.offset(dz, 0, -dx);
+        boolean hasSideWalls = mc.level.getBlockState(left).isSolidRender()
+            || mc.level.getBlockState(right).isSolidRender();
+        boolean hasCeiling = mc.level.getBlockState(feet.above(2)).isSolidRender()
+            || mc.level.getBlockState(feet.above(3)).isSolidRender();
+        boolean isTunnel = (hasSideWalls || hasCeiling) && (hasFloor1 && hasFloor2);
+        if (isTunnel) return true;
+
+        // B) Straight Travel to distant enemy (> 4.5m) on fairly level ground:
+        if (currentTarget != null && currentTarget.isAlive()) {
+            double dist = mc.player.distanceTo(currentTarget);
+            double yDiff = Math.abs(currentTarget.getY() - mc.player.getY());
+            if (dist > 4.5 && yDiff <= 1.5 && hasFloor1 && hasFloor2) {
+                return true;
+            }
+        }
+
+        // C) Flat open ground travel:
+        boolean isFlatAhead = mc.level.getBlockState(inFront1.below()).isSolidRender()
+            && mc.level.getBlockState(inFront2.below()).isSolidRender()
+            && !mc.level.getBlockState(inFront1).isSolidRender()
+            && !mc.level.getBlockState(inFront2).isSolidRender();
+
+        return isFlatAhead;
     }
 
     @EventHandler

@@ -7,10 +7,7 @@ package meteordevelopment.meteorclient;
 
 import javax.swing.*;
 import java.io.File;
-import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.awt.Desktop;
 import java.net.URL;
 import java.util.Locale;
