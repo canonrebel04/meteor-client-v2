@@ -255,6 +255,34 @@ public class CrystalAura extends Module {
         .build()
     );
 
+    // T1: BasePlace — build obsidian bases under targets standing in air
+
+    private final Setting<Boolean> basePlace = sgPlace.add(new BoolSetting.Builder()
+        .name("base-place")
+        .description("Automatically places an obsidian base under targets standing in the air or on replaceable blocks, creating a crystal spot.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Double> basePlaceAdvantage = sgPlace.add(new DoubleSetting.Builder()
+        .name("base-place-advantage")
+        .description("Additional damage (over min-damage) the crystal-at-feet placement must deal to justify building a base.")
+        .defaultValue(0)
+        .min(0)
+        .sliderMax(10)
+        .visible(basePlace::get)
+        .build()
+    );
+
+    private final Setting<Integer> basePlaceTimeout = sgPlace.add(new IntSetting.Builder()
+        .name("base-place-timeout")
+        .description("Ticks to wait between base-place attempts (prevents spamming while the previous base is being used).")
+        .defaultValue(20)
+        .range(1, 100)
+        .visible(basePlace::get)
+        .build()
+    );
+
     // Face place
 
     private final Setting<Boolean> facePlace = sgFacePlace.add(new BoolSetting.Builder()
@@ -650,6 +678,8 @@ public class CrystalAura extends Module {
     private final BlockPos.MutableBlockPos breakRenderPos = new BlockPos.MutableBlockPos();
     private AABB renderBoxOne, renderBoxTwo;
 
+    private int basePlaceCooldown;
+
     private double renderDamage;
 
     public CrystalAura() {
@@ -679,6 +709,7 @@ public class CrystalAura extends Module {
 
         placeRenderTimer = 0;
         breakRenderTimer = 0;
+        basePlaceCooldown = 0;
     }
 
     @Override
@@ -693,6 +724,7 @@ public class CrystalAura extends Module {
         removed.clear();
         packetAttacked.clear();
         idPredictActions.clear();
+        basePlaceCooldown = 0;
 
         bestTarget = null;
     }
@@ -733,6 +765,9 @@ public class CrystalAura extends Module {
         // Decrement render timers
         if (placeRenderTimer > 0) placeRenderTimer--;
         if (breakRenderTimer > 0) breakRenderTimer--;
+
+        // Base-place cooldown
+        if (basePlaceCooldown > 0) basePlaceCooldown--;
 
         mainItem = mc.player.getMainHandItem().getItem();
         offItem = mc.player.getOffhandItem().getItem();
@@ -1005,6 +1040,64 @@ public class CrystalAura extends Module {
 
     // Place
 
+    /**
+     * T1: BasePlace — place an obsidian base under the nearest target when they are standing
+     * in air or on replaceable blocks, creating a crystal spot for the normal placement logic.
+     */
+    private boolean tryBasePlace() {
+        if (!basePlace.get() || basePlaceCooldown > 0 || placing || placeTimer > 0) return false;
+
+        LivingEntity target = getNearestTarget();
+        if (target == null) return false;
+
+        BlockPos feet = target.blockPosition();
+
+        // The block at the target's feet is already a valid crystal base
+        var feetState = mc.level.getBlockState(feet);
+        if (feetState.is(Blocks.OBSIDIAN) || feetState.is(Blocks.BEDROCK)) return false;
+        // Solid non-base block: the normal search can place a crystal on top of it
+        if (!feetState.isAir() && !feetState.canBeReplaced()) return false;
+
+        // The crystal would spawn on top of the new base (feet + 1)
+        BlockPos crystalBlock = feet.above();
+        var crystalState = mc.level.getBlockState(crystalBlock);
+        if (!crystalState.isAir() && !crystalState.canBeReplaced()) return false;
+
+        // Crystal center for damage / range checks
+        ((IVec3) vec3d).meteor$set(feet.getX() + 0.5, feet.getY() + 1, feet.getZ() + 0.5);
+        if (isOutOfRange(vec3d, feet, true)) return false;
+
+        // Self damage / anti suicide
+        float selfDamage = DamageUtils.crystalDamage(mc.player, vec3d, predictMovement.get(), feet);
+        if (selfDamage > maxDamage.get() || (antiSuicide.get() && selfDamage >= EntityUtils.getTotalHealth(mc.player)))
+            return false;
+
+        // Damage to targets must clear minDamage + advantage
+        float damage = getDamageToTargets(vec3d, feet, false, false);
+        if (damage < minDamage.get() + basePlaceAdvantage.get()) return false;
+
+        // Obsidian required for the base
+        if (!InvUtils.testInHotbar(Items.OBSIDIAN)) return false;
+
+        // Placement feasibility (raycast a face; the fallback side is acceptable)
+        BlockHitResult result = getPlaceInfo(feet);
+        if (result == null) return false;
+
+        if (rotate.get()) {
+            double yaw = Rotations.getYaw(vec3d);
+            double pitch = Rotations.getPitch(vec3d);
+            if (!doYawSteps(yaw, pitch)) return false; // rotation too large this tick — let normal placement try
+
+            setRotation(true, vec3d, 0, 0);
+            basePlaceCooldown = basePlaceTimeout.get();
+            Rotations.rotate(yaw, pitch, 50, () -> placeCrystal(result, damage, feet));
+        } else {
+            basePlaceCooldown = basePlaceTimeout.get();
+            placeCrystal(result, damage, feet);
+        }
+        return true;
+    }
+
     private void doPlace() {
         if (!doPlace.get() || placeTimer > 0) return;
         if (shouldPause(PauseMode.Place)) return;
@@ -1022,6 +1115,10 @@ public class CrystalAura extends Module {
             }
             if (noBowSwitch.get() && (mainItem == Items.BOW || offItem == Items.BOW)) return;
         } else if (mainItem != Items.END_CRYSTAL && offItem != Items.END_CRYSTAL) return;
+
+        // T1: BasePlace — build an obsidian base under a target standing in air/replaceable
+        // blocks, then let the normal placement logic use it next tick.
+        if (tryBasePlace()) return;
 
         // Check for multiplace
         for (Entity entity : mc.level.entitiesForRendering()) {
