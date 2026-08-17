@@ -803,12 +803,13 @@ public class CombatBrainModule extends Module {
             }
         }
 
-        // 2. Rotate player to face the creeper directly so the shield block arc covers the blast
+        // 2. Smoothly rotate player to face the creeper directly so the shield block arc covers the blast
         double yaw = Rotations.getYaw(imminentCreeper);
         double pitch = Rotations.getPitch(imminentCreeper, Target.Body);
-        Rotations.rotate(yaw, pitch, 100, true, null);
-        mc.player.setYRot((float) yaw);
-        mc.player.setXRot((float) pitch);
+        float deltaYaw = Mth.wrapDegrees((float) (yaw - mc.player.getYRot()));
+        float deltaPitch = (float) (pitch - mc.player.getXRot());
+        mc.player.setYRot(mc.player.getYRot() + Mth.clamp(deltaYaw * 0.6f, -45.0f, 45.0f));
+        mc.player.setXRot(mc.player.getXRot() + Mth.clamp(deltaPitch * 0.6f, -30.0f, 30.0f));
 
         if (hasShieldEquipped) {
             // 3. Raise shield
@@ -825,6 +826,32 @@ public class CombatBrainModule extends Module {
                 followController.flee(imminentCreeper, 7.0);
             }
         }
+    }
+
+    /**
+     * Human-like Smooth Camera & Aim Tracking:
+     * Eliminates robotic snapping, 180° snap-backs, and jerky camera flips.
+     * Continuously and smoothly turns the player's view towards the active combat target.
+     */
+    private void handleSmoothCameraAim() {
+        if (mc.player == null || mc.level == null) return;
+        if (currentTarget == null || !currentTarget.isAlive()) return;
+
+        double targetYaw = Rotations.getYaw(currentTarget);
+        double targetPitch = Rotations.getPitch(currentTarget, Target.Body);
+
+        float currentYaw = mc.player.getYRot();
+        float currentPitch = mc.player.getXRot();
+
+        float deltaYaw = Mth.wrapDegrees((float) (targetYaw - currentYaw));
+        float deltaPitch = (float) (targetPitch - currentPitch);
+
+        // Smooth exponential interpolation (max 35° yaw, 25° pitch per tick)
+        float stepYaw = Mth.clamp(deltaYaw * 0.45f, -35.0f, 35.0f);
+        float stepPitch = Mth.clamp(deltaPitch * 0.45f, -25.0f, 25.0f);
+
+        mc.player.setYRot(currentYaw + stepYaw);
+        mc.player.setXRot(currentPitch + stepPitch);
     }
 
     /**
@@ -935,7 +962,10 @@ public class CombatBrainModule extends Module {
                 if (dot > 0 || dist <= 3.0) {
                     double yaw = Rotations.getYaw(entity);
                     double pitch = Rotations.getPitch(entity);
-                    Rotations.rotate(yaw, pitch, 110, true, null);
+                    float deltaYaw = Mth.wrapDegrees((float) (yaw - mc.player.getYRot()));
+                    float deltaPitch = (float) (pitch - mc.player.getXRot());
+                    mc.player.setYRot(mc.player.getYRot() + Mth.clamp(deltaYaw * 0.6f, -45.0f, 45.0f));
+                    mc.player.setXRot(mc.player.getXRot() + Mth.clamp(deltaPitch * 0.6f, -30.0f, 30.0f));
 
                     if (mc.gameMode != null) {
                         mc.gameMode.attack(mc.player, entity);
@@ -992,7 +1022,7 @@ public class CombatBrainModule extends Module {
 
     /**
      * Post-tick event: tick follow controller, execute creeper defense,
-     * active melee shield, projectile deflection, evoker dodging, w-tap sprint reset, and situational BHop.
+     * smooth camera aim, active melee shield, projectile deflection, evoker dodging, w-tap sprint reset, and situational BHop.
      */
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
@@ -1000,6 +1030,7 @@ public class CombatBrainModule extends Module {
         if (followController != null) followController.tick();
 
         handleCreeperDefense();
+        handleSmoothCameraAim();
         handleActiveMeleeShield();
         handleProjectileDeflection();
         handleEvokerFangDodge();
@@ -1857,12 +1888,10 @@ public class CombatBrainModule extends Module {
         // Enable Shield breaking mode on KillAura so axes automatically disable enemy shields
         ((Setting<KillAura.ShieldMode>) (Setting<?>) killAura.settings.get("shield-mode")).set(KillAura.ShieldMode.Break);
 
-        // ANTICHEAT: force rotation mode to OnHit (rotate only at the moment of
-        // attack) instead of Always. Constant per-tick aim-lock at the target's
-        // exact body angles is the classic killaura tell (AimModulo360 /
-        // rotation-GCD checks). OnHit sends far fewer rotation packets and only
-        // when actually attacking — looks like a player flicking to their target.
-        ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).set(KillAura.RotationMode.OnHit);
+        // SMOOTH AIM & ZERO SNAP-BACK: set RotationMode to None because
+        // CombatBrainModule's handleSmoothCameraAim continuously and smoothly
+        // guides the player's view at the target with human mouse interpolation.
+        ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).set(KillAura.RotationMode.None);
     }
 
     private void restoreKillAura() {
