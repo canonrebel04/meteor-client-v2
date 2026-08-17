@@ -28,6 +28,7 @@ public class CombatFollowController {
     private static final int MIN_RESTART_INTERVAL_TICKS = 10;
     private int ticksSinceLastRestart = 0;
     private boolean directPursuitActive = false;
+    private boolean maintainingDistance = false;
 
     public enum FollowMode {
         FOLLOW,
@@ -116,6 +117,8 @@ public class CombatFollowController {
      * or falls back to Baritone A* when navigating around complex obstacles/walls.
      */
     public void tick() {
+        if (maintainingDistance) return; // maintainDistance() drives keys directly
+
         if (ticksSinceLastRestart < MIN_RESTART_INTERVAL_TICKS) {
             ticksSinceLastRestart++;
         }
@@ -184,9 +187,58 @@ public class CombatFollowController {
         }
     }
 
+    /**
+     * Keeps the player at a fixed safe distance band around the target WITHOUT
+     * rushing in: backs away when the target gets too close, holds position in
+     * the band, and approaches only when the target moves beyond the band.
+     * Uses the same direct key input style as direct pursuit but with an
+     * outbound bias so the bot never drifts into melee range.
+     */
+    public void maintainDistance(Entity target, double minDist, double maxDist) {
+        mode = FollowMode.FOLLOW;
+        currentTarget = target;
+        directPursuitActive = false;
+        maintainingDistance = true;
+        if (baritone.getPathingBehavior().isPathing()) {
+            baritone.getPathingBehavior().cancelEverything();
+        }
+
+        if (target == null || mc.player == null) return;
+
+        double dx = target.getX() - mc.player.getX();
+        double dz = target.getZ() - mc.player.getZ();
+        double dist = Math.sqrt(dx * dx + dz * dz);
+
+        // Face the target so backward movement is directly away from it
+        float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
+        float currentYaw = mc.player.getYRot();
+        float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
+        mc.player.setYRot(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f));
+
+        if (dist < minDist - 0.2) {
+            // Too close: back away (facing the target = moving directly away)
+            mc.options.keyUp.setDown(false);
+            mc.options.keyDown.setDown(true);
+            mc.player.setSprinting(false);
+        } else if (dist > maxDist + 0.2) {
+            // Too far: close back in
+            mc.options.keyUp.setDown(true);
+            mc.options.keyDown.setDown(false);
+            mc.player.setSprinting(true);
+            if (mc.player.horizontalCollision && mc.player.onGround()) {
+                mc.options.keyJump.setDown(true);
+            }
+        } else {
+            // In the band: hold still, keep facing the target
+            mc.options.keyUp.setDown(false);
+            mc.options.keyDown.setDown(false);
+        }
+    }
+
     public void follow(Entity target, double distance) {
         mode = FollowMode.FOLLOW;
         currentTarget = target;
+        maintainingDistance = false;
 
         if (target == null) {
             stop();
@@ -232,6 +284,7 @@ public class CombatFollowController {
         mode = FollowMode.FLEE;
         currentTarget = target;
         directPursuitActive = false;
+        maintainingDistance = false;
 
         if (target == null) {
             stop();
@@ -260,9 +313,11 @@ public class CombatFollowController {
         followDistance = -1.0;
         ticksSinceLastRestart = 0;
         directPursuitActive = false;
+        maintainingDistance = false;
 
         if (mc.options != null) {
             mc.options.keyUp.setDown(false);
+            mc.options.keyDown.setDown(false);
             mc.options.keyJump.setDown(false);
         }
 

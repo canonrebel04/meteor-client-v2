@@ -280,6 +280,16 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    private final Setting<Double> bubbleDistance = sgEngagement.add(new DoubleSetting.Builder()
+        .name("bubble-distance")
+        .description("Safe distance to hold between strikes, OUTSIDE the target's melee reach (zombie/skeleton ~3, creeper blast ~3.5). The bot retreats to this bubble instead of standing in range and trading hits.")
+        .defaultValue(4.5)
+        .min(3.0)
+        .max(10.0)
+        .sliderMax(10.0)
+        .build()
+    );
+
     private final Setting<Integer> strikeDurationTicks = sgEngagement.add(new IntSetting.Builder()
         .name("strike-duration-ticks")
         .description("Duration (in ticks) to stay in the strike phase before retreating.")
@@ -648,6 +658,10 @@ public class CombatBrainModule extends Module {
     private int shieldDwellTicks = 0;
     private int shieldCooldownTicks = 0;
 
+    // Last engaged target memory (LOS-gate exception after retreat, cave case)
+    private UUID lastTargetUuid = null;
+    private int lastTargetTick = -9999;
+
     // Target tracking statistics
     private int trackedEntityCount = 0;
     private int killedInCombat = 0;
@@ -792,12 +806,15 @@ public class CombatBrainModule extends Module {
             return;
         }
 
-        // 1. Ensure shield is equipped in offhand
-        boolean hasShieldEquipped = mc.player.getOffhandItem().getItem() == Items.SHIELD
-            || mc.player.getMainHandItem().getItem() == Items.SHIELD;
+        // 1. Ensure a usable (non-broken) shield is equipped in offhand
+        boolean hasShieldEquipped = (mc.player.getOffhandItem().getItem() == Items.SHIELD
+            && mc.player.getOffhandItem().getMaxDamage() - mc.player.getOffhandItem().getDamageValue() > 0)
+            || (mc.player.getMainHandItem().getItem() == Items.SHIELD
+            && mc.player.getMainHandItem().getMaxDamage() - mc.player.getMainHandItem().getDamageValue() > 0);
 
         if (!hasShieldEquipped) {
-            FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD);
+            FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD
+                && itemStack.getMaxDamage() - itemStack.getDamageValue() > 0);
             if (shield.found()) {
                 InvUtils.move().from(shield.slot()).toOffhand();
                 hasShieldEquipped = true;
@@ -899,9 +916,11 @@ public class CombatBrainModule extends Module {
             return;
         }
 
-        boolean hasShieldInOffhand = mc.player.getOffhandItem().is(Items.SHIELD);
+        boolean hasShieldInOffhand = mc.player.getOffhandItem().is(Items.SHIELD)
+            && mc.player.getOffhandItem().getMaxDamage() - mc.player.getOffhandItem().getDamageValue() > 0;
         if (!hasShieldInOffhand) {
-            FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD);
+            FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD
+                && itemStack.getMaxDamage() - itemStack.getDamageValue() > 0);
             if (shield.found()) {
                 InvUtils.move().from(shield.slot()).toOffhand();
                 hasShieldInOffhand = true;
@@ -1373,7 +1392,9 @@ public class CombatBrainModule extends Module {
                 }
 
                 // Check if threat got too high and health is low (prevents state-flapping back and forth during active combat)
-                if (!isInvincible() && threat >= fleeThreshold.get() && health < 7.0f) {
+                // Shield-aware: without a usable shield, retreat MUCH sooner — no shield = no trading blows.
+                float retreatHealthThreshold = hasUsableShield() ? 7.0f : 10.0f;
+                if (!isInvincible() && threat >= fleeThreshold.get() && health < retreatHealthThreshold) {
                     threatHighTicks++;
                     if (threatHighTicks >= threatHighDwell.get()) {
                         if (!isReentryCooldownActive(BrainState.RETREATING)) {
@@ -1597,6 +1618,23 @@ public class CombatBrainModule extends Module {
         return baritone != null && (baritone.getMineProcess().isActive() || baritone.getBuilderProcess().isActive());
     }
 
+    /**
+     * True if the player has a usable shield: equipped in the offhand (or main
+     * hand) with durability left, or anywhere in the inventory (shield-swap will
+     * move it). A broken (0-durability) shield does NOT count — the brain must
+     * switch to hit-and-run tactics instead of trading hits shieldless.
+     */
+    private boolean hasUsableShield() {
+        if (mc.player == null) return false;
+        ItemStack off = mc.player.getOffhandItem();
+        if (off.getItem() == Items.SHIELD && off.getMaxDamage() - off.getDamageValue() > 0) return true;
+        ItemStack main = mc.player.getMainHandItem();
+        if (main.getItem() == Items.SHIELD && main.getMaxDamage() - main.getDamageValue() > 0) return true;
+        return InvUtils.find(itemStack ->
+            itemStack.getItem() == Items.SHIELD && itemStack.getMaxDamage() - itemStack.getDamageValue() > 0
+        ).found();
+    }
+
     private LivingEntity findBestTarget() {
         if (mc.level == null || mc.player == null) return null;
 
@@ -1613,9 +1651,16 @@ public class CombatBrainModule extends Module {
             // actually see — engaging a mob through a cave wall stops the dig and ends in
             // swinging at stone. When NOT digging (idle/hunting), acquire by range even
             // through walls: baritone paths around them, so the brain hunts instead of
-            // standing still. (A target already acquired stays valid behind cover mid-chase
-            // -- see isTargetValid.)
-            if (isCurrentlyDigging() && !PlayerUtils.canSeeEntity(entity)) return false;
+            // standing still. Exception: the target we were JUST fighting stays
+            // re-acquirable through walls for a grace window (~5s) — the LOS gate exists
+            // to protect digging from NEW targets, not to strand the brain after a
+            // retreat around a cave corner. (A target already acquired stays valid behind
+            // cover mid-chase -- see isTargetValid.)
+            if (isCurrentlyDigging() && !PlayerUtils.canSeeEntity(entity)) {
+                boolean isRecentCombatTarget = entity.getUUID().equals(lastTargetUuid)
+                    && tickCounter - lastTargetTick < 300;
+                if (!isRecentCombatTarget) return false;
+            }
 
             Set<EntityType<?>> types = entities.get();
             if (types.isEmpty()) {
@@ -2020,12 +2065,17 @@ public class CombatBrainModule extends Module {
     private void doEngageTick() {
         if (currentTarget == null) return;
 
+        // Remember the target we're fighting so a retreat/re-acquire around a cave
+        // corner doesn't strand the brain in SCANNING (see findBestTarget LOS gate).
+        lastTargetUuid = currentTarget.getUUID();
+        lastTargetTick = tickCounter;
+
         float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
         int totems = countTotems();
+        // Shield-aware risk: only trade hits while a usable shield is up (or invincible).
+        // Without a shield the bot must NOT bum-rush — it hit-and-runs from the bubble.
         boolean canTakeRisk = isInvincible()
-            || totems > 0
-            || health >= 14.0f
-            || (combatMode == CombatMode.AGGRESSIVE && health >= 10.0f);
+            || (hasUsableShield() && (totems > 0 || health >= 14.0f || (combatMode == CombatMode.AGGRESSIVE && health >= 10.0f)));
 
         // --- Gather the full threat group every 4 ticks ---
         groupAwarenessTimer += 2;
@@ -2131,14 +2181,18 @@ public class CombatBrainModule extends Module {
 
         // If hit-and-run is disabled, maintain direct follow
         if (!hitAndRun.get()) {
-            double followDist = canTakeRisk ? effectiveStrikeDist : targetDistance;
-            if (followController != null) {
-                followController.follow(currentTarget, followDist);
+            if (canTakeRisk) {
+                if (followController != null) {
+                    followController.follow(currentTarget, effectiveStrikeDist);
+                }
+            } else if (followController != null) {
+                // No shield: hold the safety bubble instead of standing in melee range
+                followController.maintainDistance(currentTarget, bubbleDistance.get(), bubbleDistance.get() + 1.0);
             }
             return;
         }
 
-        // --- Hit-and-run strike cycle ---
+        // --- Hit-and-run strike cycle (damage-aware) ---
         double myAtkSpeed = 1.6;
         try {
             myAtkSpeed = mc.player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_SPEED);
@@ -2146,16 +2200,23 @@ public class CombatBrainModule extends Module {
         int optimalStrikeTicks = (int) Math.ceil(20.0 / myAtkSpeed) + 4;
         int activeStrikeDuration = Math.max(optimalStrikeTicks, strikeDurationTicks.get());
 
+        boolean attackReady = mc.player.getAttackStrengthScale(0.5f) >= 0.85f;
+        boolean takingDamage = mc.player.hurtTime > 0;
         boolean cooldownReady = bubbleTimer >= retreatCooldownTicks.get();
-        boolean shouldStrike = cooldownReady || canTakeRisk || dist <= 3.2;
+        // Only dart in when the attack is charged (or the mob is already inside reach).
+        // Never chain-rush: without a charged swing the dart-in just trades hits.
+        boolean shouldStrike = cooldownReady || attackReady || dist <= 3.2;
 
         if (strikePhase == StrikePhase.STRIKE) {
-            if (strikeTimer >= activeStrikeDuration && !canTakeRisk) {
+            // Damage feedback: taking hits without a shield (or critically low) ends the
+            // strike immediately — retreat to the bubble instead of trading blows.
+            boolean losingTrade = takingDamage && !canTakeRisk;
+            if ((strikeTimer >= activeStrikeDuration && !canTakeRisk) || losingTrade) {
                 strikePhase = StrikePhase.BUBBLE;
                 strikeTimer = 0;
                 bubbleTimer = 0;
                 if (followController != null) {
-                    followController.follow(currentTarget, targetDistance);
+                    followController.maintainDistance(currentTarget, bubbleDistance.get(), bubbleDistance.get() + 1.0);
                 }
             } else {
                 if (followController != null) {
@@ -2164,16 +2225,17 @@ public class CombatBrainModule extends Module {
                 strikeTimer += 2;
             }
         } else { // BUBBLE phase
-            if (shouldStrike) {
+            if (shouldStrike && !takingDamage) {
                 strikePhase = StrikePhase.STRIKE;
                 strikeTimer = 0;
                 if (followController != null) {
                     followController.follow(currentTarget, effectiveStrikeDist);
                 }
             } else {
-                double bufferDist = canTakeRisk ? Math.min(2.7, targetDistance) : targetDistance;
+                // Hold the safety bubble OUTSIDE the target's reach: back off when the
+                // mob closes in, approach only when it backs off.
                 if (followController != null) {
-                    followController.follow(currentTarget, bufferDist);
+                    followController.maintainDistance(currentTarget, bubbleDistance.get(), bubbleDistance.get() + 1.0);
                 }
                 bubbleTimer += 2;
             }
