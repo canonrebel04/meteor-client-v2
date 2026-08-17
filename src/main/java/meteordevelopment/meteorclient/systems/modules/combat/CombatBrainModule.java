@@ -2203,9 +2203,12 @@ public class CombatBrainModule extends Module {
         boolean attackReady = mc.player.getAttackStrengthScale(0.5f) >= 0.85f;
         boolean takingDamage = mc.player.hurtTime > 0;
         boolean cooldownReady = bubbleTimer >= retreatCooldownTicks.get();
-        // Only dart in when the attack is charged (or the mob is already inside reach).
-        // Never chain-rush: without a charged swing the dart-in just trades hits.
-        boolean shouldStrike = cooldownReady || attackReady || dist <= 3.2;
+        // Dart in only when NOT taking damage AND (the mob is already inside reach,
+        // or the attack is charged after the bubble cooldown). The old `|| attackReady`
+        // made shouldStrike true ~90% of the time, so BUBBLE re-struck instantly after
+        // every hit → rapid STRIKE/BUBBLE oscillation that looked like the bot was
+        // randomly selecting and dropping targets.
+        boolean shouldStrike = !takingDamage && (dist <= 3.2 || (cooldownReady && attackReady));
 
         if (strikePhase == StrikePhase.STRIKE) {
             // Damage feedback: taking hits without a shield (or critically low) ends the

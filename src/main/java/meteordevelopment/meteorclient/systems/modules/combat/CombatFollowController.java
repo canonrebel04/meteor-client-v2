@@ -195,19 +195,45 @@ public class CombatFollowController {
      * outbound bias so the bot never drifts into melee range.
      */
     public void maintainDistance(Entity target, double minDist, double maxDist) {
+        boolean wasMaintaining = maintainingDistance;
         mode = FollowMode.FOLLOW;
         currentTarget = target;
         directPursuitActive = false;
         maintainingDistance = true;
-        if (baritone.getPathingBehavior().isPathing()) {
-            baritone.getPathingBehavior().cancelEverything();
-        }
 
-        if (target == null || mc.player == null) return;
+        if (target == null || mc.player == null) {
+            stop();
+            return;
+        }
 
         double dx = target.getX() - mc.player.getX();
         double dz = target.getZ() - mc.player.getZ();
         double dist = Math.sqrt(dx * dx + dz * dz);
+
+        // Far or obstructed: delegate the approach to Baritone A* (same as follow()).
+        // Only dispatch once; don't restart the path every tick.
+        if (dist > 24.0 || !isDirectWalkable(target)) {
+            if (!wasMaintaining) {
+                if (baritone.getPathingBehavior().isPathing()) {
+                    baritone.getPathingBehavior().cancelEverything();
+                }
+                followProcess.cancel();
+                BaritoneAPI.getSettings().followRadius.value = Math.max(1, (int) Math.ceil(maxDist));
+                BaritoneAPI.getSettings().followOffsetDistance.value = 0.0;
+                BaritoneAPI.getSettings().avoidance.value = false;
+                UUID targetUuid = target.getUUID();
+                followProcess.follow(e -> e != null && e.getUUID().equals(targetUuid));
+            }
+            return;
+        }
+
+        // Close and walkable: direct key input with an outbound bias.
+        // Cancel Baritone ONLY on the transition into direct mode, not every tick —
+        // cancelEverything() every tick kills the approach path and makes the bot
+        // jitter / look like it is randomly picking and dropping targets.
+        if (!wasMaintaining && baritone.getPathingBehavior().isPathing()) {
+            baritone.getPathingBehavior().cancelEverything();
+        }
 
         // Face the target so backward movement is directly away from it
         float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
