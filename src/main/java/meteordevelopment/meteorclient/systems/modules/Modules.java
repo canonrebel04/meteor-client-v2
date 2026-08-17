@@ -396,6 +396,7 @@ public class Modules extends System<Modules> {
     }
 
     private void initCombat() {
+        add(new AimAssist());
         add(new AnchorAura());
         add(new AntiAnvil());
         add(new AntiBed());
@@ -410,6 +411,7 @@ public class Modules extends System<Modules> {
         add(new AutoTrap());
         add(new AutoWeapon());
         add(new AutoWeb());
+        add(new Backtrack());
         add(new BedAura());
         add(new BowAimbot());
         add(new BowSpam());
@@ -421,6 +423,7 @@ public class Modules extends System<Modules> {
         add(new KillAura());
         add(new MaceKill());
         add(new Offhand());
+        add(new PopCounter());
         add(new Quiver());
         add(new SpearKill());
         add(new SelfAnvil());
