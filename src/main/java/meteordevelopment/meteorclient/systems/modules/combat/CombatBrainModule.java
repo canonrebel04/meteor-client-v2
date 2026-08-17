@@ -2061,21 +2061,34 @@ public class CombatBrainModule extends Module {
 
         // --- Ranged Kite Combat Execution ---
         if (combatMode == CombatMode.RANGED_KITE) {
+            // Don't draw or fire at a target behind cover: the bow is useless through a wall
+            // and the draw would just reset forever. Mode selection gates RANGED_KITE on
+            // visibility, but hysteresis can keep the mode active briefly after the target
+            // steps behind cover, so re-check LOS here every tick.
+            boolean targetVisible = currentTarget != null && terrainGrid != null && terrainGrid.isTargetVisible(currentTarget);
+
             FindItemResult ranged = InvUtils.find(Items.BOW, Items.CROSSBOW, Items.TRIDENT);
-            if (ranged.found() && !mc.player.getMainHandItem().is(Items.BOW)
+            if (targetVisible && ranged.found() && !mc.player.getMainHandItem().is(Items.BOW)
                 && !mc.player.getMainHandItem().is(Items.CROSSBOW)
                 && !mc.player.getMainHandItem().is(Items.TRIDENT)) {
                 InvUtils.swap(ranged.slot(), false);
             }
 
             if (mc.player.getMainHandItem().is(Items.BOW)) {
+                if (!targetVisible) {
+                    mc.options.keyUse.setDown(false);
+                    mc.player.stopUsingItem();
+                    return;
+                }
                 double yaw = Rotations.getYaw(currentTarget);
                 double pitch = Rotations.getPitch(currentTarget, Target.Head);
                 Rotations.rotate(yaw, pitch, 100, true, null);
 
                 if (mc.player.getTicksUsingItem() >= 20) {
                     mc.options.keyUse.setDown(false);
-                    mc.player.stopUsingItem();
+                    // stopUsingItem() only cancels the draw client-side and never fires;
+                    // the server-synced release is what actually shoots the arrow
+                    mc.gameMode.releaseUsingItem(mc.player);
                 } else {
                     mc.options.keyUse.setDown(true);
                 }

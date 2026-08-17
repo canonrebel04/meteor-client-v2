@@ -59,8 +59,9 @@ public enum CombatMode {
 
         scores[RUSH.ordinal()] = Math.max(0.0, (1.0 - targetHpRatio) * viability);
 
-        // Ranged Kite evaluation: flying, elevated, or high-reach enemies
-        if (target != null && hasRangedWeapon()) {
+        // Ranged Kite evaluation: flying, elevated, or high-reach enemies.
+        // Requires line-of-sight -- never pull out the bow for a target behind cover.
+        if (target != null && hasRangedWeapon() && targetVisible) {
             boolean isAirborneOrFlying = isAirborneTarget(target);
             var mc = net.minecraft.client.Minecraft.getInstance();
             boolean isElevated = mc.player != null && (target.getY() - mc.player.getY() > 2.5);
