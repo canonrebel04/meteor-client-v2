@@ -272,7 +272,7 @@ public class CombatBrainModule extends Module {
     private final Setting<Double> strikeDistance = sgEngagement.add(new DoubleSetting.Builder()
         .name("strike-distance")
         .description("Distance to get to target when darting in to attack.")
-        .defaultValue(2.9)
+        .defaultValue(2.2)
         .min(1.0)
         .max(6.0)
         .sliderMax(6.0)
@@ -566,7 +566,7 @@ public class CombatBrainModule extends Module {
     private final Setting<Double> followDistance = sgAnalysis.add(new DoubleSetting.Builder()
         .name("follow-distance")
         .description("Stay this far from target. Used as manual override when dynamic-follow is off.")
-        .defaultValue(3.5)
+        .defaultValue(2.2)
         .min(1.0)
         .max(10.0)
         .sliderMax(10.0)
@@ -576,7 +576,7 @@ public class CombatBrainModule extends Module {
     private final Setting<Boolean> dynamicFollow = sgAnalysis.add(new BoolSetting.Builder()
         .name("dynamic-follow")
         .description("Dynamically compute follow distance from target reach, potion effects, and weapon type.")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
@@ -1882,9 +1882,8 @@ public class CombatBrainModule extends Module {
             : 3;
         ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(groupSize);
 
-        // ANTICHEAT: clamp KillAura attack range strictly to 2.95 (vanilla reach is 3.0).
-        // Attacking beyond 3.00 trips server anticheats (Minewind Cheater Spanker, GrimAC, Vulcan).
-        ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(2.95);
+        // Set KillAura attack range to 3.8 (standard PvP reach ensuring all swings connect reliably)
+        ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(3.8);
 
         // Add 1-tick switch delay so swapping items doesn't trigger FastSwitch checks
         ((Setting<Integer>) (Setting<?>) killAura.settings.get("switch-delay")).set(1);
