@@ -1584,6 +1584,19 @@ public class CombatBrainModule extends Module {
 
     // --- Target selection & multi-target scoring ---
 
+    /**
+     * True while the player is actively mining/breaking blocks — either baritone's
+     * mine or builder process, or the client's own destroy-in-progress state.
+     * Used to scope the LOS acquisition gate: while digging we must not acquire
+     * mobs behind cave walls (it interrupts the dig and swings at stone), but when
+     * idle the brain should hunt targets through walls via baritone pathing.
+     */
+    private boolean isCurrentlyDigging() {
+        if (mc.gameMode != null && mc.gameMode.isDestroying()) return true;
+        var baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
+        return baritone != null && (baritone.getMineProcess().isActive() || baritone.getBuilderProcess().isActive());
+    }
+
     private LivingEntity findBestTarget() {
         if (mc.level == null || mc.player == null) return null;
 
@@ -1596,12 +1609,13 @@ public class CombatBrainModule extends Module {
             // Acquire targets up to acquireRange (default 64) so long-range targets are locked onto and pathed to
             if (le.distanceToSqr(mc.player) > acquireRangeSq) return false;
 
-            // Wall awareness: only acquire targets we can actually see. Engaging a mob
-            // through a cave wall stops the dig and ends in swinging at stone; when the
-            // mob comes around the corner / breaks through, it becomes visible and is
-            // acquired normally. (A target that was already acquired stays valid while
-            // it moves behind cover mid-chase -- see isTargetValid.)
-            if (!PlayerUtils.canSeeEntity(entity)) return false;
+            // Wall awareness: while actively digging/mining, only acquire targets we can
+            // actually see — engaging a mob through a cave wall stops the dig and ends in
+            // swinging at stone. When NOT digging (idle/hunting), acquire by range even
+            // through walls: baritone paths around them, so the brain hunts instead of
+            // standing still. (A target already acquired stays valid behind cover mid-chase
+            // -- see isTargetValid.)
+            if (isCurrentlyDigging() && !PlayerUtils.canSeeEntity(entity)) return false;
 
             Set<EntityType<?>> types = entities.get();
             if (types.isEmpty()) {
