@@ -1371,8 +1371,8 @@ public class CombatBrainModule extends Module {
                     break;
                 }
 
-                // Check if threat got too high (threatHysteresis threatDwell dwell requirement; bypassed when isInvincible())
-                if (!isInvincible() && threat >= fleeThreshold.get()) {
+                // Check if threat got too high and health is low (prevents state-flapping back and forth during active combat)
+                if (!isInvincible() && threat >= fleeThreshold.get() && health < 7.0f) {
                     threatHighTicks++;
                     if (threatHighTicks >= threatHighDwell.get()) {
                         if (!isReentryCooldownActive(BrainState.RETREATING)) {

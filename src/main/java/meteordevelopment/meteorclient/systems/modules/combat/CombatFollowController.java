@@ -133,8 +133,8 @@ public class CombatFollowController {
                 Vec3 targetVel = currentTarget.getDeltaMovement();
                 double dist = currentTarget.distanceTo(mc.player);
 
-                // Lead intercept vector based on distance and velocity
-                double lead = Math.min(3.5, dist * 0.35);
+                // Lead intercept vector: only lead at medium/long distance (> 6m) to prevent overshooting close targets
+                double lead = dist > 6.0 ? Math.min(2.0, dist * 0.2) : 0.0;
                 double targetX = currentTarget.getX() + targetVel.x * lead;
                 double targetZ = currentTarget.getZ() + targetVel.z * lead;
 
@@ -142,21 +142,28 @@ public class CombatFollowController {
                 double dz = targetZ - mc.player.getZ();
                 float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
 
-                // Smoothly steer player movement yaw straight towards the intercept point
+                // Smoothly steer player movement yaw straight towards the target
                 float currentYaw = mc.player.getYRot();
                 float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
-                mc.player.setYRot(currentYaw + Mth.clamp(deltaYaw * 0.65f, -45.0f, 45.0f));
+                mc.player.setYRot(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f));
 
+                // Optimal combat spacing: stop running forward at followDistance (2.2m) to prevent overshooting
                 if (dist > followDistance) {
                     mc.options.keyUp.setDown(true);
+                    mc.options.keyDown.setDown(false);
                     mc.player.setSprinting(true);
 
                     // Auto-jump over 1-block obstacles while sprinting
                     if (mc.player.horizontalCollision && mc.player.onGround()) {
                         mc.options.keyJump.setDown(true);
                     }
+                } else if (dist < 1.3) {
+                    // Too close (inside enemy hitbox): step back slightly to optimal strike spacing
+                    mc.options.keyUp.setDown(false);
+                    mc.options.keyDown.setDown(true);
                 } else {
                     mc.options.keyUp.setDown(false);
+                    mc.options.keyDown.setDown(false);
                 }
             } else {
                 // Obstructed line of sight: fall back to Baritone's A* pathfinder
