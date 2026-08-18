@@ -29,6 +29,7 @@ public class CombatFollowController {
     private int ticksSinceLastRestart = 0;
     private boolean directPursuitActive = false;
     private boolean maintainingDistance = false;
+    private int directClearTicks = 0; // consecutive ticks with a clear direct path (debounce)
 
     public enum FollowMode {
         FOLLOW,
@@ -130,7 +131,20 @@ public class CombatFollowController {
         if (mode == FollowMode.FOLLOW && currentTarget != null && currentTarget.isAlive() && mc.player != null) {
             boolean directClear = isDirectWalkable(currentTarget);
 
+            // Debounce: require the direct path to be clear for a few CONSECUTIVE
+            // ticks before switching from Baritone A* to direct pursuit, and require
+            // it to be blocked for a few consecutive ticks before switching back.
+            // Without this, a single flicker frame (mob stepping behind a corner)
+            // cancels Baritone and re-dispatches it the next tick — a cancel/re-path
+            // storm that reads as constant path recalculation and jitter on servers.
             if (directClear) {
+                directClearTicks = Math.min(directClearTicks + 1, 5);
+            } else {
+                directClearTicks = Math.max(directClearTicks - 1, 0);
+            }
+            boolean stableDirect = directClear && directClearTicks >= 3;
+
+            if (stableDirect) {
                 // Cancel Baritone's discrete voxel FollowProcess so it doesn't fight inputs or zig-zag
                 if (!directPursuitActive) {
                     followProcess.cancel();
@@ -158,7 +172,7 @@ public class CombatFollowController {
                 if (dist > followDistance) {
                     mc.options.keyUp.setDown(true);
                     mc.options.keyDown.setDown(false);
-                    mc.player.setSprinting(true);
+                    if (canSprint()) mc.player.setSprinting(true);
 
                     // Auto-jump over 1-block obstacles while sprinting
                     if (mc.player.horizontalCollision && mc.player.onGround()) {
@@ -172,14 +186,17 @@ public class CombatFollowController {
                     mc.options.keyUp.setDown(false);
                     mc.options.keyDown.setDown(false);
                 }
-            } else {
-                // Obstructed line of sight: fall back to Baritone's A* pathfinder
-                if (directPursuitActive) {
-                    directPursuitActive = false;
-                    mc.options.keyUp.setDown(false);
-                    ticksSinceLastRestart = MIN_RESTART_INTERVAL_TICKS; // Force immediate Baritone dispatch
-                    follow(currentTarget, followDistance);
+            } else if (directPursuitActive) {
+                // Direct path lost (or never stabilized): hand movement back to Baritone A*
+                directPursuitActive = false;
+                mc.options.keyUp.setDown(false);
+                mc.options.keyDown.setDown(false);
+                if (mc.player.isSprinting()) mc.player.setSprinting(false);
+                if (baritone.getPathingBehavior().isPathing()) {
+                    baritone.getPathingBehavior().cancelEverything();
                 }
+                ticksSinceLastRestart = MIN_RESTART_INTERVAL_TICKS; // Force immediate Baritone dispatch
+                follow(currentTarget, followDistance);
             }
         } else {
             if (directPursuitActive) {
@@ -189,6 +206,16 @@ public class CombatFollowController {
                 }
             }
         }
+    }
+
+    /**
+     * True if sprinting may be (re)started right now: either on the ground, or
+     * already sprinting (vanilla allows sprint to CONTINUE mid-air, but never
+     * START mid-air — forcing a start mid-air sends a sprint packet the server
+     * rejects, which anticheats punish with a setback / rubberband).
+     */
+    private boolean canSprint() {
+        return mc.player != null && (mc.player.onGround() || mc.player.isSprinting());
     }
 
     /**
@@ -249,12 +276,12 @@ public class CombatFollowController {
             // Too close: back away (facing the target = moving directly away)
             mc.options.keyUp.setDown(false);
             mc.options.keyDown.setDown(true);
-            mc.player.setSprinting(false);
+            if (mc.player.isSprinting()) mc.player.setSprinting(false);
         } else if (dist > maxDist + 0.2) {
             // Too far: close back in
             mc.options.keyUp.setDown(true);
             mc.options.keyDown.setDown(false);
-            mc.player.setSprinting(true);
+            if (canSprint()) mc.player.setSprinting(true);
             if (mc.player.horizontalCollision && mc.player.onGround()) {
                 mc.options.keyJump.setDown(true);
             }

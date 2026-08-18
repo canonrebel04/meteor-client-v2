@@ -1026,14 +1026,17 @@ public class CombatBrainModule extends Module {
         if (wTapTicks > 0) {
             wTapTicks--;
             if (wTapTicks == 0) {
-                mc.player.setSprinting(true);
+                // Only restore sprint when it is legal (on ground or already sprinting)
+                if (mc.player.onGround() || mc.player.isSprinting()) {
+                    mc.player.setSprinting(true);
+                }
             }
         }
     }
 
     @EventHandler
     private void onAttackEntity(AttackEntityEvent event) {
-        if (wTapSprintReset.get() && mc.player != null && mc.player.isSprinting()) {
+        if (wTapSprintReset.get() && mc.player != null && mc.player.isSprinting() && mc.player.onGround()) {
             mc.player.setSprinting(false);
             wTapTicks = 2;
         }
@@ -2297,14 +2300,15 @@ public class CombatBrainModule extends Module {
         if (followController != null && currentTarget != null) {
             followController.flee(currentTarget, fleeDistance.get() * 1.5);
         }
-        if (mc.player != null && mc.player.getHealth() < mc.player.getMaxHealth()) {
+        if (mc.player != null && mc.player.getHealth() < mc.player.getMaxHealth()
+            && (mc.player.onGround() || mc.player.isSprinting())) {
             mc.player.setSprinting(true);
         }
     }
 
     private void doFleeTick() {
         // Sprint away from everything
-        if (mc.player != null) {
+        if (mc.player != null && (mc.player.onGround() || mc.player.isSprinting())) {
             mc.player.setSprinting(true);
         }
         if (followController != null && currentTarget != null) {
