@@ -2070,6 +2070,18 @@ public class CombatBrainModule extends Module {
         lastTargetUuid = currentTarget.getUUID();
         lastTargetTick = tickCounter;
 
+        // While baritone is actively digging, YIELD all movement to the dig. The
+        // hit-and-run phase machine must not run here: mining resets the attack
+        // cooldown, so attackReady flickers and flips STRIKE/BUBBLE every few
+        // ticks, and every flip re-dispatches baritone follow with a different
+        // distance → constant path recalculation that also steals control from
+        // the dig. KillAura (walls-range 0, pause-on-use true) still swings at
+        // mobs that come into actual reach.
+        if (isCurrentlyDigging()) {
+            if (followController != null) followController.releaseDirectKeys();
+            return;
+        }
+
         float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
         int totems = countTotems();
         // Shield-aware risk: only trade hits while a usable shield is up (or invincible).
@@ -2189,6 +2201,15 @@ public class CombatBrainModule extends Module {
                 // No shield: hold the safety bubble instead of standing in melee range
                 followController.maintainDistance(currentTarget, bubbleDistance.get(), bubbleDistance.get() + 1.0);
             }
+            return;
+        }
+
+        // Walled off (but not digging): the STRIKE dart-in cannot physically reach,
+        // so running the phase machine just flips phases and re-dispatches baritone
+        // every few ticks → constant path recalculation. Keep a single stable
+        // baritone follow at bubble distance; the fight resumes when the path opens.
+        if (followController != null && !followController.isDirectPathClear(currentTarget)) {
+            followController.follow(currentTarget, bubbleDistance.get());
             return;
         }
 

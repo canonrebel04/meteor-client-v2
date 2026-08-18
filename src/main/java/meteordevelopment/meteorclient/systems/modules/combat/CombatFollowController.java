@@ -48,6 +48,10 @@ public class CombatFollowController {
      * Checks if there is a direct, walkable line of sight to the target
      * with no impassable walls, pits, or obstacles in between.
      */
+    public boolean isDirectPathClear(Entity target) {
+        return isDirectWalkable(target);
+    }
+
     private boolean isDirectWalkable(Entity target) {
         if (mc.player == null || mc.level == null || target == null) return false;
         double dx = target.getX() - mc.player.getX();
@@ -259,6 +263,21 @@ public class CombatFollowController {
             mc.options.keyUp.setDown(false);
             mc.options.keyDown.setDown(false);
         }
+    }
+
+    /**
+     * Releases direct-pursuit keys WITHOUT touching Baritone. Safe to call while
+     * Baritone is mining — unlike stop(), which cancels everything including the
+     * dig. Used when the brain yields movement control to an active dig.
+     */
+    public void releaseDirectKeys() {
+        if (mc.options != null) {
+            mc.options.keyUp.setDown(false);
+            mc.options.keyDown.setDown(false);
+            mc.options.keyJump.setDown(false);
+        }
+        directPursuitActive = false;
+        maintainingDistance = false;
     }
 
     public void follow(Entity target, double distance) {
