@@ -24,6 +24,7 @@ import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.util.Mth;
@@ -268,6 +269,25 @@ public class KillAura extends Module {
     public boolean attacking, swapped;
     public static int previousSlot;
 
+    // --- Setback / desync detection (real-server safety) ---
+    // Grim/Vulcan respond to a flagged move by teleporting the player back
+    // ("rubberband"). While the server is rejecting our position, attacking
+    // from the stale client position reads as reach/rotation abuse and turns
+    // a movement flag into a ban. Count position-correction packets; on 2+
+    // within a short window, pause attacks for a hold period so the client
+    // can resync before swinging again.
+    private int setbackCount = 0;
+    private int setbackWindowTicks = 0;
+    private int desyncHoldTicks = 0;
+    private static final int SETBACK_WINDOW = 30;   // ticks over which setbacks accumulate
+    private static final int SETBACK_THRESHOLD = 2; // position corrections within window -> desync
+    private static final int DESYNC_HOLD_TICKS = 25; // pause attacks this long after a setback burst
+
+    /** True while KillAura is holding attacks due to server setbacks. */
+    public boolean isDesyncHeld() {
+        return desyncHoldTicks > 0;
+    }
+
     public KillAura() {
         super(Categories.Combat, "kill-aura", "Attacks specified entities around you.");
     }
@@ -289,6 +309,23 @@ public class KillAura extends Module {
         if (!mc.player.isAlive() || PlayerUtils.getGameMode() == GameType.SPECTATOR) {
             stopAttacking();
             return;
+        }
+        // Desync hold: server is teleporting us back (rubberband). Do NOT swing
+        // from a stale client position — that is what turns a movement flag into
+        // a ban. Let the client resync before attacking again.
+        if (desyncHoldTicks > 0) {
+            desyncHoldTicks--;
+            setbackWindowTicks = 0;
+            setbackCount = 0;
+            stopAttacking();
+            return;
+        }
+        // Decay the setback window: if no position corrections arrive within the
+        // window, the server has accepted our position again — reset the count so
+        // a single isolated correction (e.g. a legit teleport) never triggers hold.
+        if (setbackWindowTicks > 0) {
+            setbackWindowTicks--;
+            if (setbackWindowTicks == 0) setbackCount = 0;
         }
         if (pauseOnUse.get() && (mc.gameMode.isDestroying() || mc.player.isUsingItem())) {
             stopAttacking();
@@ -366,6 +403,25 @@ public class KillAura extends Module {
     private void onSendPacket(PacketEvent.Send event) {
         if (event.packet instanceof ServerboundSetCarriedItemPacket) {
             switchTimer = switchDelay.get();
+        }
+    }
+
+    /**
+     * Counts server position-correction packets (ClientboundPlayerPositionPacket)
+     * — the "rubberband" teleport an anticheat sends to set a flagged player back.
+     * 2+ corrections within the window = the server is rejecting our movement, so
+     * enter a desync hold: pause attacks and let the brain release movement keys.
+     */
+    @EventHandler
+    private void onReceivePacket(PacketEvent.Receive event) {
+        if (!(event.packet instanceof ClientboundPlayerPositionPacket)) return;
+
+        setbackCount++;
+        setbackWindowTicks = SETBACK_WINDOW;
+
+        if (setbackCount >= SETBACK_THRESHOLD && desyncHoldTicks <= 0) {
+            desyncHoldTicks = DESYNC_HOLD_TICKS;
+            info("Desync detected (server setbacks) - pausing attacks to resync");
         }
     }
 

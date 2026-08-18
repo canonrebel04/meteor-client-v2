@@ -13,6 +13,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.UUID;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
+import static meteordevelopment.meteorclient.utils.player.Rotations.gcdQuantize;
 
 public class CombatFollowController {
 
@@ -190,7 +191,7 @@ public class CombatFollowController {
                 // Smoothly steer player movement yaw straight towards the target
                 float currentYaw = mc.player.getYRot();
                 float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
-                mc.player.setYRot(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f));
+                mc.player.setYRot(gcdQuantize(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f), false));
 
                 // Optimal combat spacing: stop running forward at followDistance (2.2m) to prevent overshooting
                 if (dist > followDistance) {
@@ -300,7 +301,7 @@ public class CombatFollowController {
         float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
         float currentYaw = mc.player.getYRot();
         float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
-        mc.player.setYRot(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f));
+        mc.player.setYRot(gcdQuantize(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f), false));
 
         if (dist < minDist - 0.2) {
             // Too close: back away (facing the target = moving directly away)

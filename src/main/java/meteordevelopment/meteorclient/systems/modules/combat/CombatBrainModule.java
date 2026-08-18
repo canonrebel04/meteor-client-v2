@@ -826,8 +826,10 @@ public class CombatBrainModule extends Module {
         double pitch = Rotations.getPitch(imminentCreeper, Target.Body);
         float deltaYaw = Mth.wrapDegrees((float) (yaw - mc.player.getYRot()));
         float deltaPitch = (float) (pitch - mc.player.getXRot());
-        mc.player.setYRot(mc.player.getYRot() + Mth.clamp(deltaYaw * 0.6f, -45.0f, 45.0f));
-        mc.player.setXRot(mc.player.getXRot() + Mth.clamp(deltaPitch * 0.6f, -30.0f, 30.0f));
+        // GCD-quantize so the rotation deltas land on the sensitivity grid
+        // (Grim/Vulcan flag non-GCD rotation changes).
+        mc.player.setYRot(Rotations.gcdQuantize(mc.player.getYRot() + Mth.clamp(deltaYaw * 0.6f, -45.0f, 45.0f), false));
+        mc.player.setXRot(Rotations.gcdQuantize(mc.player.getXRot() + Mth.clamp(deltaPitch * 0.6f, -30.0f, 30.0f), true));
 
         if (hasShieldEquipped) {
             // 3. Raise shield
@@ -871,12 +873,14 @@ public class CombatBrainModule extends Module {
         float deltaYaw = Mth.wrapDegrees((float) (targetYaw - currentYaw));
         float deltaPitch = (float) (targetPitch - currentPitch);
 
-        // Smooth exponential interpolation (max 35° yaw, 25° pitch per tick)
+        // Smooth exponential interpolation (max 35° yaw, 25° pitch per tick),
+        // GCD-quantized so deltas land on the sensitivity grid (Grim/Vulcan flag
+        // non-GCD rotation changes — the "rotation GCD" ban vector).
         float stepYaw = Mth.clamp(deltaYaw * 0.45f, -35.0f, 35.0f);
         float stepPitch = Mth.clamp(deltaPitch * 0.45f, -25.0f, 25.0f);
 
-        mc.player.setYRot(currentYaw + stepYaw);
-        mc.player.setXRot(currentPitch + stepPitch);
+        mc.player.setYRot(Rotations.gcdQuantize(currentYaw + stepYaw, false));
+        mc.player.setXRot(Rotations.gcdQuantize(currentPitch + stepPitch, true));
     }
 
     /**
@@ -993,8 +997,10 @@ public class CombatBrainModule extends Module {
                     double pitch = Rotations.getPitch(entity);
                     float deltaYaw = Mth.wrapDegrees((float) (yaw - mc.player.getYRot()));
                     float deltaPitch = (float) (pitch - mc.player.getXRot());
-                    mc.player.setYRot(mc.player.getYRot() + Mth.clamp(deltaYaw * 0.6f, -45.0f, 45.0f));
-                    mc.player.setXRot(mc.player.getXRot() + Mth.clamp(deltaPitch * 0.6f, -30.0f, 30.0f));
+                    // GCD-quantize so the rotation deltas land on the sensitivity grid
+                    // (Grim/Vulcan flag non-GCD rotation changes).
+                    mc.player.setYRot(Rotations.gcdQuantize(mc.player.getYRot() + Mth.clamp(deltaYaw * 0.6f, -45.0f, 45.0f), false));
+                    mc.player.setXRot(Rotations.gcdQuantize(mc.player.getXRot() + Mth.clamp(deltaPitch * 0.6f, -30.0f, 30.0f), true));
 
                     if (mc.gameMode != null) {
                         mc.gameMode.attack(mc.player, entity);
@@ -1052,6 +1058,17 @@ public class CombatBrainModule extends Module {
     @EventHandler
     private void onTickPost(TickEvent.Post event) {
         if (mc.player == null) return;
+
+        // Real-server desync hold: while the server is teleporting us back
+        // (rubberband), do NOT push movement keys into the rejected position
+        // (that keeps the setback loop alive) and do NOT write raw rotation
+        // (that keeps flagging the rotation check). Stand down until KillAura's
+        // setback detector clears.
+        if (Modules.get().get(KillAura.class).isDesyncHeld()) {
+            if (followController != null) followController.releaseDirectKeys();
+            return;
+        }
+
         if (followController != null) followController.tick();
 
         handleCreeperDefense();

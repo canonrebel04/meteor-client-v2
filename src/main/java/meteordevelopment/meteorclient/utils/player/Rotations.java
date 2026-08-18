@@ -126,8 +126,8 @@ public class Rotations {
         preYaw = mc.player.getYRot();
         prePitch = mc.player.getXRot();
 
-        mc.player.setYRot((float) rotation.yaw);
-        mc.player.setXRot((float) rotation.pitch);
+        mc.player.setYRot(gcdQuantize((float) rotation.yaw, false));
+        mc.player.setXRot(gcdQuantize((float) rotation.pitch, true));
     }
 
     @EventHandler
@@ -172,6 +172,23 @@ public class Rotations {
 
     public static double getYaw(Entity entity) {
         return mc.player.getYRot() + Mth.wrapDegrees((float) Math.toDegrees(Math.atan2(entity.getZ() - mc.player.getZ(), entity.getX() - mc.player.getX())) - 90f - mc.player.getYRot());
+    }
+
+    /**
+     * Quantizes a per-tick rotation delta to the player's sensitivity GCD grid.
+     * Servers running Grim/Vulcan flag rotation changes that are not multiples of
+     * the sensitivity-derived GCD (i.e. anything a real mouse couldn't produce).
+     * Every raw rotation write in the combat brain must go through this so the
+     * movement packets carry GCD-consistent rotation deltas.
+     */
+    public static float gcdQuantize(float deltaDegrees, boolean pitch) {
+        double sensitivity = mc.options.sensitivity().get();
+        if (sensitivity < 0) sensitivity = 0.5;
+        double f = sensitivity * 0.6 + 0.2;
+        double gcdValue = f * f * f * 1.2;
+        if (pitch) gcdValue *= 0.1;
+        if (gcdValue <= 0) return deltaDegrees;
+        return (float) (Math.round(deltaDegrees / gcdValue) * gcdValue);
     }
 
     public static double getYaw(Vec3 pos) {
@@ -243,7 +260,7 @@ public class Rotations {
         }
 
         public void sendPacket() {
-            mc.getConnection().send(new ServerboundMovePlayerPacket.Rot((float) yaw, (float) pitch, mc.player.onGround(), mc.player.horizontalCollision));
+            mc.getConnection().send(new ServerboundMovePlayerPacket.Rot(gcdQuantize((float) yaw, false), gcdQuantize((float) pitch, true), mc.player.onGround(), mc.player.horizontalCollision));
             runCallback();
         }
 
