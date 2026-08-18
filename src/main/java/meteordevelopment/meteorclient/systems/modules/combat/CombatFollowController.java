@@ -96,21 +96,23 @@ public class CombatFollowController {
 
             if (!hasFloor) return false; // Pit / void / lava hole! Use Baritone A*
 
-            // Check headroom at feet (playerY) and head (playerY + 1)
+            // Body block at feet level (playerY): a 1-block step up is only possible if
+            // the landing space (playerY+1) AND the head space after the step (playerY+2)
+            // are both clear. blocksMotion() catches leaves, logs, slabs — any block with
+            // a collision shape — not just isCollisionShapeFullBlock() full cubes.
             pos.set(bx, playerY, bz);
             var feetState = mc.level.getBlockState(pos);
-            if (feetState.blocksMotion() && feetState.isCollisionShapeFullBlock(mc.level, pos)) {
-                // Check if 1-block step up has clear headroom
+            if (feetState.blocksMotion()) {
                 pos.set(bx, playerY + 1, bz);
-                var stepUpHead = mc.level.getBlockState(pos);
-                if (stepUpHead.blocksMotion()) return false; // Wall! Use Baritone A*
+                if (mc.level.getBlockState(pos).blocksMotion()) return false; // Wall! Use Baritone A*
+                pos.set(bx, playerY + 2, bz);
+                if (mc.level.getBlockState(pos).blocksMotion()) return false; // Headroom after step! Use Baritone A*
             }
 
+            // Head clearance at playerY+1: ANY motion-blocking block (leaves, tree
+            // canopies, slabs) means the player's 1.8-block body can't fit → Baritone A*.
             pos.set(bx, playerY + 1, bz);
-            var headState = mc.level.getBlockState(pos);
-            if (headState.blocksMotion() && headState.isCollisionShapeFullBlock(mc.level, pos)) {
-                return false; // Solid wall/obstacle! Use Baritone A*
-            }
+            if (mc.level.getBlockState(pos).blocksMotion()) return false;
         }
 
         return true;
@@ -172,7 +174,7 @@ public class CombatFollowController {
                 if (dist > followDistance) {
                     mc.options.keyUp.setDown(true);
                     mc.options.keyDown.setDown(false);
-                    if (canSprint()) mc.player.setSprinting(true);
+                    requestSprint();
 
                     // Auto-jump over 1-block obstacles while sprinting
                     if (mc.player.horizontalCollision && mc.player.onGround()) {
@@ -182,6 +184,7 @@ public class CombatFollowController {
                     // Too close (inside enemy hitbox): step back slightly to optimal strike spacing
                     mc.options.keyUp.setDown(false);
                     mc.options.keyDown.setDown(true);
+                    releaseSprint();
                 } else {
                     mc.options.keyUp.setDown(false);
                     mc.options.keyDown.setDown(false);
@@ -191,7 +194,7 @@ public class CombatFollowController {
                 directPursuitActive = false;
                 mc.options.keyUp.setDown(false);
                 mc.options.keyDown.setDown(false);
-                if (mc.player.isSprinting()) mc.player.setSprinting(false);
+                releaseSprint();
                 if (baritone.getPathingBehavior().isPathing()) {
                     baritone.getPathingBehavior().cancelEverything();
                 }
@@ -203,19 +206,24 @@ public class CombatFollowController {
                 directPursuitActive = false;
                 if (mc.options != null) {
                     mc.options.keyUp.setDown(false);
+                    releaseSprint();
                 }
             }
         }
     }
 
     /**
-     * True if sprinting may be (re)started right now: either on the ground, or
-     * already sprinting (vanilla allows sprint to CONTINUE mid-air, but never
-     * START mid-air — forcing a start mid-air sends a sprint packet the server
-     * rejects, which anticheats punish with a setback / rubberband).
+     * Requests sprinting the vanilla way: hold the sprint KEY. The vanilla input
+     * handler only actually starts sprinting on the ground with forward input, and
+     * lets it continue mid-air — no illegal "start sprint mid-air" packets, so no
+     * anticheat setbacks. Never call setSprinting() to force it.
      */
-    private boolean canSprint() {
-        return mc.player != null && (mc.player.onGround() || mc.player.isSprinting());
+    private void requestSprint() {
+        if (mc.options != null) mc.options.keySprint.setDown(true);
+    }
+
+    private void releaseSprint() {
+        if (mc.options != null) mc.options.keySprint.setDown(false);
     }
 
     /**
@@ -276,12 +284,12 @@ public class CombatFollowController {
             // Too close: back away (facing the target = moving directly away)
             mc.options.keyUp.setDown(false);
             mc.options.keyDown.setDown(true);
-            if (mc.player.isSprinting()) mc.player.setSprinting(false);
+            releaseSprint();
         } else if (dist > maxDist + 0.2) {
             // Too far: close back in
             mc.options.keyUp.setDown(true);
             mc.options.keyDown.setDown(false);
-            if (canSprint()) mc.player.setSprinting(true);
+            requestSprint();
             if (mc.player.horizontalCollision && mc.player.onGround()) {
                 mc.options.keyJump.setDown(true);
             }
@@ -298,10 +306,13 @@ public class CombatFollowController {
      * dig. Used when the brain yields movement control to an active dig.
      */
     public void releaseDirectKeys() {
+        mode = FollowMode.NONE;
+        currentTarget = null;
         if (mc.options != null) {
             mc.options.keyUp.setDown(false);
             mc.options.keyDown.setDown(false);
             mc.options.keyJump.setDown(false);
+            releaseSprint();
         }
         directPursuitActive = false;
         maintainingDistance = false;
@@ -391,6 +402,7 @@ public class CombatFollowController {
             mc.options.keyUp.setDown(false);
             mc.options.keyDown.setDown(false);
             mc.options.keyJump.setDown(false);
+            releaseSprint();
         }
 
         BaritoneAPI.getSettings().avoidance.value = false;

@@ -855,6 +855,9 @@ public class CombatBrainModule extends Module {
         if (mc.player == null || mc.level == null) return;
         if (currentTarget == null || !currentTarget.isAlive()) return;
 
+        // While digging, Baritone aims at the mined block — never fight its camera.
+        if (isCurrentlyDigging()) return;
+
         // When traveling or pathing beyond close melee range (> 3.5m),
         // let Baritone's LookBehavior smoothly guide the camera along the path!
         if (currentTarget.distanceTo(mc.player) > 3.5) return;
@@ -1026,10 +1029,8 @@ public class CombatBrainModule extends Module {
         if (wTapTicks > 0) {
             wTapTicks--;
             if (wTapTicks == 0) {
-                // Only restore sprint when it is legal (on ground or already sprinting)
-                if (mc.player.onGround() || mc.player.isSprinting()) {
-                    mc.player.setSprinting(true);
-                }
+                // Re-request sprint via the key (vanilla handles ground/mid-air legality)
+                if (mc.options != null) mc.options.keySprint.setDown(true);
             }
         }
     }
@@ -1037,7 +1038,7 @@ public class CombatBrainModule extends Module {
     @EventHandler
     private void onAttackEntity(AttackEntityEvent event) {
         if (wTapSprintReset.get() && mc.player != null && mc.player.isSprinting() && mc.player.onGround()) {
-            mc.player.setSprinting(false);
+            if (mc.options != null) mc.options.keySprint.setDown(false);
             wTapTicks = 2;
         }
     }
@@ -2300,16 +2301,15 @@ public class CombatBrainModule extends Module {
         if (followController != null && currentTarget != null) {
             followController.flee(currentTarget, fleeDistance.get() * 1.5);
         }
-        if (mc.player != null && mc.player.getHealth() < mc.player.getMaxHealth()
-            && (mc.player.onGround() || mc.player.isSprinting())) {
-            mc.player.setSprinting(true);
+        if (mc.player != null && mc.player.getHealth() < mc.player.getMaxHealth() && mc.options != null) {
+            mc.options.keySprint.setDown(true);
         }
     }
 
     private void doFleeTick() {
         // Sprint away from everything
-        if (mc.player != null && (mc.player.onGround() || mc.player.isSprinting())) {
-            mc.player.setSprinting(true);
+        if (mc.player != null && mc.options != null) {
+            mc.options.keySprint.setDown(true);
         }
         if (followController != null && currentTarget != null) {
             followController.flee(currentTarget, fleeDistance.get());
