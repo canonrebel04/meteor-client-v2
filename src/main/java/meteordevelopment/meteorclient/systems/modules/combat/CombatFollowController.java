@@ -82,6 +82,18 @@ public class CombatFollowController {
             int bx = (int) Math.floor(checkX);
             int bz = (int) Math.floor(checkZ);
 
+            // The player hitbox is ~0.6 wide (0.3 each side of the movement line), so
+            // the bot can clip cells ADJACENT to the sampled center cell — especially on
+            // diagonal approaches around corners. Check the two side cells the hitbox
+            // overlaps along the dominant axis as well.
+            int sideBx = bx;
+            int sideBz = bz;
+            if (Math.abs(stepX) >= Math.abs(stepZ)) {
+                sideBz = (checkZ > mc.player.getZ()) ? bz + 1 : bz - 1;
+            } else {
+                sideBx = (checkX > mc.player.getX()) ? bx + 1 : bx - 1;
+            }
+
             // Check floor below (playerY - 1)
             pos.set(bx, playerY - 1, bz);
             var floorState = mc.level.getBlockState(pos);
@@ -113,6 +125,16 @@ public class CombatFollowController {
             // canopies, slabs) means the player's 1.8-block body can't fit → Baritone A*.
             pos.set(bx, playerY + 1, bz);
             if (mc.level.getBlockState(pos).blocksMotion()) return false;
+
+            // Side-cell checks: the hitbox overlaps the adjacent cell on the dominant
+            // axis. ANY motion-blocking block there (feet or head level) means a corner
+            // clip on a diagonal approach → Baritone A* routes around it properly.
+            if (sideBx != bx || sideBz != bz) {
+                pos.set(sideBx, playerY, sideBz);
+                if (mc.level.getBlockState(pos).blocksMotion()) return false;
+                pos.set(sideBx, playerY + 1, sideBz);
+                if (mc.level.getBlockState(pos).blocksMotion()) return false;
+            }
         }
 
         return true;
