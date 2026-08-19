@@ -34,6 +34,7 @@ jobs:
       - name: Build and Publish Baritone to MavenLocal
         run: |
           cd baritone-v2
+          sed -i 's/java_version=25/java_version=21/g' gradle.properties
           chmod +x gradlew
           ./gradlew build publishToMavenLocal --no-daemon
           cd ..
