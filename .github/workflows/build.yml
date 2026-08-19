@@ -29,7 +29,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '25'
+          java-version: '21'
           cache: 'gradle'
 
       - name: Checkout Baritone Dependency
@@ -42,6 +42,7 @@ jobs:
       - name: Build and Publish Baritone to MavenLocal
         run: |
           cd baritone-v2
+          sed -i "s/java_version=25/java_version=21/g" gradle.properties
           sed -i 's/task createDist(type: CreateDistTask, dependsOn: proguard)/task createDist(type: CreateDistTask, dependsOn: remapJar)/g' fabric/build.gradle
           chmod +x gradlew
           ./gradlew build publishToMavenLocal --no-daemon
