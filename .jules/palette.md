@@ -22,3 +22,6 @@
 ## 2024-05-24 - Icon-only Widgets Missing Tooltips
 **Learning:** Icon-only widgets (such as `theme.button(GuiRenderer.EDIT)` or `theme.minus()`) in the custom GUI framework lack tooltips by default and must have the `.tooltip` property explicitly assigned to be accessible to screen readers and visually impaired users.
 **Action:** When adding icon-only buttons in the custom GUI framework, always verify that the `.tooltip` property is explicitly set.
+## 2026-06-10 - Add tooltips to dynamically added WMinus and WPlus buttons
+**Learning:** Icon-only buttons that are dynamically added to tables/lists within settings or HUD element screens (such as `theme.minus()`, `theme.plus()`, `theme.button(GuiRenderer.EDIT)`) do not have tooltips initialized by default, causing screen-readers to skip over them and reducing general user discoverability of the action.
+**Action:** Always assign a tooltip immediately after instantiating any icon-only widget (`WPlus`, `WMinus`, `WButton` with icon) across the entire custom UI framework.
