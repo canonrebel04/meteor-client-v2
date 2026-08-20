@@ -401,9 +401,12 @@ public class HoleFiller extends Module {
         double i = pos.x - (blockPos.getX() + 0.5);
         double j = pos.y - (blockPos.getY() + 1.0);
         double k = pos.z - (blockPos.getZ() + 0.5);
-        double distance = Math.sqrt(i * i + j * j + k * k);
 
-        return distance < feetRange.get();
+        // ⚡ Bolt: Use squared distance check to avoid JNI Math.sqrt overhead in frequent position check
+        double distanceSq = i * i + j * j + k * k;
+        double feetRangeVal = feetRange.get();
+
+        return distanceSq < feetRangeVal * feetRangeVal;
     }
 
     private static class Hole {
