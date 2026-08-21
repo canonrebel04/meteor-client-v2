@@ -110,6 +110,7 @@ public class HudElementScreen extends WindowScreen {
 
         //   Remove
         WMinus remove = bottomList.add(theme.minus()).expandCellX().right().widget();
+        remove.tooltip = "Remove";
         remove.action = () -> {
             element.remove();
             onClose();
