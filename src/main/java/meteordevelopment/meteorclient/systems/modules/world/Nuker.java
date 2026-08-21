@@ -347,7 +347,8 @@ public class Nuker extends Module {
 
         // Calculate some stuff
         double pX = mc.player.getX(), pY = mc.player.getY(), pZ = mc.player.getZ();
-        double rangeSq = Math.pow(range.get(), 2);
+        double r_val = range.get();
+        double rangeSq = r_val * r_val; // ⚡ Bolt: Use primitive multiplication instead of Math.pow to avoid JNI overhead
         BlockPos playerBlockPos = mc.player.blockPosition();
 
         if (shape.get() == Shape.UniformCube) range.set((double) Math.round(range.get()));
