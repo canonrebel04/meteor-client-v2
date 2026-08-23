@@ -38,3 +38,7 @@
 **Vulnerability:** A compilation error related to `WaybackAuthLib` which was preventing CI checks from passing. It's not a security vulnerability but a pre-existing broken build issue.
 **Learning:** Even if the memory states the compilation error is a known issue, it might cause the CI pipeline to fail, preventing the PR from being merged.
 **Prevention:** Fix compilation errors even if memory suggests to ignore them if they fail CI checks.
+## 2024-06-25 - Stop Stack Trace Information Leak
+**Vulnerability:** Use of `e.printStackTrace()` prints full stack traces to standard error instead of using a centralized logging system. This can lead to sensitive information leakage in logs and potential system information disclosure.
+**Learning:** Hardcoding standard error prints bypasses established application loggers and exposes internal stack details.
+**Prevention:** Use standard centralized logging framework provided by the application (e.g. `MeteorClient.LOG.error("message", e)`) to properly handle and record exceptions.

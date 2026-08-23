@@ -5,6 +5,8 @@
 
 package meteordevelopment.meteorclient.systems.modules.misc.swarm;
 
+import meteordevelopment.meteorclient.MeteorClient;
+
 import meteordevelopment.meteorclient.commands.Commands;
 import meteordevelopment.meteorclient.pathing.PathManagers;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
@@ -24,7 +26,7 @@ public class SwarmWorker extends Thread {
         } catch (Exception e) {
             socket = null;
             ChatUtils.warningPrefix("Swarm", "Server not found at %s on port %s.", ip, port);
-            e.printStackTrace();
+            MeteorClient.LOG.error("An error occurred", e);
         }
 
         if (socket != null) start();
@@ -48,7 +50,7 @@ public class SwarmWorker extends Thread {
                         Commands.dispatch(read);
                     } catch (Exception e) {
                         ChatUtils.error("Error fetching command.");
-                        e.printStackTrace();
+                        MeteorClient.LOG.error("An error occurred", e);
                     }
                 }
             }
@@ -56,7 +58,7 @@ public class SwarmWorker extends Thread {
             in.close();
         } catch (IOException e) {
             ChatUtils.errorPrefix("Swarm", "Error in connection to host.");
-            e.printStackTrace();
+            MeteorClient.LOG.error("An error occurred", e);
             disconnect();
         }
     }
@@ -65,7 +67,7 @@ public class SwarmWorker extends Thread {
         try {
             socket.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            MeteorClient.LOG.error("An error occurred", e);
         }
 
         PathManagers.get().stop();
