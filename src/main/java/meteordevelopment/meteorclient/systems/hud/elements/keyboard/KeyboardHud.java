@@ -1022,6 +1022,7 @@ public class KeyboardHud extends HudElement {
             };
 
             WMinus delete = table.add(theme.minus()).right().widget();
+            delete.tooltip = "Remove";
             delete.action = () -> {
                 it.remove();
                 setting.onChanged();
