@@ -34,3 +34,7 @@
 ## 2024-08-07 - Avoid Math.pow for Distance Thresholds in AutoCity
 **Learning:** Performance-critical distance checks in Java applications that use `Math.pow(x, 2)` incur JNI overhead and floating point precision work that is entirely unnecessary when working with squared distances.
 **Action:** Always replace `Math.pow(x, 2)` with direct double multiplication `x * x` in distance threshold checks (`squaredDistanceTo`) to improve execution speed in combat logic loops.
+
+## 2024-08-24 - Math.pow Overhead in Hot Render Loops
+**Learning:** In the Meteor Client codebase, the `Math.pow()` method is used inside hot render loops (like `ESP.java`'s `getFadeAlpha` and `Nuker.java`), which executes per entity per frame. `Math.pow()` suffers from significant JNI call overhead on some JVMs compared to primitive operations.
+**Action:** Always replace `Math.pow(x, 2)` with primitive multiplication (`x * x`) when performing simple squaring in high-frequency update loops (like rendering or combat ticks) to avoid native call overhead.
