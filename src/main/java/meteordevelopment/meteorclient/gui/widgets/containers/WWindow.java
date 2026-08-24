@@ -161,6 +161,7 @@ public abstract class WWindow extends WVerticalList {
 
             triangle = add(theme.triangle()).pad(4).right().centerY().widget();
             triangle.action = () -> setExpanded(!expanded);
+            triangle.tooltip = "Expand/Collapse";
         }
 
         private void createList() {
