@@ -34,3 +34,7 @@
 ## 2024-08-07 - Avoid Math.pow for Distance Thresholds in AutoCity
 **Learning:** Performance-critical distance checks in Java applications that use `Math.pow(x, 2)` incur JNI overhead and floating point precision work that is entirely unnecessary when working with squared distances.
 **Action:** Always replace `Math.pow(x, 2)` with direct double multiplication `x * x` in distance threshold checks (`squaredDistanceTo`) to improve execution speed in combat logic loops.
+
+## 2025-02-19 - Replace Math.pow with Bitshift for Integer Powers of Two in Render Loops
+**Learning:** Using `Math.pow(2, i)` where `i` is an integer inside high-frequency rendering or allocation loops (like `Blur` module's FBO creation) invokes costly JNI calls.
+**Action:** Always replace `Math.pow(2, i)` with `(1 << i)` to utilize fast bitwise operations for integer powers of two, eliminating JNI overhead.
