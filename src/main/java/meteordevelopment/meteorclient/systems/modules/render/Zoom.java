@@ -172,7 +172,8 @@ public class Zoom extends Module {
     }
 
     public double getScaling() {
-        double delta = time < 0.5 ? 4 * time * time * time : 1 - Math.pow(-2 * time + 2, 3) / 2; // Ease in out cubic
+        double t2 = -2 * time + 2; // ⚡ Bolt: Expand Math.pow(x, 3) into simple multiplication to avoid JNI and float overhead
+        double delta = time < 0.5 ? 4 * time * time * time : 1 - (t2 * t2 * t2) / 2; // Ease in out cubic
         return Mth.lerp(delta, 1, value);
     }
 
