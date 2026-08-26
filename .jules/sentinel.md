@@ -38,3 +38,7 @@
 **Vulnerability:** A compilation error related to `WaybackAuthLib` which was preventing CI checks from passing. It's not a security vulnerability but a pre-existing broken build issue.
 **Learning:** Even if the memory states the compilation error is a known issue, it might cause the CI pipeline to fail, preventing the PR from being merged.
 **Prevention:** Fix compilation errors even if memory suggests to ignore them if they fail CI checks.
+## 2025-02-27 - Fix Insecure API Call
+**Vulnerability:** Found `http` being used in `TheAlteningAccount.java` for sensitive endpoints (`http://sessionserver.thealtening.com` and `http://authserver.thealtening.com`).
+**Learning:** Hardcoding insecure protocol endpoints, especially related to authentication and session management, leaves the application vulnerable to Man-in-the-Middle (MitM) attacks.
+**Prevention:** Ensure that all endpoints use secure protocols (`https`) instead of `http` to protect sensitive data transmission.
