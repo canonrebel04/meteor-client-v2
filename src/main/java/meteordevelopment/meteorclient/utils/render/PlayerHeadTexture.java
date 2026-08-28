@@ -48,7 +48,7 @@ public class PlayerHeadTexture extends Texture {
             }
             MemoryUtil.memFree(data);
         } catch (IOException e) {
-            e.printStackTrace();
+            MeteorClient.LOG.error("An error occurred", e);
         }
     }
 

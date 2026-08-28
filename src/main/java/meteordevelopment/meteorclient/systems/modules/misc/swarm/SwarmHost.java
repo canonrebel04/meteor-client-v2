@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.misc.swarm;
 
+import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.utils.network.MeteorExecutor;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
 
@@ -23,7 +24,7 @@ public class SwarmHost extends Thread {
         } catch (IOException e) {
             socket = null;
             ChatUtils.errorPrefix("Swarm", "Couldn't start a server on port %s.", port);
-            e.printStackTrace();
+            MeteorClient.LOG.error("An error occurred", e);
         }
 
         if (socket != null) start();
@@ -39,7 +40,7 @@ public class SwarmHost extends Thread {
                 assignConnectionToSubServer(connection);
             } catch (IOException e) {
                 ChatUtils.errorPrefix("Swarm", "Error making a connection to worker.");
-                e.printStackTrace();
+                MeteorClient.LOG.error("An error occurred", e);
             }
         }
     }
@@ -61,7 +62,7 @@ public class SwarmHost extends Thread {
         try {
             socket.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            MeteorClient.LOG.error("An error occurred", e);
         }
 
         ChatUtils.infoPrefix("Swarm", "Server closed on port %s.", socket.getLocalPort());
