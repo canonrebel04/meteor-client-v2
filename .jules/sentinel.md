@@ -38,3 +38,8 @@
 **Vulnerability:** A compilation error related to `WaybackAuthLib` which was preventing CI checks from passing. It's not a security vulnerability but a pre-existing broken build issue.
 **Learning:** Even if the memory states the compilation error is a known issue, it might cause the CI pipeline to fail, preventing the PR from being merged.
 **Prevention:** Fix compilation errors even if memory suggests to ignore them if they fail CI checks.
+
+## 2024-05-24 - Prevent unmanaged stack trace exposure
+**Vulnerability:** Use of `e.printStackTrace()` in error handling across multiple components (e.g., Swarm system).
+**Learning:** `printStackTrace()` writes directly to standard error, bypassing centralized logging. This can leak sensitive internal context and trigger SAST warnings. While in a client application it might just move output from stderr to a log file, it prevents the application from managing or sanitizing error output uniformly.
+**Prevention:** Always use the application's standard logger to properly handle and log exceptions without exposing raw stack traces directly to unmanaged standard error streams.
