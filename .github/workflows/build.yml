@@ -48,12 +48,18 @@ jobs:
           chmod +x gradlew
           ./gradlew build publishToMavenLocal --no-daemon --no-build-cache
           cd ..
+          # Fix for "Could not find meteordevelopment:baritone" by overriding Gradle dependencies
           mkdir -p ~/.gradle/caches/fabric-loom/minecraftMaven/meteordevelopment/baritone/26.1.2-v2.0.4/
           cp ~/.m2/repository/meteordevelopment/baritone/26.1.2-v2.0.4/* ~/.gradle/caches/fabric-loom/minecraftMaven/meteordevelopment/baritone/26.1.2-v2.0.4/ || true
           mkdir -p .gradle/loom-cache/remapped_mods/meteordevelopment/baritone/26.1.2-v2.0.4/
           cp ~/.m2/repository/meteordevelopment/baritone/26.1.2-v2.0.4/* .gradle/loom-cache/remapped_mods/meteordevelopment/baritone/26.1.2-v2.0.4/ || true
           mkdir -p .gradle/loom-cache/minecraftMaven/meteordevelopment/baritone/26.1.2-v2.0.4/
           cp ~/.m2/repository/meteordevelopment/baritone/26.1.2-v2.0.4/* .gradle/loom-cache/minecraftMaven/meteordevelopment/baritone/26.1.2-v2.0.4/ || true
+          # Explicitly copy to the paths searched in CI logs
+          mkdir -p /home/runner/work/meteor-client-v2/meteor-client-v2/.gradle/loom-cache/remapped_mods/meteordevelopment/baritone/26.1.2-v2.0.4/
+          cp ~/.m2/repository/meteordevelopment/baritone/26.1.2-v2.0.4/* /home/runner/work/meteor-client-v2/meteor-client-v2/.gradle/loom-cache/remapped_mods/meteordevelopment/baritone/26.1.2-v2.0.4/ || true
+          mkdir -p /home/runner/work/meteor-client-v2/meteor-client-v2/.gradle/loom-cache/minecraftMaven/meteordevelopment/baritone/26.1.2-v2.0.4/
+          cp ~/.m2/repository/meteordevelopment/baritone/26.1.2-v2.0.4/* /home/runner/work/meteor-client-v2/meteor-client-v2/.gradle/loom-cache/minecraftMaven/meteordevelopment/baritone/26.1.2-v2.0.4/ || true
 
       - name: Set up Node JS
         uses: actions/setup-node@v4
