@@ -134,6 +134,7 @@
     "LevelEntityGetterAdapterAccessor",
     "LevelRendererAccessor",
     "LevelRendererMixin",
+    "FeatureRenderDispatcherMixin",
     "LightmapMixin",
     "LightningBoltRendererMixin",
     "LivingEntityAccessor",

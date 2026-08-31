@@ -50,11 +50,11 @@ public abstract class SimpleBlockRenderer {
     private static final SubmitNodeStorage SUBMIT_NODES = new SubmitNodeStorage() {
         @Override
         public SubmitNodeCollection order(int i) {
-            return MESH_NODES;
+            return MESH_NODES; // forward ref inside method body is fine — resolved at call time
         }
     };
 
-    private static final SubmitNodeCollection MESH_NODES = new SubmitNodeCollection() {
+    private static final SubmitNodeCollection MESH_NODES = new SubmitNodeCollection(SUBMIT_NODES) {
         @Override
         public <S> void submitModel(Model<? super S> model, S state, PoseStack poseStack, RenderType renderType, int lightCoords, int overlayCoords, int tintedColor, @Nullable TextureAtlasSprite sprite, int outlineColor, ModelFeatureRenderer.@Nullable CrumblingOverlay crumblingOverlay) {
             if (CONSUMER.isBound()) {
