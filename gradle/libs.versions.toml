@@ -13,7 +13,7 @@ errorprone-plugin = "5.1.1"
 
 # Mods
 # Baritone (https://github.com/MeteorDevelopment/baritone)
-baritone = "26.1.2-v2.0.14"
+baritone = "26.2.0-v2.1.0-SNAPSHOT"
 # Sodium (https://github.com/CaffeineMC/sodium-fabric)
 sodium = "mc26.2-0.9.1-fabric"
 # Lithium (https://github.com/CaffeineMC/lithium-fabric)

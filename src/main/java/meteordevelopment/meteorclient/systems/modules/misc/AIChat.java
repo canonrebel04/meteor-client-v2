@@ -432,31 +432,7 @@ public class AIChat extends Module {
     }
 
     private boolean baritone(String cmd) {
-        try {
-            // 26.2 port: baritone-api (26.1.2) ICommandManager signatures still reference the removed
-            // net.minecraft.util.Tuple, so direct getCommandManager() calls don't compile. Invoke via
-            // reflection — same runtime call chain as before (execute(String) on the command manager).
-            Object baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
-            Object commandManager = baritone.getClass().getMethod("getCommandManager").invoke(baritone);
-            Object result = commandManagerExecute(commandManager, cmd);
-            return result instanceof Boolean b && b;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private static Object commandManagerExecute(Object commandManager, String cmd) throws Exception {
-        try {
-            return commandManager.getClass().getMethod("execute", String.class).invoke(commandManager, cmd);
-        } catch (NoSuchMethodException e) {
-            // Fall through to interface lookup if the impl class hides it
-            for (Class<?> iface : commandManager.getClass().getInterfaces()) {
-                try {
-                    return iface.getMethod("execute", String.class).invoke(commandManager, cmd);
-                } catch (NoSuchMethodException ignored) {}
-            }
-            throw new NoSuchMethodException("execute(String)");
-        }
+        return BaritoneAPI.getProvider().getPrimaryBaritone().getCommandManager().execute(cmd);
     }
 
     private void trimHistory() {
