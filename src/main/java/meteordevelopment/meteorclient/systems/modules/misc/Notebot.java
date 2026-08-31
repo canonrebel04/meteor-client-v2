@@ -791,12 +791,21 @@ public class Notebot extends Module {
         }
     }
 
+    // ⚡ Bolt: Precompute pitch values to avoid JNI Math.pow overhead in tick loop
+    private static final float[] PITCHES = new float[25];
+    static {
+        for (int i = 0; i <= 24; i++) {
+            PITCHES[i] = (float) Math.pow(2.0D, (i - 12) / 12.0D);
+        }
+    }
+
     private void onTickPreview() {
         for (Note note : song.getNotesMap().get(currentTick)) {
+            float pitch = note.getNoteLevel() >= 0 && note.getNoteLevel() <= 24 ? PITCHES[note.getNoteLevel()] : (float) Math.pow(2.0D, (note.getNoteLevel() - 12) / 12.0D);
             if (mode.get() == NotebotUtils.NotebotMode.ExactInstruments) {
-                mc.player.playSound(note.getInstrument().getSoundEvent().value(), 2f, (float) Math.pow(2.0D, (note.getNoteLevel() - 12) / 12.0D));
+                mc.player.playSound(note.getInstrument().getSoundEvent().value(), 2f, pitch);
             } else {
-                mc.player.playSound(SoundEvents.NOTE_BLOCK_HARP.value(), 2f, (float) Math.pow(2.0D, (note.getNoteLevel() - 12) / 12.0D));
+                mc.player.playSound(SoundEvents.NOTE_BLOCK_HARP.value(), 2f, pitch);
             }
         }
     }

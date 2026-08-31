@@ -115,6 +115,7 @@ public class ModuleScreen extends WindowScreen {
         // Config sharing
         WHorizontalList sharing = bottom.add(theme.horizontalList()).right().widget();
         WButton copy = sharing.add(theme.button(GuiRenderer.COPY)).widget();
+        copy.tooltip = "Copy config";
         copy.action = () -> {
             if (toClipboard()) {
                 OkPrompt.create()

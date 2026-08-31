@@ -398,7 +398,7 @@ public class CombatFollowController {
         }
 
         net.minecraft.world.phys.Vec3 targetVel = target.getDeltaMovement();
-        double decay = (1.0 - Math.pow(0.91, 10)) / (1.0 - 0.91);
+        double decay = 6.784265354243251; // ⚡ Bolt: Pre-calculated constant (1.0 - Math.pow(0.91, 10)) / (1.0 - 0.91)
         double predX = target.getX() + targetVel.x * decay;
         double predZ = target.getZ() + targetVel.z * decay;
         net.minecraft.core.BlockPos predictedBlock = new net.minecraft.core.BlockPos(

@@ -42,7 +42,7 @@ public class GuiThemes {
 
                 if (tag != null) select(tag.getStringOr("currentTheme", ""));
             } catch (IOException e) {
-                e.printStackTrace();
+                MeteorClient.LOG.error("An error occurred", e);
             }
         }
 
@@ -90,7 +90,7 @@ public class GuiThemes {
                     if (tag != null) get().fromTag(tag);
                 }
             } catch (IOException e) {
-                e.printStackTrace();
+                MeteorClient.LOG.error("An error occurred", e);
             }
 
             // Save global gui settings with the new theme
@@ -122,7 +122,7 @@ public class GuiThemes {
                 THEMES_FOLDER.mkdirs();
                 NbtIo.write(tag, new File(THEMES_FOLDER, get().name + ".nbt").toPath());
             } catch (IOException e) {
-                e.printStackTrace();
+                MeteorClient.LOG.error("An error occurred", e);
             }
         }
     }
@@ -135,7 +135,7 @@ public class GuiThemes {
             FOLDER.mkdirs();
             NbtIo.write(tag, FILE.toPath());
         } catch (IOException e) {
-            e.printStackTrace();
+            MeteorClient.LOG.error("An error occurred", e);
         }
     }
 

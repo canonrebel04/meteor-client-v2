@@ -81,7 +81,7 @@ public class Main {
                     System.err.println("Opening URLs is not supported on this platform.");
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                System.err.println("An error occurred: " + e.getMessage());
             }
         }
 
@@ -89,7 +89,7 @@ public class Main {
             try {
                 open(new URI(url).toURL());
             } catch (Exception e) {
-                e.printStackTrace();
+                System.err.println("An error occurred: " + e.getMessage());
             }
         }
 
@@ -101,7 +101,7 @@ public class Main {
                     System.err.println("Opening files is not supported on this platform.");
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                System.err.println("An error occurred: " + e.getMessage());
             }
         }
     }
