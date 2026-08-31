@@ -34,3 +34,7 @@
 ## 2024-08-07 - Avoid Math.pow for Distance Thresholds in AutoCity
 **Learning:** Performance-critical distance checks in Java applications that use `Math.pow(x, 2)` incur JNI overhead and floating point precision work that is entirely unnecessary when working with squared distances.
 **Action:** Always replace `Math.pow(x, 2)` with direct double multiplication `x * x` in distance threshold checks (`squaredDistanceTo`) to improve execution speed in combat logic loops.
+
+## 2026-08-21 - Fast path for small integer exponents
+**Learning:** `Math.pow(base, exponent)` involves JNI overhead and floating-point logic that can be slow inside tick loops. When the exponent is known to usually be a small integer (e.g. 0, 1, 2 totems), computing the result via `Math.pow` every tick is wasteful.
+**Action:** Provide a fast path for small integer exponents using ternary operators or switch statements (e.g. `totems == 0 ? 1.0 : (totems == 1 ? 0.4 : ...`) to return precomputed constants, falling back to `Math.pow` only when necessary.

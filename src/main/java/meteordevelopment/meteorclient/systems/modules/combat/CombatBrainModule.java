@@ -1875,7 +1875,7 @@ public class CombatBrainModule extends Module {
         double selfVuln = 1.0 / (1.0 + Math.exp(0.5 * (health - 10.0)));
 
         int totems = countTotems();
-        double totemExposure = Math.pow(0.4, totems);
+        double totemExposure = totems == 0 ? 1.0 : (totems == 1 ? 0.4 : (totems == 2 ? 0.16 : Math.pow(0.4, totems))); // ⚡ Bolt: Use fast path for common totem counts to avoid Math.pow JNI overhead
 
         double envPressure = 0.0;
         double crystalPressure = 0.0;
