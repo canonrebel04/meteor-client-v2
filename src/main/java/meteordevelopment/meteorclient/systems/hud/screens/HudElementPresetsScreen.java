@@ -60,6 +60,7 @@ public class HudElementPresetsScreen extends WindowScreen {
             l.add(theme.label(preset.title));
 
             WPlus add = l.add(theme.plus()).expandCellX().right().widget();
+            add.tooltip = "Add preset";
             add.action = () -> {
                 Hud.get().add(preset, x, y);
                 onClose();
