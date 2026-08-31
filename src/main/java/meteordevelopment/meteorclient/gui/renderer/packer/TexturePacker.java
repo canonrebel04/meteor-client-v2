@@ -5,6 +5,8 @@
 
 package meteordevelopment.meteorclient.gui.renderer.packer;
 
+import meteordevelopment.meteorclient.MeteorClient;
+
 import com.mojang.blaze3d.platform.TextureUtil;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.TextureFormat;
@@ -61,7 +63,7 @@ public class TexturePacker {
                     if (width > 32) addResized(texture, imageBuffer, width, height, 32);
                     if (width > 48) addResized(texture, imageBuffer, width, height, 48);
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    MeteorClient.LOG.error("An error occurred", e);
                 } finally {
                     MemoryUtil.memFree(rawImageBuffer);
                 }
@@ -69,7 +71,7 @@ public class TexturePacker {
 
             return texture;
         } catch (IOException e) {
-            e.printStackTrace();
+            MeteorClient.LOG.error("An error occurred", e);
         }
 
         return null;
