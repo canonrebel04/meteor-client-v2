@@ -23,6 +23,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -78,12 +79,12 @@ public class CombatBrainModule extends Module {
         .description("Entities to attack.")
         .onlyAttackable()
         .defaultValue(
-            EntityType.PLAYER,
-            EntityType.ZOMBIE, EntityType.SKELETON, EntityType.SPIDER, EntityType.CREEPER, EntityType.ENDERMAN,
-            EntityType.PIGLIN, EntityType.ZOMBIFIED_PIGLIN, EntityType.DROWNED, EntityType.HUSK, EntityType.STRAY,
-            EntityType.WITHER_SKELETON, EntityType.SLIME, EntityType.MAGMA_CUBE, EntityType.BLAZE, EntityType.GHAST,
-            EntityType.WITCH, EntityType.PILLAGER, EntityType.VINDICATOR, EntityType.RAVAGER, EntityType.EVOKER,
-            EntityType.WARDEN, EntityType.WITHER, EntityType.ENDER_DRAGON, EntityType.BREEZE, EntityType.BOGGED
+            EntityTypes.PLAYER,
+            EntityTypes.ZOMBIE, EntityTypes.SKELETON, EntityTypes.SPIDER, EntityTypes.CREEPER, EntityTypes.ENDERMAN,
+            EntityTypes.PIGLIN, EntityTypes.ZOMBIFIED_PIGLIN, EntityTypes.DROWNED, EntityTypes.HUSK, EntityTypes.STRAY,
+            EntityTypes.WITHER_SKELETON, EntityTypes.SLIME, EntityTypes.MAGMA_CUBE, EntityTypes.BLAZE, EntityTypes.GHAST,
+            EntityTypes.WITCH, EntityTypes.PILLAGER, EntityTypes.VINDICATOR, EntityTypes.RAVAGER, EntityTypes.EVOKER,
+            EntityTypes.WARDEN, EntityTypes.WITHER, EntityTypes.ENDER_DRAGON, EntityTypes.BREEZE, EntityTypes.BOGGED
         )
         .build()
     );
@@ -979,11 +980,11 @@ public class CombatBrainModule extends Module {
             if (!entity.isAlive()) continue;
 
             EntityType<?> et = entity.getType();
-            boolean isDeflectable = et == EntityType.FIREBALL
-                || et == EntityType.SMALL_FIREBALL
-                || et == EntityType.DRAGON_FIREBALL
-                || et == EntityType.WIND_CHARGE
-                || et == EntityType.BREEZE_WIND_CHARGE;
+            boolean isDeflectable = et == EntityTypes.FIREBALL
+                || et == EntityTypes.SMALL_FIREBALL
+                || et == EntityTypes.DRAGON_FIREBALL
+                || et == EntityTypes.WIND_CHARGE
+                || et == EntityTypes.BREEZE_WIND_CHARGE;
 
             if (!isDeflectable) continue;
 
@@ -1019,7 +1020,7 @@ public class CombatBrainModule extends Module {
     private void handleEvokerFangDodge() {
         if (mc.level == null || mc.player == null) return;
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
-            if (entity.getType() == EntityType.EVOKER && entity instanceof LivingEntity evoker && evoker.isAlive()) {
+            if (entity.getType() == EntityTypes.EVOKER && entity instanceof LivingEntity evoker && evoker.isAlive()) {
                 if (evoker.distanceTo(mc.player) <= 10.0) {
                     mc.options.keyLeft.setDown(true);
                     break;
@@ -1089,7 +1090,7 @@ public class CombatBrainModule extends Module {
         boolean wardenNear = false;
         if (wardenCounter.get() && mc.level != null) {
             for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
-                if (entity.getType() == EntityType.WARDEN && entity.distanceTo(mc.player) <= 16.0) {
+                if (entity.getType() == EntityTypes.WARDEN && entity.distanceTo(mc.player) <= 16.0) {
                     wardenNear = true;
                     break;
                 }
@@ -1686,12 +1687,12 @@ public class CombatBrainModule extends Module {
             Set<EntityType<?>> types = entities.get();
             if (types.isEmpty()) {
                 types = Set.of(
-                    EntityType.PLAYER,
-                    EntityType.ZOMBIE, EntityType.SKELETON, EntityType.SPIDER, EntityType.CREEPER, EntityType.ENDERMAN,
-                    EntityType.PIGLIN, EntityType.ZOMBIFIED_PIGLIN, EntityType.DROWNED, EntityType.HUSK, EntityType.STRAY,
-                    EntityType.WITHER_SKELETON, EntityType.SLIME, EntityType.MAGMA_CUBE, EntityType.BLAZE, EntityType.GHAST,
-                    EntityType.WITCH, EntityType.PILLAGER, EntityType.VINDICATOR, EntityType.RAVAGER, EntityType.EVOKER,
-                    EntityType.WARDEN, EntityType.WITHER, EntityType.ENDER_DRAGON, EntityType.BREEZE, EntityType.BOGGED
+                    EntityTypes.PLAYER,
+                    EntityTypes.ZOMBIE, EntityTypes.SKELETON, EntityTypes.SPIDER, EntityTypes.CREEPER, EntityTypes.ENDERMAN,
+                    EntityTypes.PIGLIN, EntityTypes.ZOMBIFIED_PIGLIN, EntityTypes.DROWNED, EntityTypes.HUSK, EntityTypes.STRAY,
+                    EntityTypes.WITHER_SKELETON, EntityTypes.SLIME, EntityTypes.MAGMA_CUBE, EntityTypes.BLAZE, EntityTypes.GHAST,
+                    EntityTypes.WITCH, EntityTypes.PILLAGER, EntityTypes.VINDICATOR, EntityTypes.RAVAGER, EntityTypes.EVOKER,
+                    EntityTypes.WARDEN, EntityTypes.WITHER, EntityTypes.ENDER_DRAGON, EntityTypes.BREEZE, EntityTypes.BOGGED
                 );
             }
             if (!types.contains(le.getType())) return false;
@@ -1804,11 +1805,11 @@ public class CombatBrainModule extends Module {
         // Lower priority on Vexes (-0.5) when higher-value targets exist.
         double mobPriorityBonus = 0.0;
         EntityType<?> type = target.getType();
-        if (type == EntityType.EVOKER) {
+        if (type == EntityTypes.EVOKER) {
             mobPriorityBonus += 2.5;
-        } else if (type == EntityType.VEX) {
+        } else if (type == EntityTypes.VEX) {
             mobPriorityBonus -= 0.5;
-        } else if (type == EntityType.GHAST || type == EntityType.BLAZE) {
+        } else if (type == EntityTypes.GHAST || type == EntityTypes.BLAZE) {
             mobPriorityBonus += 0.5;
         }
 
@@ -1898,7 +1899,7 @@ public class CombatBrainModule extends Module {
 
                         envPressure += distFactor * dmgNorm * losFactor;
                     }
-                } else if (entity.getType() == EntityType.END_CRYSTAL) {
+                } else if (entity.getType() == EntityTypes.END_CRYSTAL) {
                     double dist = entity.distanceTo(mc.player);
                     if (dist < 12.0) {
                         crystalPressure += (12.0 - dist) / 12.0;
@@ -1961,7 +1962,7 @@ public class CombatBrainModule extends Module {
         ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).set(false);
 
         Set<EntityType<?>> killAuraEntities = new java.util.HashSet<>(entities.get());
-        if (targetPlayers.get()) killAuraEntities.add(EntityType.PLAYER);
+        if (targetPlayers.get()) killAuraEntities.add(EntityTypes.PLAYER);
         ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).set(killAuraEntities);
         // Set max-targets to the full group size so KillAura attacks ALL threats,
         // not just 1 or 3. Cap at 10 to avoid absurd values.

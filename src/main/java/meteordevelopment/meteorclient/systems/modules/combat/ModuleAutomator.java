@@ -25,6 +25,7 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.player.Player;
@@ -153,7 +154,7 @@ public class ModuleAutomator {
         if (mc.level == null || mc.player == null) return false;
         double rangeSq = range * range;
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
-            if (entity.getType() == EntityType.END_CRYSTAL && entity.distanceToSqr(mc.player) <= rangeSq) {
+            if (entity.getType() == EntityTypes.END_CRYSTAL && entity.distanceToSqr(mc.player) <= rangeSq) {
                 return true;
             }
         }
@@ -466,10 +467,10 @@ public class ModuleAutomator {
         if (mc.player.hasEffect(MobEffects.FIRE_RESISTANCE)) return;
 
         boolean isFireThreat = (mc.level.dimension() == Level.NETHER)
-            || (target != null && (target.getType() == EntityType.BLAZE
-                || target.getType() == EntityType.GHAST
-                || target.getType() == EntityType.MAGMA_CUBE
-                || target.getType() == EntityType.WITHER_SKELETON));
+            || (target != null && (target.getType() == EntityTypes.BLAZE
+                || target.getType() == EntityTypes.GHAST
+                || target.getType() == EntityTypes.MAGMA_CUBE
+                || target.getType() == EntityTypes.WITHER_SKELETON));
 
         if (isFireThreat) {
             FindItemResult potionSlot = findPotionWithEffect(MobEffects.FIRE_RESISTANCE);
@@ -528,7 +529,7 @@ public class ModuleAutomator {
         if (mc.level == null || mc.player == null) return false;
         double rangeSq = range * range;
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
-            if (entity.getType() == EntityType.WARDEN && entity.distanceToSqr(mc.player) <= rangeSq) {
+            if (entity.getType() == EntityTypes.WARDEN && entity.distanceToSqr(mc.player) <= rangeSq) {
                 return true;
             }
         }

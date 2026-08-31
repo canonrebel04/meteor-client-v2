@@ -118,10 +118,10 @@ public class ThreatIndicatorModule extends Module {
         double size = triangleSize.get();
         double margin = size * 2.0;
 
-        Vec3 cameraPos = mc.gameRenderer.getMainCamera().position();
+        Vec3 cameraPos = mc.gameRenderer.mainCamera().position();
         Vec3 cameraLook = mc.getCameraEntity().getViewVector(1.0f);
-        float camYaw = mc.gameRenderer.getMainCamera().yRot();
-        float camPitch = mc.gameRenderer.getMainCamera().xRot();
+        float camYaw = mc.gameRenderer.mainCamera().yRot();
+        float camPitch = mc.gameRenderer.mainCamera().xRot();
 
         for (ThreatEntry entry : threats) {
             Entity entity = entry.entity;
@@ -204,7 +204,7 @@ public class ThreatIndicatorModule extends Module {
     }
 
     private boolean isPlayer(Entity entity) {
-        return entity.getType() == net.minecraft.world.entity.EntityType.PLAYER;
+        return entity.getType() == net.minecraft.world.entity.EntityTypes.PLAYER;
     }
 
     private static double angleDiff(double a, double b) {

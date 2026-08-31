@@ -136,7 +136,7 @@ public class PathVisualizationOverlay extends Module {
         String line3 = (cb != null && cb.isActive()) ? "Mode: " + cb.getCombatMode().name() : null;
 
         TextRenderer text = TextRenderer.get();
-        text.begin(textScale.get());
+        text.begin(event.graphics, textScale.get());
 
         double lineHeight = text.getHeight() + 2;
         double pad = padding.get();

@@ -106,7 +106,7 @@ public class CombatNotificationManager extends Module {
                                 .text(name + " [" + killCount + "]")
                                 .icon(Items.DIAMOND_SWORD)
                                 .build();
-                            mc.getToastManager().addToast(toast);
+                            mc.gui.toastManager().addToast(toast);
                         }
                     }
 
@@ -129,7 +129,7 @@ public class CombatNotificationManager extends Module {
                         .text(name)
                         .icon(Items.ENDER_EYE)
                         .build();
-                    mc.getToastManager().addToast(toast);
+                    mc.gui.toastManager().addToast(toast);
                 }
             }
             lastTarget = currentTarget;
@@ -146,7 +146,7 @@ public class CombatNotificationManager extends Module {
                         .text("Total kills: " + killCount)
                         .icon(Items.WITHER_ROSE)
                         .build();
-                    mc.getToastManager().addToast(toast);
+                    mc.gui.toastManager().addToast(toast);
                 }
             }
             wasDead = isDead;

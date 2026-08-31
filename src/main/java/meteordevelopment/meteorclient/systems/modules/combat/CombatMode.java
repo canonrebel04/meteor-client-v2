@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
@@ -128,14 +129,14 @@ public enum CombatMode {
 
     private static boolean isAirborneTarget(LivingEntity target) {
         EntityType<?> type = target.getType();
-        return type == EntityType.GHAST
-            || type == EntityType.BLAZE
-            || type == EntityType.BREEZE
-            || type == EntityType.PHANTOM
-            || type == EntityType.ENDER_DRAGON
-            || type == EntityType.WITHER
-            || type == EntityType.BAT
-            || type == EntityType.VEX;
+        return type == EntityTypes.GHAST
+            || type == EntityTypes.BLAZE
+            || type == EntityTypes.BREEZE
+            || type == EntityTypes.PHANTOM
+            || type == EntityTypes.ENDER_DRAGON
+            || type == EntityTypes.WITHER
+            || type == EntityTypes.BAT
+            || type == EntityTypes.VEX;
     }
 
     private static boolean isMyWeaponMelee() {

@@ -15,6 +15,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.piglin.Piglin;
@@ -79,10 +80,10 @@ public class CombatTargetAnalyzer {
             for (MobEffectInstance effect : target.getActiveEffects()) {
                 var type = effect.getEffect().value();
                 int amp = effect.getAmplifier();
-                if (type == MobEffects.STRENGTH && amp >= 1) {
+                if (type == MobEffects.STRENGTH.value() && amp >= 1) {
                     base += 2.0;
                 }
-                if (type == MobEffects.SPEED) {
+                if (type == MobEffects.SPEED.value()) {
                     base += 1.0 * (amp + 1);
                 }
             }
@@ -91,10 +92,10 @@ public class CombatTargetAnalyzer {
         if (mc.player != null) {
             for (MobEffectInstance effect : mc.player.getActiveEffects()) {
                 var type = effect.getEffect().value();
-                if (type == MobEffects.WEAKNESS) {
+                if (type == MobEffects.WEAKNESS.value()) {
                     base += 3.0;
                 }
-                if (type == MobEffects.SLOWNESS) {
+                if (type == MobEffects.SLOWNESS.value()) {
                     base -= 1.0;
                 }
             }
@@ -124,9 +125,9 @@ public class CombatTargetAnalyzer {
         for (MobEffectInstance effect : entity.getActiveEffects()) {
             var type = effect.getEffect().value();
             int amp = effect.getAmplifier();
-            if (type == MobEffects.STRENGTH) {
+            if (type == MobEffects.STRENGTH.value()) {
                 mod += 3.0 * (amp + 1);
-            } else if (type == MobEffects.WEAKNESS) {
+            } else if (type == MobEffects.WEAKNESS.value()) {
                 mod -= 4.0 * (amp + 1);
             }
         }
@@ -135,7 +136,7 @@ public class CombatTargetAnalyzer {
 
     public static double getResistanceMultiplier(LivingEntity entity) {
         for (MobEffectInstance effect : entity.getActiveEffects()) {
-            if (effect.getEffect().value() == MobEffects.RESISTANCE) {
+            if (effect.getEffect().value() == MobEffects.RESISTANCE.value()) {
                 double reduction = 0.2 * (effect.getAmplifier() + 1);
                 return Math.max(0.0, 1.0 - reduction);
             }
@@ -148,19 +149,19 @@ public class CombatTargetAnalyzer {
         for (MobEffectInstance effect : entity.getActiveEffects()) {
             var type = effect.getEffect().value();
             int amp = effect.getAmplifier();
-            if (type == MobEffects.STRENGTH && amp >= 1) {
+            if (type == MobEffects.STRENGTH.value() && amp >= 1) {
                 sb.append("STR").append(amp + 1);
-            } else if (type == MobEffects.WEAKNESS) {
+            } else if (type == MobEffects.WEAKNESS.value()) {
                 sb.append("WEAK").append(amp + 1);
-            } else if (type == MobEffects.RESISTANCE) {
+            } else if (type == MobEffects.RESISTANCE.value()) {
                 sb.append("RES").append(amp + 1);
-            } else if (type == MobEffects.SPEED) {
+            } else if (type == MobEffects.SPEED.value()) {
                 sb.append("SPD").append(amp + 1);
-            } else if (type == MobEffects.FIRE_RESISTANCE) {
+            } else if (type == MobEffects.FIRE_RESISTANCE.value()) {
                 sb.append("FRES");
-            } else if (type == MobEffects.REGENERATION) {
+            } else if (type == MobEffects.REGENERATION.value()) {
                 sb.append("REGEN").append(amp + 1);
-            } else if (type == MobEffects.INVISIBILITY) {
+            } else if (type == MobEffects.INVISIBILITY.value()) {
                 sb.append("INVIS");
             }
         }
@@ -240,14 +241,14 @@ public class CombatTargetAnalyzer {
         if (entity instanceof Player player) {
             return player.entityInteractionRange();
         }
-        if (entity.getType() == EntityType.ENDERMAN) return 3.0;
-        if (entity.getType() == EntityType.CREEPER) return 3.0;
-        if (entity.getType() == EntityType.SPIDER || entity.getType() == EntityType.CAVE_SPIDER) return 2.0;
-        if (entity.getType() == EntityType.ZOMBIE) return 2.0;
-        if (entity.getType() == EntityType.SKELETON) return 2.0;
-        if (entity.getType() == EntityType.PIGLIN) return 2.0;
-        if (entity.getType() == EntityType.VINDICATOR) return 2.0;
-        if (entity.getType() == EntityType.EVOKER) return 2.0;
+        if (entity.getType() == EntityTypes.ENDERMAN) return 3.0;
+        if (entity.getType() == EntityTypes.CREEPER) return 3.0;
+        if (entity.getType() == EntityTypes.SPIDER || entity.getType() == EntityTypes.CAVE_SPIDER) return 2.0;
+        if (entity.getType() == EntityTypes.ZOMBIE) return 2.0;
+        if (entity.getType() == EntityTypes.SKELETON) return 2.0;
+        if (entity.getType() == EntityTypes.PIGLIN) return 2.0;
+        if (entity.getType() == EntityTypes.VINDICATOR) return 2.0;
+        if (entity.getType() == EntityTypes.EVOKER) return 2.0;
         return 2.0;
     }
 

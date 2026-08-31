@@ -97,7 +97,7 @@ public class CombatDecisionOverlay extends Module {
         String brainAction = "AI Action: " + (cb.isActive() ? cb.getInfoString() : "N/A");
 
         TextRenderer text = TextRenderer.get();
-        text.begin(scale.get());
+        text.begin(event.graphics, scale.get());
 
         double lineHeight = text.getHeight() + 2;
         double pad = padding.get();

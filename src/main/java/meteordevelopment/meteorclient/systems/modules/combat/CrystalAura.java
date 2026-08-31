@@ -853,7 +853,7 @@ public class CrystalAura extends Module {
         // exists client-side, by ID only — the server has already allocated and ticked it.
         if (spawnTiming.get() != SpawnTiming.Packet || !fastBreak.get()) return;
         if (!(event.packet instanceof ClientboundAddEntityPacket packet)) return;
-        if (packet.getType() != EntityType.END_CRYSTAL) return;
+        if (packet.getType() != EntityTypes.END_CRYSTAL) return;
         if (!placing || didRotateThisTick || attacks >= attackFrequency.get()) return;
 
         BlockPos p = placingCrystalBlockPos;

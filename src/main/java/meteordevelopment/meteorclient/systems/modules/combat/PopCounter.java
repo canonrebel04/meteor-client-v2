@@ -85,7 +85,7 @@ public class PopCounter extends Module {
 
         VanillaTextRenderer renderer = VanillaTextRenderer.INSTANCE;
         renderer.scale = 2;
-        renderer.begin();
+        renderer.begin(event.graphics);
 
         double y = 10;
         double x = event.screenWidth - 120;
