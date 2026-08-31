@@ -8,7 +8,6 @@ package meteordevelopment.meteorclient.utils.render;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.model.Model;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.SubmitNodeCollection;
 import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
@@ -50,11 +49,11 @@ public abstract class SimpleBlockRenderer {
     private static final SubmitNodeStorage SUBMIT_NODES = new SubmitNodeStorage() {
         @Override
         public SubmitNodeCollection order(int i) {
-            return MESH_NODES; // forward ref inside method body is fine — resolved at call time
+            return MESH_NODES;
         }
     };
 
-    private static final SubmitNodeCollection MESH_NODES = new SubmitNodeCollection(SUBMIT_NODES) {
+    private static final SubmitNodeCollection MESH_NODES = new SubmitNodeCollection() {
         @Override
         public <S> void submitModel(Model<? super S> model, S state, PoseStack poseStack, RenderType renderType, int lightCoords, int overlayCoords, int tintedColor, @Nullable TextureAtlasSprite sprite, int outlineColor, ModelFeatureRenderer.@Nullable CrumblingOverlay crumblingOverlay) {
             if (CONSUMER.isBound()) {
@@ -79,16 +78,16 @@ public abstract class SimpleBlockRenderer {
 
         if (renderer != null && blockEntity.hasLevel() && blockEntity.getType().isValid(blockEntity.getBlockState())) {
             BlockEntityRenderState state = renderer.createRenderState();
-            renderer.extractRenderState(blockEntity, state, tickDelta, mc.gameRenderer.getGameRenderState().levelRenderState.cameraRenderState.pos, null);
+            renderer.extractRenderState(blockEntity, state, tickDelta, mc.gameRenderer.gameRenderState().levelRenderState.cameraRenderState.pos, null);
 
             ScopedValue.where(CONSUMER, vertexConsumerProvider.getBuffer(RenderTypes.solidMovingBlock()))
-                .run(() -> renderer.submit(state, MATRICES, SUBMIT_NODES, mc.gameRenderer.getGameRenderState().levelRenderState.cameraRenderState));
+                .run(() -> renderer.submit(state, MATRICES, SUBMIT_NODES, mc.gameRenderer.gameRenderState().levelRenderState.cameraRenderState));
         }
 
         vertexConsumerProvider.setOffset(0, 0, 0);
     }
 
-    public static void render(BlockPos pos, BlockState state, MultiBufferSource consumerProvider) {
+    public static void render(BlockPos pos, BlockState state, IVertexConsumerProvider consumerProvider) {
         if (state.getRenderShape() != RenderShape.MODEL) return;
 
         VertexConsumer consumer = consumerProvider.getBuffer(RenderTypes.solidMovingBlock());

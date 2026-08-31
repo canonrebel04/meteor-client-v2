@@ -350,7 +350,7 @@ public class CombatHud extends HudElement {
                 }
             }
 
-            TextRenderer.get().begin(0.45 * getScale(), false, true);
+            TextRenderer.get().begin(renderer.graphics, 0.45 * getScale(), false, true);
 
             double breakWidth = TextRenderer.get().getWidth(breakText);
             double pingWidth = TextRenderer.get().getWidth(pingText);
@@ -390,7 +390,7 @@ public class CombatHud extends HudElement {
             matrices.pushMatrix();
             matrices.scale((float) getScale(), (float) getScale(), 1);
 
-            TextRenderer.get().begin(0.35, false, true);
+            TextRenderer.get().begin(renderer.graphics, 0.35, false, true);
 
             for (int position = 0; position < 6; position++) {
                 armorX = x + (position * 20 * getScale());
