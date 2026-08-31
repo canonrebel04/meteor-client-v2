@@ -27,6 +27,7 @@ import meteordevelopment.meteorclient.systems.modules.combat.overlay.TargetESP;
 import meteordevelopment.meteorclient.systems.modules.combat.overlay.ThreatIndicatorModule;
 import meteordevelopment.meteorclient.systems.modules.combat.notifications.CombatNotificationManager;
 import meteordevelopment.meteorclient.systems.modules.misc.*;
+import meteordevelopment.meteorclient.systems.modules.misc.FleetIntelModule;
 import meteordevelopment.meteorclient.systems.modules.misc.swarm.Swarm;
 import meteordevelopment.meteorclient.systems.modules.movement.*;
 import meteordevelopment.meteorclient.systems.modules.movement.elytrafly.ElytraFly;
@@ -600,5 +601,6 @@ public class Modules extends System<Modules> {
         add(new SoundBlocker());
         add(new Spam());
         add(new Swarm());
+        add(new FleetIntelModule());
     }
 }
