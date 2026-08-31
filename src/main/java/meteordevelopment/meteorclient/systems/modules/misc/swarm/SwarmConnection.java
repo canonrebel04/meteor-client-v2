@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.misc.swarm;
 
+import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
 
 import java.io.DataOutputStream;
@@ -34,7 +35,7 @@ public class SwarmConnection extends Thread {
                         out.flush();
                     } catch (Exception e) {
                         ChatUtils.errorPrefix("Swarm", "Encountered error when sending command.");
-                        e.printStackTrace();
+                        MeteorClient.LOG.error("Error from Swarm:", e);
                     }
 
                     messageToSend = null;
@@ -44,7 +45,7 @@ public class SwarmConnection extends Thread {
             out.close();
         } catch (IOException e) {
             ChatUtils.infoPrefix("Swarm", "Error creating a connection with %s on port %s.", getIp(socket.getInetAddress().getHostAddress()), socket.getPort());
-            e.printStackTrace();
+            MeteorClient.LOG.error("Error from Swarm:", e);
         }
     }
 
@@ -52,7 +53,7 @@ public class SwarmConnection extends Thread {
         try {
             socket.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            MeteorClient.LOG.error("Error from Swarm:", e);
         }
 
         ChatUtils.infoPrefix("Swarm", "Worker disconnected on ip: %s.", socket.getInetAddress().getHostAddress());
