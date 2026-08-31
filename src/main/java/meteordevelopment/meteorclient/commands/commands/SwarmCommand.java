@@ -367,6 +367,52 @@ public class SwarmCommand extends Command {
             }
             return SINGLE_SUCCESS;
         })));
+
+        builder.then(literal("intel").executes(context -> {
+            Swarm swarm = Modules.get().get(Swarm.class);
+            if (!swarm.isActive() || !swarm.isHost()) {
+                error("The intel command must be used by the swarm host.");
+                return SINGLE_SUCCESS;
+            }
+
+            if (swarm.intelReports.isEmpty()) {
+                info("No worker intel received yet (workers send reports every second).");
+                return SINGLE_SUCCESS;
+            }
+
+            int playerCount = 0;
+            for (var entry : swarm.intelReports.entrySet()) {
+                com.google.gson.JsonObject report = entry.getValue();
+
+                info("Worker %s:", entry.getKey());
+                if (report.has("pos")) {
+                    var pos = report.getAsJsonObject("pos");
+                    info("  at %.0f %.0f %.0f (%s)",
+                            pos.get("x").getAsDouble(), pos.get("y").getAsDouble(),
+                            pos.get("z").getAsDouble(),
+                            report.has("dimension") ? report.get("dimension").getAsString() : "?");
+                }
+                if (report.has("health") && report.has("food")) {
+                    info("  health %.1f, food %d",
+                            report.get("health").getAsDouble(), report.get("food").getAsInt());
+                }
+                if (report.has("players")) {
+                    for (var element : report.getAsJsonArray("players")) {
+                        var p = element.getAsJsonObject();
+                        playerCount++;
+                        StringBuilder sb = new StringBuilder("  PLAYER ").append(p.get("name").getAsString())
+                                .append(" @ ").append(String.format("%.0f %.0f %.0f",
+                                        p.get("x").getAsDouble(), p.get("y").getAsDouble(), p.get("z").getAsDouble()));
+                        if (p.has("health")) sb.append(String.format(" [%.0f hp]", p.get("health").getAsDouble()));
+                        if (p.has("held")) sb.append(" holding ").append(p.get("held").getAsString());
+                        info(sb.toString());
+                    }
+                }
+            }
+
+            info("%d workers, %d player sightings.", swarm.intelReports.size(), playerCount);
+            return SINGLE_SUCCESS;
+        }));
     }
 
     private void runInfinityMiner() {

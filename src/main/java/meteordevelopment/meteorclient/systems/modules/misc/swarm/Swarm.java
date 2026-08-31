@@ -48,6 +48,19 @@ public class Swarm extends Module {
 
     public SwarmHost host;
     public SwarmWorker worker;
+    public SwarmWorkerIntel workerIntel;
+
+    /**
+     * Host-side aggregated intel: worker connection id → latest parsed report.
+     * Written by connection reader threads, read from the game thread — concurrent map.
+     */
+    public final java.util.concurrent.ConcurrentHashMap<String, com.google.gson.JsonObject> intelReports =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** True when this client is a swarm worker with an open connection. */
+    public boolean isWorkerConnected() {
+        return isWorker() && worker != null && worker.hasConnection();
+    }
 
     public Swarm() {
         super(Categories.Misc, "swarm", "Allows you to control multiple instances of Meteor from one central host.");
@@ -133,6 +146,14 @@ public class Swarm extends Module {
     @EventHandler
     private void onTick(TickEvent.Post event) {
         if (isWorker()) worker.tick();
+
+        // Start/stop the worker intel sender with the connection lifecycle.
+        if (isWorkerConnected() && workerIntel == null) {
+            workerIntel = new SwarmWorkerIntel(worker.getConnection2(), this);
+        } else if (!isWorkerConnected() && workerIntel != null) {
+            workerIntel.shutdown();
+            workerIntel = null;
+        }
     }
 
     public enum Mode {

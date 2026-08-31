@@ -89,6 +89,16 @@ public class SwarmWorker extends Thread {
         return getIp(socket.getInetAddress().getHostAddress()) + ":" + socket.getPort();
     }
 
+    /** True while the underlying socket is open. */
+    public boolean hasConnection() {
+        return socket != null && socket.isConnected() && !socket.isClosed();
+    }
+
+    /** Socket accessor for the intel sender (writes on the same connection). */
+    public Socket getConnection2() {
+        return socket;
+    }
+
     private String getIp(String ip) {
         return ip.equals("127.0.0.1") ? "localhost" : ip;
     }
