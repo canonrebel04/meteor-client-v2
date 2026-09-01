@@ -38,3 +38,7 @@
 **Vulnerability:** A compilation error related to `WaybackAuthLib` which was preventing CI checks from passing. It's not a security vulnerability but a pre-existing broken build issue.
 **Learning:** Even if the memory states the compilation error is a known issue, it might cause the CI pipeline to fail, preventing the PR from being merged.
 **Prevention:** Fix compilation errors even if memory suggests to ignore them if they fail CI checks.
+## 2024-11-20 - Unmanaged stack trace exposure
+**Vulnerability:** The HTTP utility (`Http.java`) used `Exception::printStackTrace` directly for its default exception handler. This can expose unmanaged stack traces, bypassing centralized logging and potentially leaking sensitive execution context.
+**Learning:** Using `e.printStackTrace()` is a common anti-pattern that violates safe logging practices and writes directly to stderr. It bypasses `MeteorClient.LOG`.
+**Prevention:** Always use the application's standard logger (`MeteorClient.LOG.error`) for exceptions to allow the application to uniformly route, format, or sanitize error output.
