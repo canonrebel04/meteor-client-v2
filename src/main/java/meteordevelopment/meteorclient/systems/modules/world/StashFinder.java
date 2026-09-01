@@ -219,9 +219,11 @@ public class StashFinder extends Module {
     @EventHandler
     private void onChunkData(ChunkDataEvent event) {
         // Check the distance.
-        double chunkXAbs = Math.abs(event.chunk().getPos().x() * 16);
-        double chunkZAbs = Math.abs(event.chunk().getPos().z() * 16);
-        if (Math.sqrt(chunkXAbs * chunkXAbs + chunkZAbs * chunkZAbs) < minimumDistance.get()) return;
+        double chunkX = event.chunk().getPos().x() * 16.0;
+        double chunkZ = event.chunk().getPos().z() * 16.0;
+        double minDist = minimumDistance.get();
+        // ⚡ Bolt: Use squared distance check to avoid JNI Math.sqrt and Math.abs overhead during chunk load
+        if (chunkX * chunkX + chunkZ * chunkZ < minDist * minDist) return;
 
         Chunk chunk = new Chunk(event.chunk().getPos());
 
