@@ -1888,9 +1888,10 @@ public class CombatBrainModule extends Module {
                         || (le instanceof Player && le != mc.player);
                     if (!isHostile) continue;
 
-                    double dist = le.distanceTo(mc.player);
-                    if (dist < 8.0) {
-                        double distFactor = 1.0 / (1.0 + dist * dist);
+                    // ⚡ Bolt: Use distanceToSqr to avoid Math.sqrt overhead in entity loop
+                    double distSq = le.distanceToSqr(mc.player);
+                    if (distSq < 64.0) {
+                        double distFactor = 1.0 / (1.0 + distSq);
                         float dmg = meteordevelopment.meteorclient.utils.entity.DamageUtils.getAttackDamage(le, mc.player);
                         double dmgNorm = Math.min(1.0, dmg / 10.0);
 
@@ -1900,8 +1901,9 @@ public class CombatBrainModule extends Module {
                         envPressure += distFactor * dmgNorm * losFactor;
                     }
                 } else if (entity.getType() == EntityTypes.END_CRYSTAL) {
-                    double dist = entity.distanceTo(mc.player);
-                    if (dist < 12.0) {
+                    // ⚡ Bolt: Fast distance check before computing square root to avoid Math.sqrt overhead in entity loop
+                    if (entity.distanceToSqr(mc.player) < 144.0) {
+                        double dist = entity.distanceTo(mc.player);
                         crystalPressure += (12.0 - dist) / 12.0;
                     }
                 }

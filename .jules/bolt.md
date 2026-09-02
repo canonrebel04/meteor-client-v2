@@ -37,3 +37,7 @@
 ## 2024-03-24 - Math.pow Overhead in Frequent Rendering Loops
 **Learning:** In highly frequent methods like rendering entity fades (e.g., `getFadeAlpha` in `ESP.java`), using `Math.pow(variable.get(), 2)` incurs unnecessary overhead due to method calls and JNI execution.
 **Action:** Extract the variable into a local primitive double and compute the square using standard multiplication (`val * val`) to eliminate the JNI cost and speed up tight loops.
+
+## 2024-09-02 - Avoid Math.sqrt for Distance Thresholds in Entity Loops
+**Learning:** Checking distances by calling `distanceTo` repeatedly inside a hot loop (like checking threats for every entity nearby) requires calculating the square root, which carries overhead.
+**Action:** Replace `distanceTo` comparisons with `distanceToSqr` to skip the `Math.sqrt` step completely when dealing with distance thresholds in performance-critical loops.
