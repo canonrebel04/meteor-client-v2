@@ -244,6 +244,7 @@ public class WaypointsModule extends Module {
             };
 
             WButton edit = table.add(theme.button(GuiRenderer.EDIT)).widget();
+            edit.tooltip = "Edit waypoint";
             edit.action = () -> mc.gui.setScreen(new EditWaypointScreen(theme, waypoint, () -> initTable(theme, table)));
 
             // Goto
