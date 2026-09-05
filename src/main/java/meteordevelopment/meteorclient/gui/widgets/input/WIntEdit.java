@@ -36,8 +36,13 @@ public class WIntEdit extends WHorizontalList {
         textBox = add(theme.textBox(Integer.toString(value), this::filter)).minWidth(75).widget();
 
         if (noSlider) {
-            add(theme.button("+")).widget().action = () -> setButton(get() + 1);
-            add(theme.button("-")).widget().action = () -> setButton(get() - 1);
+            var plus = add(theme.button("+")).widget();
+            plus.action = () -> setButton(get() + 1);
+            plus.tooltip = "Increase";
+
+            var minus = add(theme.button("-")).widget();
+            minus.action = () -> setButton(get() - 1);
+            minus.tooltip = "Decrease";
         }
         else {
             slider = add(theme.slider(value, sliderMin, sliderMax)).minWidth(small ? 200 - 75 - spacing : 200).centerY().expandX().widget();
