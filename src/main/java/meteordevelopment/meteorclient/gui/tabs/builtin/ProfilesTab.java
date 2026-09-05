@@ -131,6 +131,7 @@ public class ProfilesTab extends Tab {
 
                 WButton edit = table.add(theme.button(GuiRenderer.EDIT)).widget();
                 edit.action = () -> mc.gui.setScreen(new EditProfileScreen(theme, profile, this::reload));
+                edit.tooltip = "Edit";
 
                 WConfirmedMinus remove = table.add(theme.confirmedMinus()).widget();
                 remove.tooltip = "Remove profile";
