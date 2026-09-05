@@ -7,6 +7,7 @@ package meteordevelopment.meteorclient.utils.network;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.utils.other.JsonDateDeserializer;
 import org.jspecify.annotations.Nullable;
 
@@ -46,7 +47,7 @@ public class Http {
     public static class Request {
         private final HttpRequest.Builder builder;
         private Method method;
-        private Consumer<Exception> exceptionHandler = Exception::printStackTrace;
+        private Consumer<Exception> exceptionHandler = e -> MeteorClient.LOG.error("HTTP request failed", e);
 
         private Request(Method method, String url) {
             try {
