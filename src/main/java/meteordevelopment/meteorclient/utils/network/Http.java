@@ -46,7 +46,7 @@ public class Http {
     public static class Request {
         private final HttpRequest.Builder builder;
         private Method method;
-        private Consumer<Exception> exceptionHandler = Exception::printStackTrace;
+        private Consumer<Exception> exceptionHandler = e -> meteordevelopment.meteorclient.MeteorClient.LOG.error("HTTP Request failed", e);
 
         private Request(Method method, String url) {
             try {
