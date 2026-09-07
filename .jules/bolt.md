@@ -37,3 +37,6 @@
 ## 2024-03-24 - Math.pow Overhead in Frequent Rendering Loops
 **Learning:** In highly frequent methods like rendering entity fades (e.g., `getFadeAlpha` in `ESP.java`), using `Math.pow(variable.get(), 2)` incurs unnecessary overhead due to method calls and JNI execution.
 **Action:** Extract the variable into a local primitive double and compute the square using standard multiplication (`val * val`) to eliminate the JNI cost and speed up tight loops.
+## 2024-05-18 - Avoid Math.pow for small integer exponents
+**Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
+**Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
