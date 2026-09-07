@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: canonrebel04/baritone-v2
-          ref: 26.1
+          ref: 26.2
           path: baritone-v2
 
       - name: Build and Publish Baritone to MavenLocal
