@@ -221,7 +221,9 @@ public class StashFinder extends Module {
         // Check the distance.
         double chunkXAbs = Math.abs(event.chunk().getPos().x() * 16);
         double chunkZAbs = Math.abs(event.chunk().getPos().z() * 16);
-        if (Math.sqrt(chunkXAbs * chunkXAbs + chunkZAbs * chunkZAbs) < minimumDistance.get()) return;
+        double minDist = minimumDistance.get();
+        // ⚡ Bolt: Use squared distance check to avoid JNI Math.sqrt overhead when loading chunks
+        if (chunkXAbs * chunkXAbs + chunkZAbs * chunkZAbs < minDist * minDist) return;
 
         Chunk chunk = new Chunk(event.chunk().getPos());
 
@@ -463,17 +465,25 @@ public class StashFinder extends Module {
         double playerX = mc.player.getX();
         double playerZ = mc.player.getZ();
 
+        double arrivalDist = traceArrivalDistance.get();
+        double arrivalDistSq = arrivalDist * arrivalDist;
         tracerPositions.entrySet().removeIf(entry -> {
             Vec3 pos = entry.getValue();
-            double horizontalDist = Math.hypot(pos.x - playerX, pos.z - playerZ);
-            return horizontalDist <= traceArrivalDistance.get();
+            double dx = pos.x - playerX;
+            double dz = pos.z - playerZ;
+            // ⚡ Bolt: Use squared distance check to avoid Math.hypot JNI overhead in render loop
+            return dx * dx + dz * dz <= arrivalDistSq;
         });
 
         if (!renderTracer.get() && !renderChunkColumn.get()) return;
 
+        double maxDist = traceMaxDistance.get();
+        double maxDistSq = maxDist * maxDist;
         for (Vec3 pos : tracerPositions.values()) {
-            double horizontalDist = Math.hypot(pos.x - playerX, pos.z - playerZ);
-            if (horizontalDist > traceMaxDistance.get()) continue;
+            double dx = pos.x - playerX;
+            double dz = pos.z - playerZ;
+            // ⚡ Bolt: Use squared distance check to avoid Math.hypot JNI overhead in render loop
+            if (dx * dx + dz * dz > maxDistSq) continue;
 
             if (renderTracer.get()) {
                 event.renderer.line(

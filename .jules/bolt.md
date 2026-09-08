@@ -40,3 +40,6 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+## 2024-08-09 - Avoid Math.hypot() overhead in hot loops
+**Learning:** Using `Math.hypot(dx, dz)` to calculate distance incurs significant overhead from internal floating point logic (handling overflow/underflow cases) and method calls, which is unnecessary for simple squared distance threshold checks in render or chunk loading events.
+**Action:** Replace `Math.hypot(dx, dz)` with direct squared distance calculations (`dx * dx + dz * dz`) when comparing against distance thresholds to save execution time in frequent methods.
