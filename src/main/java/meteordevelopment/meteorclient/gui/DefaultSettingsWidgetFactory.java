@@ -224,6 +224,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
     private void genericW(WTable table, GenericSetting<?> setting) {
         WButton edit = table.add(theme.button(GuiRenderer.EDIT)).widget();
+        edit.tooltip = "Edit";
         edit.action = () -> mc.gui.setScreen(setting.createScreen(theme));
 
         reset(table, setting, null);
@@ -235,6 +236,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         WQuad quad = list.add(theme.quad(setting.get())).widget();
 
         WButton edit = list.add(theme.button(GuiRenderer.EDIT)).widget();
+        edit.tooltip = "Edit color";
         edit.action = () -> mc.gui.setScreen(new ColorSettingScreen(theme, setting));
 
         reset(table, setting, () -> quad.color = setting.get());
@@ -344,6 +346,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
     private void blockDataW(WTable table, BlockDataSetting<?> setting) {
         WButton button = table.add(theme.button(GuiRenderer.EDIT)).expandCellX().widget();
+        button.tooltip = "Edit block data";
         button.action = () -> mc.gui.setScreen(new BlockDataSettingScreen<>(theme, setting));
 
         reset(table, setting, null);
