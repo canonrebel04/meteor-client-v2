@@ -463,17 +463,25 @@ public class StashFinder extends Module {
         double playerX = mc.player.getX();
         double playerZ = mc.player.getZ();
 
+        // ⚡ Bolt: Pre-calculate squared limit to avoid JNI Math.hypot overhead in loop
+        double arrivalDistSq = traceArrivalDistance.get() * traceArrivalDistance.get();
+
         tracerPositions.entrySet().removeIf(entry -> {
             Vec3 pos = entry.getValue();
-            double horizontalDist = Math.hypot(pos.x - playerX, pos.z - playerZ);
-            return horizontalDist <= traceArrivalDistance.get();
+            double dx = pos.x - playerX;
+            double dz = pos.z - playerZ;
+            return dx * dx + dz * dz <= arrivalDistSq;
         });
 
         if (!renderTracer.get() && !renderChunkColumn.get()) return;
 
+        // ⚡ Bolt: Pre-calculate squared limit to avoid JNI Math.hypot overhead in loop
+        double maxDistSq = traceMaxDistance.get() * (double) traceMaxDistance.get();
+
         for (Vec3 pos : tracerPositions.values()) {
-            double horizontalDist = Math.hypot(pos.x - playerX, pos.z - playerZ);
-            if (horizontalDist > traceMaxDistance.get()) continue;
+            double dx = pos.x - playerX;
+            double dz = pos.z - playerZ;
+            if (dx * dx + dz * dz > maxDistSq) continue;
 
             if (renderTracer.get()) {
                 event.renderer.line(
