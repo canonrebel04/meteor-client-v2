@@ -42,3 +42,7 @@
 **Vulnerability:** The HTTP client default exception handler used `Exception::printStackTrace`, which writes directly to standard error, bypassing centralized logging and potentially leaking sensitive execution context.
 **Learning:** Using `e.printStackTrace()` prevents the application from uniformly managing, formatting, or sanitizing error output, leading to unmanaged stack trace exposure.
 **Prevention:** Use the application's standard logger instead (e.g., `MeteorClient.LOG.error("message", e)`) to properly handle and route exceptions.
+## 2024-06-16 - BookBot Arbitrary File Read Fix (Path Traversal Prevention)
+**Vulnerability:** Although BookBot's `FileSetting` allows reading from `.txt` files, it didn't prevent reading arbitrary files from outside the `MeteorClient.FOLDER` if an attacker supplied an absolute path (or path traversal characters `../`) via the file selector or NBT configuration.
+**Learning:** Checking file existence and extensions is not enough to prevent arbitrary local file reads. Path traversal can be used to navigate up directory structures.
+**Prevention:** Explicitly validate that the canonical path of the user-supplied file is within the canonical path of the expected safe directory sandbox (e.g. `!file.getCanonicalPath().startsWith(safeDir.getCanonicalPath())`).
