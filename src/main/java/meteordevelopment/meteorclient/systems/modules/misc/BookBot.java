@@ -203,6 +203,19 @@ public class BookBot extends Module {
                 return;
             }
 
+            // Prevent arbitrary file reading by ensuring the file is within the MeteorClient folder
+            try {
+                if (!file.get().getCanonicalPath().startsWith(MeteorClient.FOLDER.getCanonicalPath())) {
+                    error("Cannot read files outside the meteor folder.");
+                    toggle();
+                    return;
+                }
+            } catch (IOException e) {
+                error("Invalid file path.");
+                toggle();
+                return;
+            }
+
             // Read each line of the file and construct a string with the needed line breaks
             try (BufferedReader reader = new BufferedReader(new FileReader(file.get()))) {
                 StringBuilder file = new StringBuilder();
