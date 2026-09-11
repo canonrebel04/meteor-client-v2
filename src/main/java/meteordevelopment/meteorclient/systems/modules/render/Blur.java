@@ -147,7 +147,7 @@ public class Blur extends Module {
     }
 
     private GpuTextureView createFbo(int i) {
-        double scale = 1 / Math.pow(2, i);
+        double scale = 1.0 / (1 << i); // ⚡ Bolt: Use bitwise shift instead of Math.pow for integer powers of 2 to avoid JNI and floating-point overhead
 
         int width = (int) (mc.getWindow().getWidth() * scale);
         int height = (int) (mc.getWindow().getHeight() * scale);
