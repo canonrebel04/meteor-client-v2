@@ -130,6 +130,7 @@ public class ProxiesScreen extends WindowScreen {
             refresh.tooltip = "Refresh";
 
             WButton edit = table.add(theme.button(GuiRenderer.EDIT)).widget();
+            edit.tooltip = "Edit";
             edit.action = () -> mc.gui.setScreen(new EditProxyScreen(theme, proxy, this::reload));
 
             WMinus remove = table.add(theme.minus()).widget();
