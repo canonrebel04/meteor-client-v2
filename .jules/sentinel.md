@@ -42,3 +42,7 @@
 **Vulnerability:** The HTTP client default exception handler used `Exception::printStackTrace`, which writes directly to standard error, bypassing centralized logging and potentially leaking sensitive execution context.
 **Learning:** Using `e.printStackTrace()` prevents the application from uniformly managing, formatting, or sanitizing error output, leading to unmanaged stack trace exposure.
 **Prevention:** Use the application's standard logger instead (e.g., `MeteorClient.LOG.error("message", e)`) to properly handle and route exceptions.
+## 2024-10-24 - Path Traversal in Notebot Commands
+**Vulnerability:** Path traversal in `NotebotSongArgumentType` allowed arbitrary file access via user input without path normalization checks.
+**Learning:** Directly joining user input with `resolve()` without validating the canonical root can bypass folder sandbox, exposing sensitive files.
+**Prevention:** Always normalize the base and resolved paths, and enforce that the resolved path `startsWith()` the base path.
