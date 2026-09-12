@@ -104,6 +104,7 @@ public class ColorSettingScreen extends WindowScreen {
         pasteButton.tooltip = "Paste config";
 
         WButton resetButton = bottomList.add(theme.button(GuiRenderer.RESET)).widget();
+        resetButton.tooltip = "Reset";
         resetButton.action = () -> {
             setting.reset();
             setFromSetting();
