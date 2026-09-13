@@ -221,7 +221,8 @@ public class StashFinder extends Module {
         // Check the distance.
         double chunkXAbs = Math.abs(event.chunk().getPos().x() * 16);
         double chunkZAbs = Math.abs(event.chunk().getPos().z() * 16);
-        if (Math.sqrt(chunkXAbs * chunkXAbs + chunkZAbs * chunkZAbs) < minimumDistance.get()) return;
+        long min = minimumDistance.get(); // ⚡ Bolt: Store setting value locally
+        if (chunkXAbs * chunkXAbs + chunkZAbs * chunkZAbs < min * min) return; // ⚡ Bolt: Compare squared distance to avoid JNI Math.sqrt overhead
 
         Chunk chunk = new Chunk(event.chunk().getPos());
 
@@ -463,17 +464,24 @@ public class StashFinder extends Module {
         double playerX = mc.player.getX();
         double playerZ = mc.player.getZ();
 
+        long arrDist = traceArrivalDistance.get(); // ⚡ Bolt: Cache setting value outside lambda
         tracerPositions.entrySet().removeIf(entry -> {
             Vec3 pos = entry.getValue();
-            double horizontalDist = Math.hypot(pos.x - playerX, pos.z - playerZ);
-            return horizontalDist <= traceArrivalDistance.get();
+            double dx = pos.x - playerX;
+            double dz = pos.z - playerZ;
+            // ⚡ Bolt: Compare squared distance to avoid Math.hypot overhead in loop
+            return dx * dx + dz * dz <= arrDist * arrDist;
         });
 
         if (!renderTracer.get() && !renderChunkColumn.get()) return;
 
+        long maxDist = traceMaxDistance.get(); // ⚡ Bolt: Cache setting value outside loop
+        long maxDistSq = maxDist * maxDist; // ⚡ Bolt: Pre-calculate squared distance limit
         for (Vec3 pos : tracerPositions.values()) {
-            double horizontalDist = Math.hypot(pos.x - playerX, pos.z - playerZ);
-            if (horizontalDist > traceMaxDistance.get()) continue;
+            double dx = pos.x - playerX;
+            double dz = pos.z - playerZ;
+            // ⚡ Bolt: Compare squared distance to avoid Math.hypot overhead in loop
+            if (dx * dx + dz * dz > maxDistSq) continue;
 
             if (renderTracer.get()) {
                 event.renderer.line(
