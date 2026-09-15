@@ -40,3 +40,7 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+
+## 2024-09-15 - Avoid Math.pow for powers of two
+**Learning:** Using `Math.pow(2, i)` to calculate powers of two incurs unnecessary JNI and floating-point calculation overhead.
+**Action:** Always replace `Math.pow(2, i)` with fast bitwise shift operations like `1 << i` when the exponent is an integer to optimize scaling or calculations.
