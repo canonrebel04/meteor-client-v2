@@ -127,12 +127,27 @@ public class BookBot extends Module {
         super(Categories.Misc, "book-bot", "Automatically writes in books.");
     }
 
+    private boolean isValidFile(File f) {
+        try {
+            return f != null && f.toPath().toRealPath().startsWith(MeteorClient.FOLDER.toPath().toRealPath());
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     @Override
     public void onActivate() {
-        if (!file.get().exists() && mode.get() == Mode.File) {
-            info("No file selected, please select a file in the GUI.");
-            toggle();
-            return;
+        if (mode.get() == Mode.File) {
+            if (!file.get().exists()) {
+                info("No file selected, please select a file in the GUI.");
+                toggle();
+                return;
+            }
+            if (!isValidFile(file.get())) {
+                info("Selected file is outside the allowed directory!");
+                toggle();
+                return;
+            }
         }
 
         random = new Random();
@@ -182,8 +197,14 @@ public class BookBot extends Module {
             }
         } else if (mode.get() == Mode.File) {
             // Ignore if somehow the file got deleted
-            if (!file.get().exists() && mode.get() == Mode.File) {
+            if (!file.get().exists()) {
                 info("No file selected, please select a file in the GUI.");
+                toggle();
+                return;
+            }
+
+            if (!isValidFile(file.get())) {
+                info("Selected file is outside the allowed directory!");
                 toggle();
                 return;
             }
