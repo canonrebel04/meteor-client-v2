@@ -42,3 +42,7 @@
 **Vulnerability:** The HTTP client default exception handler used `Exception::printStackTrace`, which writes directly to standard error, bypassing centralized logging and potentially leaking sensitive execution context.
 **Learning:** Using `e.printStackTrace()` prevents the application from uniformly managing, formatting, or sanitizing error output, leading to unmanaged stack trace exposure.
 **Prevention:** Use the application's standard logger instead (e.g., `MeteorClient.LOG.error("message", e)`) to properly handle and route exceptions.
+## 2024-09-16 - Path Traversal in File-Reading Modules
+**Vulnerability:** The `BookBot` module allowed users to specify arbitrary file paths on the client's system via its `FileSetting`, which could be exploited to read arbitrary files and broadcast their contents to a server via written book packets.
+**Learning:** Sandboxing `FileSetting` utilities broadly is incorrect, but failing to validate file paths at the point of consumption (especially when file contents are sent over the network) leads to severe local file disclosure vulnerabilities. String-based path checks (like `getCanonicalPath().startsWith()`) are insufficient as they can be spoofed.
+**Prevention:** Always explicitly validate that the target file resolves to a designated safe sandbox directory using `java.nio.file.Path#startsWith` on real paths (e.g., `!file.toPath().toRealPath().startsWith(MeteorClient.FOLDER.toPath().toRealPath())`) immediately before reading the file.
