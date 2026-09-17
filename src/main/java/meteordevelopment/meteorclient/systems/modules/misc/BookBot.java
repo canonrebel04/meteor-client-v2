@@ -188,6 +188,20 @@ public class BookBot extends Module {
                 return;
             }
 
+            try {
+                if (!file.get().toPath().toRealPath().startsWith(MeteorClient.FOLDER.toPath().toRealPath())) {
+                    error("Invalid file path!");
+                    toggle();
+                    return;
+                }
+            } catch (Exception e) {
+                error("Failed to resolve file path.");
+                toggle();
+                return;
+            }
+
+
+
             // Handle the file being empty
             if (file.get().length() == 0) {
                 MutableComponent message = Component.literal("");
