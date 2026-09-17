@@ -35,6 +35,7 @@ public class CombatGroupAwareness {
 
     private static final double SURROUNDED_THRESHOLD = 240.0;
     private static final double CLOSE_THREAT_MAX_DIST = 10.0;
+    private static final double CLOSE_THREAT_MAX_DIST_SQ = CLOSE_THREAT_MAX_DIST * CLOSE_THREAT_MAX_DIST;
 
     public static GroupSnapshot compute(LocalPlayer player, List<LivingEntity> scored) {
         if (scored.isEmpty()) {
@@ -67,7 +68,7 @@ public class CombatGroupAwareness {
         List<LivingEntity> closeThreats = new ArrayList<>();
         double cx = 0, cz = 0;
         for (LivingEntity e : scored) {
-            if (e.distanceTo(player) <= CLOSE_THREAT_MAX_DIST) {
+            if (e.distanceToSqr(player) <= CLOSE_THREAT_MAX_DIST_SQ) { // ⚡ Bolt: Use distanceToSqr to avoid Math.sqrt
                 closeThreats.add(e);
                 cx += e.getX();
                 cz += e.getZ();
