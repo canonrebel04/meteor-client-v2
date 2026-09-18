@@ -42,3 +42,7 @@
 **Vulnerability:** The HTTP client default exception handler used `Exception::printStackTrace`, which writes directly to standard error, bypassing centralized logging and potentially leaking sensitive execution context.
 **Learning:** Using `e.printStackTrace()` prevents the application from uniformly managing, formatting, or sanitizing error output, leading to unmanaged stack trace exposure.
 **Prevention:** Use the application's standard logger instead (e.g., `MeteorClient.LOG.error("message", e)`) to properly handle and route exceptions.
+## 2024-05-24 - [CRITICAL] Prevented Arbitrary File Read in BookBot via Path Traversal
+**Vulnerability:** The `BookBot` module allowed users to specify arbitrary file paths (including `..`) using the `FileSetting`, leading to a potential path traversal vulnerability. This could allow reading sensitive local files and broadcasting their content within the game.
+**Learning:** Checking file extensions (`*.txt`) or existence is insufficient to prevent directory traversal. `FileSetting` configurations shouldn't be implicitly trusted to stay within designated sandbox folders.
+**Prevention:** Always validate that resolved, absolute paths strictly reside within the intended directory using `java.nio.file.Path#startsWith` on `toRealPath()` before processing file contents.
