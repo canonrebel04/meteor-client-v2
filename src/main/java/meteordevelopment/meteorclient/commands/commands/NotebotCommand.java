@@ -41,6 +41,14 @@ public class NotebotCommand extends Command {
     private int ticks = -1;
     private final Int2ObjectMap<List<Note>> song = new Int2ObjectOpenHashMap<>(); // tick -> notes
 
+    // ⚡ Bolt: Precompute pitch values to avoid JNI Math.pow overhead during packet processing
+    private static final float[] PITCHES = new float[25];
+    static {
+        for (int i = 0; i <= 24; i++) {
+            PITCHES[i] = (float) Math.pow(2.0D, (i - 12) / 12.0D);
+        }
+    }
+
     public NotebotCommand() {
         super("notebot", "Allows you load notebot files");
     }
@@ -191,8 +199,8 @@ public class NotebotCommand extends Command {
         // Bruteforce note level
         int noteLevel = -1;
         for (int n = 0; n < 25; n++) {
-            if ((float) Math.pow(2.0D, (n - 12) / 12.0D) - 0.01 < pitch &&
-                (float) Math.pow(2.0D, (n - 12) / 12.0D) + 0.01 > pitch) {
+            float notePitch = PITCHES[n];
+            if (notePitch - 0.01 < pitch && notePitch + 0.01 > pitch) {
                 noteLevel = n;
                 break;
             }
