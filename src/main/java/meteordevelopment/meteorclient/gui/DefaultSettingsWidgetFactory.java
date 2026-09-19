@@ -344,6 +344,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
     private void blockDataW(WTable table, BlockDataSetting<?> setting) {
         WButton button = table.add(theme.button(GuiRenderer.EDIT)).expandCellX().widget();
+        button.tooltip = "Edit block data";
         button.action = () -> mc.gui.setScreen(new BlockDataSettingScreen<>(theme, setting));
 
         reset(table, setting, null);
