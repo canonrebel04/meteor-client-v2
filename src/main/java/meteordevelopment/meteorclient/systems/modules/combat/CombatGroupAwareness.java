@@ -66,8 +66,12 @@ public class CombatGroupAwareness {
         // 2. Filter close threats (< 10 blocks) for encirclement/flank awareness
         List<LivingEntity> closeThreats = new ArrayList<>();
         double cx = 0, cz = 0;
+
+        // ⚡ Bolt: Pre-calculate squared distance threshold to avoid Math.sqrt overhead in hot loop
+        // Expected impact: Eliminates floating-point math overhead on every entity per tick
+        double maxDistSq = CLOSE_THREAT_MAX_DIST * CLOSE_THREAT_MAX_DIST;
         for (LivingEntity e : scored) {
-            if (e.distanceTo(player) <= CLOSE_THREAT_MAX_DIST) {
+            if (e.distanceToSqr(player) <= maxDistSq) {
                 closeThreats.add(e);
                 cx += e.getX();
                 cz += e.getZ();
