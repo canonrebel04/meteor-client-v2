@@ -40,3 +40,6 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+## 2024-09-02 - Precompute Math.pow in Packet Handlers
+**Learning:** `Math.pow` calls within loops of packet handlers (like `onReadPacket` for sound processing) incur significant JNI overhead and floating-point computation cost that can slow down processing of high-frequency events (like fast-paced notebot songs).
+**Action:** When `Math.pow` calculations depend on a fixed, known set of inputs (e.g., 0-24 for noteblock notes), precalculate the values into a `static final` array and look them up at runtime.
