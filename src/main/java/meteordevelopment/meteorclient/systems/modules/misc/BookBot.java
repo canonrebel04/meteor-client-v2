@@ -27,6 +27,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Predicate;
 
@@ -135,6 +136,18 @@ public class BookBot extends Module {
             return;
         }
 
+        try {
+            if (mode.get() == Mode.File && !file.get().toPath().toRealPath().startsWith(MeteorClient.FOLDER.toPath().toRealPath())) {
+                info("Selected file is outside the Meteor folder.");
+                toggle();
+                return;
+            }
+        } catch (IOException e) {
+            info("Invalid file path.");
+            toggle();
+            return;
+        }
+
         random = new Random();
         delayTimer = delay.get();
         bookCount = 0;
@@ -184,6 +197,18 @@ public class BookBot extends Module {
             // Ignore if somehow the file got deleted
             if (!file.get().exists() && mode.get() == Mode.File) {
                 info("No file selected, please select a file in the GUI.");
+                toggle();
+                return;
+            }
+
+            try {
+                if (!file.get().toPath().toRealPath().startsWith(MeteorClient.FOLDER.toPath().toRealPath())) {
+                    error("Selected file is outside the Meteor folder.");
+                    toggle();
+                    return;
+                }
+            } catch (IOException e) {
+                error("Invalid file path.");
                 toggle();
                 return;
             }
