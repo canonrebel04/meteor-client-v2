@@ -185,14 +185,22 @@ public class NotebotCommand extends Command {
 
     }
 
+    // ⚡ Bolt: Precompute pitch values to avoid JNI Math.pow overhead when recording songs
+    private static final float[] PITCHES = new float[25];
+    static {
+        for (int i = 0; i <= 24; i++) {
+            PITCHES[i] = (float) Math.pow(2.0D, (i - 12) / 12.0D);
+        }
+    }
+
     private Note getNote(ClientboundSoundPacket soundPacket) {
         float pitch = soundPacket.getPitch();
 
         // Bruteforce note level
         int noteLevel = -1;
         for (int n = 0; n < 25; n++) {
-            if ((float) Math.pow(2.0D, (n - 12) / 12.0D) - 0.01 < pitch &&
-                (float) Math.pow(2.0D, (n - 12) / 12.0D) + 0.01 > pitch) {
+            if (PITCHES[n] - 0.01 < pitch &&
+                PITCHES[n] + 0.01 > pitch) {
                 noteLevel = n;
                 break;
             }
