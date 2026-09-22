@@ -40,3 +40,7 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+
+## 2024-11-20 - Avoid Math.sqrt for Distance Thresholds in CombatBrainModule
+**Learning:** Performance-critical distance checks in Java applications that use `Math.sqrt()` (via `distanceTo()`) incur JNI overhead and floating point precision work that is entirely unnecessary when working with squared distances.
+**Action:** Always replace `distanceTo()` with `distanceToSqr()` and pre-calculate the squared limits (e.g. `limit * limit`) to improve execution speed in combat logic loops.
