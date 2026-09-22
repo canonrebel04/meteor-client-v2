@@ -786,13 +786,13 @@ public class CombatBrainModule extends Module {
 
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
             if (entity instanceof Creeper creeper && creeper.isAlive()) {
-                double dist = creeper.distanceTo(mc.player);
-                if (dist > 7.0) continue;
+                double distSq = creeper.distanceToSqr(mc.player);
+                if (distSq > 49.0) continue;
 
                 boolean isSwelling = creeper.getSwellDir() > 0 || creeper.getSwelling(0.0f) > 0.05f || creeper.isIgnited();
-                if (isSwelling || dist < 3.2) {
-                    if (dist < closestDist) {
-                        closestDist = dist;
+                if (isSwelling || distSq < 10.24) {
+                    if (distSq < closestDist) {
+                        closestDist = distSq;
                         imminentCreeper = creeper;
                     }
                 }
@@ -863,7 +863,7 @@ public class CombatBrainModule extends Module {
 
         // When traveling or pathing beyond close melee range (> 3.5m),
         // let Baritone's LookBehavior smoothly guide the camera along the path!
-        if (currentTarget.distanceTo(mc.player) > 3.5) return;
+        if (currentTarget.distanceToSqr(mc.player) > 12.25) return;
 
         double targetYaw = Rotations.getYaw(currentTarget);
         double targetPitch = Rotations.getPitch(currentTarget, Target.Body);
@@ -912,10 +912,10 @@ public class CombatBrainModule extends Module {
             return;
         }
 
-        double dist = currentTarget.distanceTo(mc.player);
+        double distSq = currentTarget.distanceToSqr(mc.player);
         // Only consider shield in close melee range (<= 2.5m). When closing distance,
         // NEVER hold shield because using an item slows movement by 80% and cancels sprinting!
-        if (dist > 2.5) {
+        if (distSq > 6.25) {
             if (shieldRaisedForMelee) {
                 mc.options.keyUse.setDown(false);
                 shieldRaisedForMelee = false;
@@ -988,12 +988,12 @@ public class CombatBrainModule extends Module {
 
             if (!isDeflectable) continue;
 
-            double dist = entity.distanceTo(mc.player);
-            if (dist <= 4.2) {
+            double distSq = entity.distanceToSqr(mc.player);
+            if (distSq <= 17.64) {
                 var delta = entity.getDeltaMovement();
                 var relPos = mc.player.position().subtract(entity.position());
                 double dot = delta.x * relPos.x + delta.y * relPos.y + delta.z * relPos.z;
-                if (dot > 0 || dist <= 3.0) {
+                if (dot > 0 || distSq <= 9.0) {
                     double yaw = Rotations.getYaw(entity);
                     double pitch = Rotations.getPitch(entity);
                     float deltaYaw = Mth.wrapDegrees((float) (yaw - mc.player.getYRot()));
@@ -1021,7 +1021,7 @@ public class CombatBrainModule extends Module {
         if (mc.level == null || mc.player == null) return;
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
             if (entity.getType() == EntityTypes.EVOKER && entity instanceof LivingEntity evoker && evoker.isAlive()) {
-                if (evoker.distanceTo(mc.player) <= 10.0) {
+                if (evoker.distanceToSqr(mc.player) <= 100.0) {
                     mc.options.keyLeft.setDown(true);
                     break;
                 }
@@ -1090,7 +1090,7 @@ public class CombatBrainModule extends Module {
         boolean wardenNear = false;
         if (wardenCounter.get() && mc.level != null) {
             for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
-                if (entity.getType() == EntityTypes.WARDEN && entity.distanceTo(mc.player) <= 16.0) {
+                if (entity.getType() == EntityTypes.WARDEN && entity.distanceToSqr(mc.player) <= 256.0) {
                     wardenNear = true;
                     break;
                 }
@@ -1218,8 +1218,8 @@ public class CombatBrainModule extends Module {
 
         // 4. SUPPRESSION: Close-Quarters Melee Combat (< 5.5m) to maintain stability and not overshoot target
         if (currentTarget != null && currentTarget.isAlive()) {
-            double dist = mc.player.distanceTo(currentTarget);
-            if (dist <= 5.5) {
+            double distSq = mc.player.distanceToSqr(currentTarget);
+            if (distSq <= 30.25) {
                 return false;
             }
         }
@@ -1277,9 +1277,9 @@ public class CombatBrainModule extends Module {
 
         // B) Straight Travel to distant enemy (> 5.5m) on fairly level ground:
         if (currentTarget != null && currentTarget.isAlive()) {
-            double dist = mc.player.distanceTo(currentTarget);
+            double distSq = mc.player.distanceToSqr(currentTarget);
             double yDiff = Math.abs(currentTarget.getY() - mc.player.getY());
-            if (dist > 5.5 && yDiff <= 1.5 && hasFloor1 && hasFloor2) {
+            if (distSq > 30.25 && yDiff <= 1.5 && hasFloor1 && hasFloor2) {
                 return true;
             }
         }
@@ -1821,7 +1821,8 @@ public class CombatBrainModule extends Module {
         // Chase range is much larger than acquisition range: once a target is
         // acquired, the brain follows it (via baritone) up to max-chase-range
         // instead of abandoning the chase at target-range + 2.
-        if (entity.distanceTo(mc.player) > maxChaseRange.get()) return false;
+        double chaseRange = maxChaseRange.get();
+        if (entity.distanceToSqr(mc.player) > chaseRange * chaseRange) return false;
         return true;
     }
 
@@ -1890,9 +1891,9 @@ public class CombatBrainModule extends Module {
                         || (le instanceof Player && le != mc.player);
                     if (!isHostile) continue;
 
-                    double dist = le.distanceTo(mc.player);
-                    if (dist < 8.0) {
-                        double distFactor = 1.0 / (1.0 + dist * dist);
+                    double distSq = le.distanceToSqr(mc.player);
+                    if (distSq < 64.0) {
+                        double distFactor = 1.0 / (1.0 + distSq);
                         float dmg = meteordevelopment.meteorclient.utils.entity.DamageUtils.getAttackDamage(le, mc.player);
                         double dmgNorm = Math.min(1.0, dmg / 10.0);
 
@@ -2031,7 +2032,7 @@ public class CombatBrainModule extends Module {
     private void disableCombatModules() {
         // If an enemy is actively within 5.5 blocks pursuing us, DO NOT disarm!
         // Keep KillAura, AutoWeapon, AutoArmor, and Shield active so the bot fights back and knocks the pursuer away.
-        if (currentTarget != null && currentTarget.isAlive() && mc.player != null && mc.player.distanceTo(currentTarget) <= 5.5) {
+        if (currentTarget != null && currentTarget.isAlive() && mc.player != null && mc.player.distanceToSqr(currentTarget) <= 30.25) {
             syncKillAura();
             enableModule(KillAura.class);
             if (autoArmor.get()) enableModule(AutoArmor.class);
@@ -2213,7 +2214,7 @@ public class CombatBrainModule extends Module {
         if (terrainGrid != null) {
             terrainGrid.update(currentTarget);
         }
-        double dist = mc.player.distanceTo(currentTarget);
+        double distSq = mc.player.distanceToSqr(currentTarget);
 
         // If hit-and-run is disabled, maintain direct follow
         if (!hitAndRun.get()) {
@@ -2253,7 +2254,7 @@ public class CombatBrainModule extends Module {
         // made shouldStrike true ~90% of the time, so BUBBLE re-struck instantly after
         // every hit → rapid STRIKE/BUBBLE oscillation that looked like the bot was
         // randomly selecting and dropping targets.
-        boolean shouldStrike = !takingDamage && (dist <= 3.2 || (cooldownReady && attackReady));
+        boolean shouldStrike = !takingDamage && (distSq <= 10.24 || (cooldownReady && attackReady));
 
         if (strikePhase == StrikePhase.STRIKE) {
             // Damage feedback: taking hits without a shield (or critically low) ends the
