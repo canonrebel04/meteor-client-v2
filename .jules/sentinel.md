@@ -42,3 +42,7 @@
 **Vulnerability:** The HTTP client default exception handler used `Exception::printStackTrace`, which writes directly to standard error, bypassing centralized logging and potentially leaking sensitive execution context.
 **Learning:** Using `e.printStackTrace()` prevents the application from uniformly managing, formatting, or sanitizing error output, leading to unmanaged stack trace exposure.
 **Prevention:** Use the application's standard logger instead (e.g., `MeteorClient.LOG.error("message", e)`) to properly handle and route exceptions.
+## 2024-09-22 - Fix BookBot Arbitrary File Read vulnerability
+**Vulnerability:** BookBot loads its target file path directly without validation, allowing users to select or load configuration paths to read arbitrary local files.
+**Learning:** Storing file paths from user configuration without restricting them to a safe directory enables Local File Inclusion.
+**Prevention:** Avoid saving/loading arbitrary file paths in config, or validate that the paths reside within an allowed directory sandbox.
