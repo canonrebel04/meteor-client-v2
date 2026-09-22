@@ -129,10 +129,23 @@ public class BookBot extends Module {
 
     @Override
     public void onActivate() {
-        if (!file.get().exists() && mode.get() == Mode.File) {
-            info("No file selected, please select a file in the GUI.");
-            toggle();
-            return;
+        if (mode.get() == Mode.File) {
+            if (!file.get().exists()) {
+                info("No file selected, please select a file in the GUI.");
+                toggle();
+                return;
+            }
+            try {
+                if (!file.get().toPath().toRealPath().startsWith(MeteorClient.FOLDER.toPath().toRealPath())) {
+                    error("File must be inside the Meteor client folder.");
+                    toggle();
+                    return;
+                }
+            } catch (IOException e) {
+                error("Failed to resolve file path.");
+                toggle();
+                return;
+            }
         }
 
         random = new Random();
@@ -184,6 +197,18 @@ public class BookBot extends Module {
             // Ignore if somehow the file got deleted
             if (!file.get().exists() && mode.get() == Mode.File) {
                 info("No file selected, please select a file in the GUI.");
+                toggle();
+                return;
+            }
+
+            try {
+                if (!file.get().toPath().toRealPath().startsWith(MeteorClient.FOLDER.toPath().toRealPath())) {
+                    error("File must be inside the Meteor client folder.");
+                    toggle();
+                    return;
+                }
+            } catch (IOException e) {
+                error("Failed to resolve file path.");
                 toggle();
                 return;
             }
