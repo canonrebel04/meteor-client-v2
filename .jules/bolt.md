@@ -40,3 +40,7 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+
+## 2025-02-12 - Eliminate Math.hypot and Setting.get in hot loops
+**Learning:** Using `Math.hypot` inside highly iterative operations like render loops (`onRender3D`) or list filtering introduces significant JNI and floating-point square root overhead. Furthermore, repeatedly calling `Setting.get()` per iteration adds unnecessary method call overhead.
+**Action:** Pre-calculate squared distance thresholds (`value * value`) outside the loop and use primitive squared coordinate arithmetic (`dx * dx + dz * dz <= thresholdSq`) inside the loop to drastically improve performance.
