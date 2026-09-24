@@ -35,6 +35,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class NotebotCommand extends Command {
+    // ⚡ Bolt: Precompute pitch values to avoid JNI Math.pow overhead
+    private static final float[] PITCHES = new float[25];
+    static {
+        for (int i = 0; i <= 24; i++) {
+            PITCHES[i] = (float) Math.pow(2.0D, (i - 12) / 12.0D);
+        }
+    }
     private static final SimpleCommandExceptionType INVALID_SONG = new SimpleCommandExceptionType(Component.literal("Invalid song."));
     private static final DynamicCommandExceptionType INVALID_PATH = new DynamicCommandExceptionType(object -> Component.literal("'%s' is not a valid path.".formatted(object)));
 
@@ -191,8 +198,8 @@ public class NotebotCommand extends Command {
         // Bruteforce note level
         int noteLevel = -1;
         for (int n = 0; n < 25; n++) {
-            if ((float) Math.pow(2.0D, (n - 12) / 12.0D) - 0.01 < pitch &&
-                (float) Math.pow(2.0D, (n - 12) / 12.0D) + 0.01 > pitch) {
+            float calculatedPitch = PITCHES[n];
+            if (calculatedPitch - 0.01 < pitch && calculatedPitch + 0.01 > pitch) {
                 noteLevel = n;
                 break;
             }
