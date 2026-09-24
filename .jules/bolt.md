@@ -40,3 +40,7 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+
+## 2024-09-24 - Precalculate Math.pow values for small ranges
+**Learning:** Performance-critical loops in Java that use `Math.pow()` with small, bounded integer inputs (like Noteblock pitches from 0-24) cause unnecessary JNI overhead.
+**Action:** Precalculate the results into a static final array and use direct O(1) array lookup in loops instead of computing `Math.pow()` at runtime to reduce JNI cost and speed up operations.
