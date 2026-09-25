@@ -40,3 +40,6 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+## 2025-02-13 - Pre-computing Note Block Pitches
+**Learning:** In Minecraft, calculating note block pitches via `Math.pow(2.0D, (n - 12) / 12.0D)` inside a loop to bruteforce a match from a sound packet causes redundant JNI overhead. Since there are only 25 possible note block pitches, calculating these on-the-fly for every received note block sound event is highly inefficient.
+**Action:** When performance-optimizing loops that perform expensive calculations (like `Math.pow`) over a small, fixed range of known inputs (e.g., indices 0-24 for note block pitches), precompute the results into a `static final` array and replace the runtime calculation with a fast O(1) array lookup to eliminate JNI overhead.

@@ -38,6 +38,13 @@ public class NotebotCommand extends Command {
     private static final SimpleCommandExceptionType INVALID_SONG = new SimpleCommandExceptionType(Component.literal("Invalid song."));
     private static final DynamicCommandExceptionType INVALID_PATH = new DynamicCommandExceptionType(object -> Component.literal("'%s' is not a valid path.".formatted(object)));
 
+    private static final float[] PITCHES = new float[25];
+    static {
+        for (int i = 0; i < 25; i++) {
+            PITCHES[i] = (float) Math.pow(2.0D, (i - 12) / 12.0D);
+        }
+    }
+
     private int ticks = -1;
     private final Int2ObjectMap<List<Note>> song = new Int2ObjectOpenHashMap<>(); // tick -> notes
 
@@ -191,8 +198,8 @@ public class NotebotCommand extends Command {
         // Bruteforce note level
         int noteLevel = -1;
         for (int n = 0; n < 25; n++) {
-            if ((float) Math.pow(2.0D, (n - 12) / 12.0D) - 0.01 < pitch &&
-                (float) Math.pow(2.0D, (n - 12) / 12.0D) + 0.01 > pitch) {
+            if (PITCHES[n] - 0.01 < pitch &&
+                PITCHES[n] + 0.01 > pitch) {
                 noteLevel = n;
                 break;
             }
