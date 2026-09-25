@@ -22,3 +22,6 @@
 ## 2024-05-24 - Icon-only Widgets Missing Tooltips
 **Learning:** Icon-only widgets (such as `theme.button(GuiRenderer.EDIT)` or `theme.minus()`) in the custom GUI framework lack tooltips by default and must have the `.tooltip` property explicitly assigned to be accessible to screen readers and visually impaired users.
 **Action:** When adding icon-only buttons in the custom GUI framework, always verify that the `.tooltip` property is explicitly set.
+## 2024-05-20 - Add tooltips to icon-only buttons
+**Learning:** The custom `GuiTheme` system used for icon-only buttons (like `theme.minus()`) lacks tooltips by default. Missing tooltips degrade screen reader accessibility and usability for these buttons.
+**Action:** Always explicitly assign the `.tooltip` property upon instantiation for icon-only widgets.
