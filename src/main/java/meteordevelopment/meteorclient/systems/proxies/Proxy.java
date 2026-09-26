@@ -148,11 +148,13 @@ public class Proxy implements ISerializable<Proxy> {
 
         // SOCKS4
         if (InetAddresses.isInetAddress(address.get())) {
-            bb = ByteBuffer.allocate(9 + u.length)
+            byte[] addrBytes = InetAddress.getByName(address.get()).getAddress();
+            if (addrBytes.length != 4) throw new IllegalArgumentException("SOCKS4 only supports IPv4");
+            bb = ByteBuffer.allocate(5 + addrBytes.length + u.length)
                 .put((byte) 4)
                 .put((byte) 1)
                 .putShort(port.get().shortValue())
-                .putInt(InetAddress.getByName(address.get()).hashCode()) // :clueless:
+                .put(addrBytes)
                 .put(u)
                 .put((byte) 0);
         }

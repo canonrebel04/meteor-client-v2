@@ -42,3 +42,8 @@
 **Vulnerability:** The HTTP client default exception handler used `Exception::printStackTrace`, which writes directly to standard error, bypassing centralized logging and potentially leaking sensitive execution context.
 **Learning:** Using `e.printStackTrace()` prevents the application from uniformly managing, formatting, or sanitizing error output, leading to unmanaged stack trace exposure.
 **Prevention:** Use the application's standard logger instead (e.g., `MeteorClient.LOG.error("message", e)`) to properly handle and route exceptions.
+
+## 2024-06-25 - Fix Malformed SOCKS4 Handshake IP resolution
+**Vulnerability:** In `Proxy.java`, the SOCKS4 handshake incorrectly uses `.hashCode()` on the `InetAddress` object to append the destination IP to the protocol buffer, instead of using the actual byte representation of the IP address. For IPv6 addresses, it incorrectly returned a random integer hash instead of writing raw IP bytes, crashing the client due to ByteBuffer overflow limits.
+**Learning:** Using the Java `hashCode()` of an `InetAddress` object does not yield the raw network address required by the SOCKS4 protocol. It generates a Java-internal integer hash. When this hash is sent over the wire or evaluated as IPv6 bytes, it leads to buffer overflow exceptions or malformed handshakes.
+**Prevention:** Always use `.getAddress()` on an `InetAddress` object to obtain the raw IP address bytes when constructing low-level network protocol packets, rather than relying on Java's `hashCode()`. Check if the returned byte array is length 4 since SOCKS4 only supports IPv4, otherwise an IllegalArgumentException should be thrown.
