@@ -43,8 +43,9 @@ jobs:
         run: |
           cd baritone-v2
           sed -i 's/task createDist(type: CreateDistTask, dependsOn: proguard)/task createDist(type: CreateDistTask, dependsOn: remapJar)/g' fabric/build.gradle
+          sed -i 's/java_version=25/java_version=21/g' gradle.properties
           chmod +x gradlew
-          ./gradlew build publishToMavenLocal --no-daemon
+          ./gradlew build publishToMavenLocal --no-daemon --no-build-cache
           cd ..
 
       - name: Set up Node JS
