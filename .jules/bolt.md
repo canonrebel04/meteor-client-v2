@@ -40,3 +40,7 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+
+## 2023-10-25 - Caching JNI Math Calls in Hot Paths
+**Learning:** Calling JNI methods like `Math.pow` frequently in loops (e.g. during packet processing) creates unnecessary overhead in Java/Minecraft environments. For fixed ranges of known inputs like Minecraft noteblock pitches (0-24), `Math.pow(2.0D, (n - 12) / 12.0D)` can be precomputed once.
+**Action:** Always precalculate expensive math operations over static input ranges into `static final` arrays and use O(1) lookups inside packet handling or tight loops.
