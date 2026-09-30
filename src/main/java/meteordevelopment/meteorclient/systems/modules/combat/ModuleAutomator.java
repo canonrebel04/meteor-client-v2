@@ -197,7 +197,7 @@ public class ModuleAutomator {
                 if (entity instanceof LivingEntity le && le != mc.player && le.isAlive()) {
                     boolean isHostile = le.getType().getCategory() == MobCategory.MONSTER
                         || (le instanceof Player && le != mc.player);
-                    if (isHostile && le.distanceTo(mc.player) <= 5.5) {
+                    if (isHostile && le.distanceToSqr(mc.player) <= 30.25) { // ⚡ Bolt: 5.5 * 5.5 = 30.25
                         threatInMeleeRange = true;
                         break;
                     }
