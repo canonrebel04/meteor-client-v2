@@ -152,7 +152,7 @@ public class Proxy implements ISerializable<Proxy> {
                 .put((byte) 4)
                 .put((byte) 1)
                 .putShort(port.get().shortValue())
-                .putInt(InetAddress.getByName(address.get()).hashCode()) // :clueless:
+                .put(InetAddress.getByName(address.get()).getAddress()) // :clueless:
                 .put(u)
                 .put((byte) 0);
         }
