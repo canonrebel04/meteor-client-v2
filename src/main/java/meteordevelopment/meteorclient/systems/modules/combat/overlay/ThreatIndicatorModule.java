@@ -95,13 +95,14 @@ public class ThreatIndicatorModule extends Module {
         if (mc.player == null || mc.level == null) return;
 
         double r = range.get();
+        double rSq = r * r; // Bolt: pre-calculate squared range to avoid Math.sqrt() in loop
 
         for (Entity entity : mc.level.entitiesForRendering()) {
             if (entity == mc.player || entity == mc.getCameraEntity()) continue;
             if (!entity.isAlive()) continue;
             if (entity instanceof LivingEntity living && living.isDeadOrDying()) continue;
             if (!isThreat(entity)) continue;
-            if (mc.player.distanceTo(entity) > r) continue;
+            if (mc.player.distanceToSqr(entity) > rSq) continue;
 
             threats.add(new ThreatEntry(entity));
         }
