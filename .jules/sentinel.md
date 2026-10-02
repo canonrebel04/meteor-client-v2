@@ -42,3 +42,7 @@
 **Vulnerability:** The HTTP client default exception handler used `Exception::printStackTrace`, which writes directly to standard error, bypassing centralized logging and potentially leaking sensitive execution context.
 **Learning:** Using `e.printStackTrace()` prevents the application from uniformly managing, formatting, or sanitizing error output, leading to unmanaged stack trace exposure.
 **Prevention:** Use the application's standard logger instead (e.g., `MeteorClient.LOG.error("message", e)`) to properly handle and route exceptions.
+## 2024-06-15 - Incorrect IP Serialization for SOCKS4
+**Vulnerability:** Using `InetAddress.hashCode()` to serialize an IP address for SOCKS4 network protocols instead of obtaining the raw byte array.
+**Learning:** `Inet4Address.hashCode()` coincidentally returns the 32-bit integer representation of an IPv4 address, but this pattern is insecure/brittle and fails completely for IPv6 addresses.
+**Prevention:** Always use `InetAddress.getAddress()` to obtain the raw byte array for IP address serialization.
