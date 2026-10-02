@@ -56,6 +56,8 @@ public class AntiDetectionModule extends Module {
     private static final double OU_THETA = 0.15;
     private static final double OU_SIGMA = 0.3;
     private static final double OU_DT = 0.05;
+    private static final double OU_SQRT_DT = Math.sqrt(OU_DT);
+    private static final double OU_NORM = OU_SIGMA / Math.sqrt(2.0 * OU_THETA);
 
     public AntiDetectionModule() {
         super(Categories.Combat, "anti-detection", "Randomizes pitch/yaw using Ornstein-Uhlenbeck stochastic process and sneaks with Poisson-distributed intervals to evade anti-cheat detection during AFK combat.");
@@ -78,18 +80,16 @@ public class AntiDetectionModule extends Module {
 
         double range = rotationRandomness.get();
         if (range > 0) {
-            double sqrtDt = Math.sqrt(OU_DT);
             // OU process: mean-reverting jitter. Stationary std = OU_SIGMA/sqrt(2*OU_THETA)
             // ≈ 0.55 in OU units. Normalize to unit variance and scale by the user's
             // degree setting so `range` behaves as DEGREES of jitter, not radians.
             // (Previous code multiplied raw OU units by range → up to ~1.1 rad ≈ 63°
             // of camera shake with the default 2.0 setting.)
-            double ouNorm = OU_SIGMA / Math.sqrt(2.0 * OU_THETA);
-            ouYaw += OU_THETA * (0.0 - ouYaw) * OU_DT + OU_SIGMA * random.nextGaussian() * sqrtDt;
-            ouPitch += OU_THETA * (0.0 - ouPitch) * OU_DT + OU_SIGMA * random.nextGaussian() * sqrtDt;
+            ouYaw += OU_THETA * (0.0 - ouYaw) * OU_DT + OU_SIGMA * random.nextGaussian() * OU_SQRT_DT;
+            ouPitch += OU_THETA * (0.0 - ouPitch) * OU_DT + OU_SIGMA * random.nextGaussian() * OU_SQRT_DT;
 
-            double yawDeg = (ouYaw / ouNorm) * range;
-            double pitchDeg = (ouPitch / ouNorm) * range;
+            double yawDeg = (ouYaw / OU_NORM) * range;
+            double pitchDeg = (ouPitch / OU_NORM) * range;
 
             // ANTICHEAT: quantize to half-degree steps. Human mouse movement
             // moves in discrete sensitivity steps (mouse deltas × GCD);

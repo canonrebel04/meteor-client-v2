@@ -40,3 +40,9 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+## 2024-10-02 - Avoid Math.sqrt for constant values in tick loops
+**Learning:** In `AntiDetectionModule.java`, `Math.sqrt()` was being called every tick to compute properties of the Ornstein-Uhlenbeck process, despite the base values being constants. This causes unnecessary JNI and floating point math overhead in a hot loop.
+**Action:** Extract constants calculated from other constants involving expensive operations (like `Math.sqrt`) into static final fields to avoid redundant calculation during hot loops.
+## 2024-10-02 - Avoid Math.pow for integer powers of 2
+**Learning:** Using `Math.pow(2, i)` where `i` is an integer incurs unnecessary JNI overhead and floating point calculation overhead, especially when it can be easily replaced by a bitwise shift operator `(1 << i)`.
+**Action:** Replace `Math.pow(2, i)` with `(1 << i)` in performance critical paths or frequent allocations (like `createFbo`) to avoid JNI overhead.
