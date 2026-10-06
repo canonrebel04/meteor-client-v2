@@ -219,16 +219,20 @@ public class StashFinder extends Module {
     @EventHandler
     private void onChunkData(ChunkDataEvent event) {
         // Check the distance.
+        // ⚡ Bolt: Use squared distance check to avoid JNI Math.sqrt overhead in frequent chunk data events
         double chunkXAbs = Math.abs(event.chunk().getPos().x() * 16);
         double chunkZAbs = Math.abs(event.chunk().getPos().z() * 16);
-        if (Math.sqrt(chunkXAbs * chunkXAbs + chunkZAbs * chunkZAbs) < minimumDistance.get()) return;
+        double minDist = minimumDistance.get();
+        if (chunkXAbs * chunkXAbs + chunkZAbs * chunkZAbs < minDist * minDist) return;
 
         Chunk chunk = new Chunk(event.chunk().getPos());
 
         List<Block> blockBlacklist = blacklistedBlocks.get();
+        // ⚡ Bolt: Cache storage blocks outside the loop to prevent repeated Setting.get() overhead
+        List<BlockEntityType<?>> storageBlockTypes = storageBlocks.get();
 
         for (BlockEntity blockEntity : event.chunk().getBlockEntities().values()) {
-            if (!storageBlocks.get().contains(blockEntity.getType())) continue;
+            if (!storageBlockTypes.contains(blockEntity.getType())) continue;
 
             if (!blockBlacklist.isEmpty()) {
                 BlockPos below = blockEntity.getBlockPos().below();
