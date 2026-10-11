@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.misc;
 
+import meteordevelopment.meteorclient.utils.debug.DebugLog;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -115,8 +116,9 @@ public class FleetIntelModule extends Module {
                     while (!Thread.currentThread().isInterrupted() && (line = in.readLine()) != null) {
                         handleLine(line);
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
                     // Fleet not running / connection dropped — retry after a pause.
+                    DebugLog.debug("Fleet", "Fleet connection failed/dropped: {}", e.toString());
                 }
 
                 try {
@@ -157,8 +159,9 @@ public class FleetIntelModule extends Module {
                     }
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
             // Malformed line — skip.
+            DebugLog.debug("Fleet", "Skipping malformed fleet line: {}", line, e);
         }
     }
 

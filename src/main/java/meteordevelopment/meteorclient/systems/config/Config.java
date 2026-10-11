@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.config;
 
+import meteordevelopment.meteorclient.utils.debug.DebugLog;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.renderer.Fonts;
 import meteordevelopment.meteorclient.renderer.text.FontFace;
@@ -191,6 +192,14 @@ public class Config extends System<Config> {
         .name("use-team-color")
         .description("Uses player's team color for rendering things like esp and tracers.")
         .defaultValue(true)
+        .build()
+    );
+
+    public final Setting<Boolean> debugLogging = sgMisc.add(new BoolSetting.Builder()
+        .name("debug-logging")
+        .description("Writes meteor-client-v2 debug lines to latest.log. Also forced on by -Dmeteorv2.debug=true.")
+        .defaultValue(false)
+        .onChanged(DebugLog::setEnabled)
         .build()
     );
 
