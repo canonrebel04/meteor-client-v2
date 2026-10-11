@@ -1,0 +1,128 @@
+name: Build Meteor + Baritone pair
+description: >
+  Builds canonrebel04/baritone-v2 at the given ref, publishes it to Maven Local,
+  then builds meteor-client-v2 against it. Exposes the paths of the two
+  drop-in jars (Meteor + Baritone standalone fabric).
+
+inputs:
+  baritone-ref:
+    description: Branch, tag, or commit of canonrebel04/baritone-v2 to build
+    required: false
+    default: "26.1"
+  build-number:
+    description: Suffix used for the Meteor version (meteor-client-<mc>-<build-number>.jar)
+    required: true
+
+outputs:
+  meteor-jar:
+    description: Path to the Meteor mod jar
+    value: ${{ steps.jars.outputs.meteor-jar }}
+  baritone-jar:
+    description: Path to the Baritone standalone fabric jar
+    value: ${{ steps.jars.outputs.baritone-jar }}
+  baritone-sha:
+    description: Commit SHA of baritone-v2 that was built
+    value: ${{ steps.baritone-info.outputs.sha }}
+  baritone-version:
+    description: Baritone mod_version that was built
+    value: ${{ steps.baritone-info.outputs.version }}
+  minecraft-version:
+    description: Minecraft version from gradle/libs.versions.toml
+    value: ${{ steps.versions.outputs.minecraft }}
+  fabric-loader-version:
+    description: Fabric loader version from gradle/libs.versions.toml
+    value: ${{ steps.versions.outputs.fabric-loader }}
+  fabric-api-version:
+    description: Fabric API version from gradle/libs.versions.toml
+    value: ${{ steps.versions.outputs.fabric-api }}
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout Baritone
+      uses: actions/checkout@v7
+      with:
+        repository: canonrebel04/baritone-v2
+        ref: ${{ inputs.baritone-ref }}
+        path: baritone-v2
+        persist-credentials: false
+
+    # Zulu ships jmods/, which Baritone's ProGuard step needs (Temurin 25 does not).
+    - name: Set up Java 25 (Zulu)
+      uses: actions/setup-java@v6
+      with:
+        distribution: zulu
+        java-version: "25"
+        cache: gradle
+        cache-dependency-path: |
+          *.gradle*
+          gradle/libs.versions.toml
+          gradle/wrapper/gradle-wrapper.properties
+          baritone-v2/*.gradle*
+          baritone-v2/**/*.gradle*
+          baritone-v2/gradle.properties
+          baritone-v2/gradle/wrapper/gradle-wrapper.properties
+
+    - name: Read versions
+      id: versions
+      shell: bash
+      run: |
+        toml() { sed -nE "s/^$1 *= *\"([^\"]+)\".*/\1/p" gradle/libs.versions.toml | head -n1; }
+        {
+          echo "minecraft=$(toml minecraft)"
+          echo "fabric-loader=$(toml fabric-loader)"
+          echo "fabric-api=$(toml fabric-api)"
+          echo "baritone-required=$(toml baritone)"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Check Baritone version matches Meteor's dependency
+      id: baritone-info
+      shell: bash
+      env:
+        REQUIRED: ${{ steps.versions.outputs.baritone-required }}
+      run: |
+        version=$(sed -nE 's/^mod_version=(.*)$/\1/p' baritone-v2/gradle.properties | tr -d '[:space:]')
+        sha=$(git -C baritone-v2 rev-parse HEAD)
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        echo "Baritone ref ${{ inputs.baritone-ref }} @ $sha -> mod_version $version (Meteor requires $REQUIRED)"
+        if [ "$version" != "$REQUIRED" ]; then
+          echo "::error title=Baritone version mismatch::baritone-v2@${{ inputs.baritone-ref }} builds $version, but gradle/libs.versions.toml asks for baritone = \"$REQUIRED\". Bump one of them so they match, or pick a different baritone ref."
+          exit 1
+        fi
+
+    - name: Build Baritone and publish to Maven Local
+      shell: bash
+      working-directory: baritone-v2
+      run: |
+        chmod +x gradlew
+        ./gradlew build publishToMavenLocal --no-daemon --stacktrace
+
+    - name: Build Meteor
+      shell: bash
+      run: |
+        chmod +x gradlew
+        ./gradlew build --no-daemon --stacktrace \
+          -Pbuild_number="${{ inputs.build-number }}" \
+          -Pcommit="${{ github.sha }}"
+
+    - name: Locate jars
+      id: jars
+      shell: bash
+      run: |
+        shopt -s nullglob
+        meteor=()
+        for f in build/libs/meteor-client-*.jar; do
+          case "$f" in *-sources.jar|*-javadoc.jar|*-dev.jar|*-dev-*.jar) continue ;; esac
+          meteor+=("$f")
+        done
+        baritone=(baritone-v2/dist/baritone-standalone-fabric-*.jar)
+        echo "Meteor jars: ${meteor[*]:-<none>}"
+        echo "Baritone jars: ${baritone[*]:-<none>}"
+        if [ "${#meteor[@]}" -ne 1 ] || [ "${#baritone[@]}" -ne 1 ]; then
+          echo "::error::Expected exactly one Meteor jar and one Baritone standalone jar."
+          ls -la build/libs baritone-v2/dist || true
+          exit 1
+        fi
+        echo "meteor-jar=${meteor[0]}" >> "$GITHUB_OUTPUT"
+        echo "baritone-jar=${baritone[0]}" >> "$GITHUB_OUTPUT"
