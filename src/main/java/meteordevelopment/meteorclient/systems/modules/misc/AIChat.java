@@ -14,6 +14,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.misc;
 
+import meteordevelopment.meteorclient.utils.debug.DebugLog;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.pathing.goals.Goal;
@@ -419,8 +420,9 @@ public class AIChat extends Module {
             if (goal != null) sb.append(" goal=").append(goal);
             var pc = baritone.getPathingControlManager().mostRecentCommand();
             if (pc.isPresent()) sb.append(" state=").append(pc.get().commandType);
-        } catch (Exception ignored) {
+        } catch (Throwable t) {
             // Baritone not loaded or API changed — status still useful without it
+            DebugLog.debug("AIChat", "Baritone status unavailable for context", t);
         }
         return sb.toString();
     }

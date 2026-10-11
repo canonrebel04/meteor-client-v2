@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.utils.debug.DebugLog;
 import baritone.api.BaritoneAPI;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.pathing.PathManagers;
@@ -2241,7 +2242,9 @@ public class CombatBrainModule extends Module {
         double myAtkSpeed = 1.6;
         try {
             myAtkSpeed = mc.player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_SPEED);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            DebugLog.debug("CombatBrain", "Could not read own ATTACK_SPEED, using {}", myAtkSpeed, e);
+        }
         int optimalStrikeTicks = (int) Math.ceil(20.0 / myAtkSpeed) + 4;
         int activeStrikeDuration = Math.max(optimalStrikeTicks, strikeDurationTicks.get());
 

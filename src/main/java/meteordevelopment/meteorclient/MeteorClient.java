@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient;
 
+import meteordevelopment.meteorclient.utils.debug.DebugLog;
 import meteordevelopment.meteorclient.addons.AddonManager;
 import meteordevelopment.meteorclient.addons.MeteorAddon;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
@@ -93,6 +94,9 @@ public class MeteorClient implements ClientModInitializer {
         }
 
         LOG.info("Initializing {}", NAME);
+
+        // Uncaught exception logging + log capture for .debug dump
+        DebugLog.init();
 
         // Pre-load
         if (!FOLDER.exists()) {

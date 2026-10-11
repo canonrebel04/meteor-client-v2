@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.utils.debug.DebugLog;
 import meteordevelopment.meteorclient.utils.entity.DamageUtils;
 import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.util.Mth;
@@ -194,11 +195,15 @@ public class CombatTargetAnalyzer {
         double theirAtkSpeed = 1.5;
         try {
             myAtkSpeed = mc.player.getAttributeValue(Attributes.ATTACK_SPEED);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            DebugLog.debug("Combat", "TargetAnalyzer: could not read own ATTACK_SPEED, using {}", myAtkSpeed, e);
+        }
         if (target instanceof Player) {
             try {
                 theirAtkSpeed = ((Player) target).getAttributeValue(Attributes.ATTACK_SPEED);
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                DebugLog.debug("Combat", "TargetAnalyzer: could not read ATTACK_SPEED of {}, using {}", target.getName().getString(), theirAtkSpeed, e);
+            }
         } else {
             theirAtkSpeed = 1.0;
         }

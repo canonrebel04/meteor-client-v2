@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.misc.swarm;
 
+import meteordevelopment.meteorclient.utils.debug.DebugLog;
 import meteordevelopment.meteorclient.events.game.GameJoinedEvent;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
@@ -115,7 +116,8 @@ public class Swarm extends Module {
                 worker.disconnect();
                 worker = null;
             }
-        } catch (Exception _) {
+        } catch (Exception e) {
+            DebugLog.debug("Swarm", "Error while closing swarm connections", e);
         }
     }
 

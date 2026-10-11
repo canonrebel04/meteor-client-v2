@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.utils.debug.DebugLog;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.pathing.goals.Goal;
@@ -104,7 +105,10 @@ public class CombatPathManager {
         this.combatModeActive = enabled;
         try {
             BaritoneAPI.getSettings().combatMode.value = enabled;
-        } catch (Exception ignored) {}
+        } catch (Throwable t) {
+            // Throwable: an incompatible Baritone jar throws NoSuchFieldError/NoSuchMethodError, not Exception
+            DebugLog.warn("CombatPath", "Could not set Baritone combatMode={} (Baritone missing or incompatible jar?)", enabled, t);
+        }
         // Fresh goal command: cancel stale pathing so the next SET_GOAL_AND_PATH
         // from CombatProcess starts clean instead of inheriting an old path.
         if (enabled) {
