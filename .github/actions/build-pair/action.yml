@@ -2,7 +2,8 @@ name: Build Meteor + Baritone pair
 description: >
   Builds canonrebel04/baritone-v2 at the given ref, publishes it to Maven Local,
   then builds meteor-client-v2 against it. Exposes the paths of the two
-  drop-in jars (Meteor + Baritone standalone fabric).
+  drop-in jars (Meteor + Baritone api-fabric). The standalone jar is NOT usable with
+  Meteor: it obfuscates baritone.api method names (getProvider -> a).
 
 inputs:
   baritone-ref:
@@ -18,7 +19,7 @@ outputs:
     description: Path to the Meteor mod jar
     value: ${{ steps.jars.outputs.meteor-jar }}
   baritone-jar:
-    description: Path to the Baritone standalone fabric jar
+    description: Path to the Baritone api-fabric jar (keeps baritone.api names Meteor calls)
     value: ${{ steps.jars.outputs.baritone-jar }}
   baritone-sha:
     description: Commit SHA of baritone-v2 that was built
@@ -116,11 +117,11 @@ runs:
           case "$f" in *-sources.jar|*-javadoc.jar|*-dev.jar|*-dev-*.jar) continue ;; esac
           meteor+=("$f")
         done
-        baritone=(baritone-v2/dist/baritone-standalone-fabric-*.jar)
+        baritone=(baritone-v2/dist/baritone-api-fabric-*.jar)
         echo "Meteor jars: ${meteor[*]:-<none>}"
         echo "Baritone jars: ${baritone[*]:-<none>}"
         if [ "${#meteor[@]}" -ne 1 ] || [ "${#baritone[@]}" -ne 1 ]; then
-          echo "::error::Expected exactly one Meteor jar and one Baritone standalone jar."
+          echo "::error::Expected exactly one Meteor jar and one Baritone api-fabric jar."
           ls -la build/libs baritone-v2/dist || true
           exit 1
         fi

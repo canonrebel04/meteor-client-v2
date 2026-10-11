@@ -1,7 +1,7 @@
 name: Release
 
 # Builds a matching Meteor + Baritone pair and publishes a GitHub release with
-# exactly two drop-in jars (Meteor + Baritone standalone fabric) and SHA256SUMS.
+# exactly two drop-in jars (Meteor + Baritone api-fabric) and SHA256SUMS.
 #
 # Cut a release either by:
 #   git tag v2.5.0 && git push origin v2.5.0
