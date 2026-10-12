@@ -1,62 +1,115 @@
 name: Release
 
+# Builds a matching Meteor + Baritone pair and publishes a GitHub release with
+# exactly two drop-in jars (Meteor + Baritone api-fabric) and SHA256SUMS.
+#
+# Cut a release either by:
+#   git tag v2.5.0 && git push origin v2.5.0
+# or from the Actions tab -> Release -> Run workflow (enter a tag name; the tag
+# is created on the selected branch's commit).
+
 on:
   push:
     tags:
-      - '*'
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create, e.g. v2.5.0"
+        required: true
+        type: string
+      baritone-ref:
+        description: "canonrebel04/baritone-v2 branch, tag, or commit to bundle"
+        required: false
+        default: "26.1"
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      MAVEN_METEOR_ALIAS: ${{ secrets.MAVEN_METEOR_ALIAS }}
-      MAVEN_METEOR_TOKEN: ${{ secrets.MAVEN_METEOR_TOKEN }}
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      BARITONE_REF: ${{ github.event.inputs.baritone-ref || '26.1' }}
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout Meteor
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '25'
-          cache: 'gradle'
-
-      - name: Checkout Baritone Dependency
-        uses: actions/checkout@v4
-        with:
-          repository: canonrebel04/baritone-v2
-          ref: 26.1
-          path: baritone-v2
-
-      - name: Build and Publish Baritone to MavenLocal
+      - name: Derive version from tag
+        id: meta
+        shell: bash
         run: |
-          cd baritone-v2
-          chmod +x gradlew
-          ./gradlew build --no-daemon
-          ./gradlew publishToMavenLocal --no-daemon
-          cd ..
+          if [[ ! "$TAG" =~ ^v[0-9A-Za-z._-]+$ ]]; then
+            echo "::error::Tag '$TAG' must look like v<version> (e.g. v2.5.0)."
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Node JS
-        uses: actions/setup-node@v4
+      - name: Build Meteor + Baritone
+        id: build
+        uses: ./.github/actions/build-pair
         with:
-          node-version: 24
+          baritone-ref: ${{ env.BARITONE_REF }}
+          build-number: ${{ steps.meta.outputs.version }}
 
-      - name: Build
-        run: ./gradlew build -Pbuild_number=${{ github.ref_name }}
+      - name: Stage release files
+        shell: bash
+        env:
+          METEOR_JAR: ${{ steps.build.outputs.meteor-jar }}
+          BARITONE_JAR: ${{ steps.build.outputs.baritone-jar }}
+        run: |
+          mkdir release
+          cp "$METEOR_JAR" "$BARITONE_JAR" release/
+          (cd release && sha256sum -- *.jar > SHA256SUMS)
+          ls -la release
+          cat release/SHA256SUMS
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: build/libs/meteor-client-26.1.2-${{ github.ref_name }}.jar
+      - name: Write release notes
+        shell: bash
+        env:
+          METEOR_JAR: ${{ steps.build.outputs.meteor-jar }}
+          BARITONE_JAR: ${{ steps.build.outputs.baritone-jar }}
+          BARITONE_SHA: ${{ steps.build.outputs.baritone-sha }}
+          BARITONE_VERSION: ${{ steps.build.outputs.baritone-version }}
+          MC: ${{ steps.build.outputs.minecraft-version }}
+          LOADER: ${{ steps.build.outputs.fabric-loader-version }}
+          FAPI: ${{ steps.build.outputs.fabric-api-version }}
+        run: |
+          cat > notes.md <<NOTES
+          Matching Meteor + Baritone build. Drop **both** jars into your \`mods\` folder (Baritone is not bundled inside Meteor).
 
-      - name: Publish
-        run: ./gradlew publish -Pversion=${{ github.ref_name }}
+          | | |
+          |---|---|
+          | Meteor jar | \`$(basename "$METEOR_JAR")\` |
+          | Baritone jar | \`$(basename "$BARITONE_JAR")\` |
+          | Meteor commit | [\`${GITHUB_SHA:0:7}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) |
+          | Baritone ref | \`${BARITONE_REF}\` @ [\`${BARITONE_SHA:0:7}\`](https://github.com/canonrebel04/baritone-v2/commit/${BARITONE_SHA}) (version ${BARITONE_VERSION}) |
+          | Minecraft | ${MC} |
+          | Fabric Loader | ${LOADER} |
+          | Fabric API | ${FAPI} |
+
+          Verify downloads with \`sha256sum -c SHA256SUMS\`.
+          NOTES
+          sed -i 's/^          //' notes.md
+          cat notes.md
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Meteor $TAG + Baritone ${{ steps.build.outputs.baritone-version }} (MC ${{ steps.build.outputs.minecraft-version }})" \
+            --notes-file notes.md \
+            release/*.jar release/SHA256SUMS

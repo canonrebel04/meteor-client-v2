@@ -40,3 +40,6 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+## 2024-09-16 - Avoid Math.hypot and Math.sqrt in hot render/chunk loops
+**Learning:** In frequently called methods like `onRender3D` and `onChunkData` (e.g. `StashFinder`), calculating 2D distance thresholds with `Math.hypot` or `Math.sqrt` incurs heavy JNI overhead and floating-point math penalties which can bottleneck rendering/tick threads.
+**Action:** Pre-calculate squared limits (e.g. `dist * dist`) outside inner loops and use simple manual square multiplications (`dx * dx + dz * dz <= limitSq`) to evaluate proximity, maximizing throughput.
