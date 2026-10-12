@@ -34,7 +34,15 @@ public class NotebotSongArgumentType implements ArgumentType<Path> {
     public Path parse(StringReader reader) throws CommandSyntaxException {
         final String text = reader.getRemaining();
         reader.setCursor(reader.getTotalLength());
-        return MeteorClient.FOLDER.toPath().resolve("notebot/" + text);
+
+        Path base = MeteorClient.FOLDER.toPath().resolve("notebot").toAbsolutePath().normalize();
+        Path resolved = base.resolve(text).toAbsolutePath().normalize();
+
+        if (!resolved.startsWith(base)) {
+            throw new IllegalArgumentException("Path traversal detected");
+        }
+
+        return resolved;
     }
 
     @Override
