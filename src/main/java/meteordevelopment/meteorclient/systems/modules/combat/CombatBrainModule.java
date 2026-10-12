@@ -2299,12 +2299,13 @@ public class CombatBrainModule extends Module {
     private int countNearbyHostiles(double radius) {
         if (mc.level == null || mc.player == null) return 0;
         int count = 0;
+        double radiusSq = radius * radius; // ⚡ Bolt: Precomputed outside hot entity loop to avoid redundant operations
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
             if (!(entity instanceof LivingEntity le) || le == mc.player || !le.isAlive()) continue;
             boolean hostile = le.getType().getCategory() == MobCategory.MONSTER
                 || (le instanceof Player && le != mc.player);
             if (!hostile) continue;
-            if (le.distanceToSqr(mc.player) <= radius * radius) count++;
+            if (le.distanceToSqr(mc.player) <= radiusSq) count++;
         }
         return count;
     }

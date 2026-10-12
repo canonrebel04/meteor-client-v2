@@ -40,3 +40,6 @@
 ## 2024-05-18 - Avoid Math.pow for small integer exponents
 **Learning:** Using `Math.pow` for small integer powers introduces unnecessary JNI and floating-point calculation overhead, which adds up in frequently called methods like `computeThreatLevel`.
 **Action:** Replace `Math.pow(base, exponent)` with a simple iterative multiplication loop when the exponent is known to be a small integer to avoid JNI overhead without introducing array allocation GC pressure.
+## 2024-10-12 - Avoid redundant squaring inside entity loops
+**Learning:** Performance-critical distance checks in entity iteration loops, such as `countNearbyHostiles` in `CombatBrainModule`, calculate `radius * radius` repeatedly for every entity evaluation. While JIT may optimize this, explicit loop-invariant code motion (precomputing the squared limit outside the loop) avoids redundant calculations and reduces overhead.
+**Action:** Extract static mathematical limit evaluations, like `radius * radius`, outside of hot entity iterations and store them in a local primitive variable.
