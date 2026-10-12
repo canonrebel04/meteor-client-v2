@@ -46,3 +46,11 @@
 **Vulnerability:** Path traversal in `NotebotSongArgumentType` allowed arbitrary file access via user input without path normalization checks.
 **Learning:** Directly joining user input with `resolve()` without validating the canonical root can bypass folder sandbox, exposing sensitive files.
 **Prevention:** Always normalize the base and resolved paths, and enforce that the resolved path `startsWith()` the base path.
+## 2024-06-14 - Fix BookBot Arbitrary File Read vulnerability
+**Vulnerability:** BookBot loads its target file path directly from the module's NBT config without validation, allowing malicious config files to silently read arbitrary local files (like SSH keys) and exfiltrate them by sending their contents to the server.
+**Learning:** Storing file paths from user configuration without restricting them to a safe directory enables Local File Inclusion and data exfiltration.
+**Prevention:** Avoid saving/loading arbitrary file paths in config, or validate that the paths reside within an allowed directory sandbox.
+## 2024-06-25 - Fix SOCKS4 IP Serialization Vulnerability
+**Vulnerability:** Incorrect serialization of IP addresses using `InetAddress.hashCode()` in the SOCKS4 protocol handshake.
+**Learning:** `InetAddress.hashCode()` is not guaranteed to return the raw 32-bit IPv4 address representation, especially for IPv6, leading to malformed network requests or potential memory corruption if the protocol strictly expects a 4-byte buffer.
+**Prevention:** Always use `InetAddress.getAddress()` to fetch the raw byte array of an IP address and validate its length before inserting it into fixed-size protocol buffers.
