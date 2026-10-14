@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.utils.entity;
 
 import meteordevelopment.meteorclient.systems.friends.Friends;
+import meteordevelopment.meteorclient.systems.modules.combat.AntiBot;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.entity.fakeplayer.FakePlayerEntity;
 import meteordevelopment.meteorclient.utils.entity.fakeplayer.FakePlayerManager;
@@ -42,7 +43,7 @@ public class TargetUtils {
         targetList.clear();
 
         for (Entity entity : mc.level.entitiesForRendering()) {
-            if (entity != null && isGood.test(entity)) targetList.add(entity);
+            if (entity != null && !AntiBot.shouldIgnore(entity) && isGood.test(entity)) targetList.add(entity);
         }
 
         FakePlayerManager.forEach(fp -> {

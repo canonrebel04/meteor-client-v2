@@ -112,6 +112,10 @@ dependencies {
         exclude("com.google.errorprone")
     }
 
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
     // Error Prone
     errorprone(libs.errorprone.core)
     errorprone(libs.nullaway)
@@ -180,6 +184,10 @@ fun toMinecraftCompat(version: String): String {
 }
 
 tasks {
+    test {
+        useJUnitPlatform()
+    }
+
     processResources {
         val buildNumber = providers.gradleProperty("build_number").getOrElse("")
         val commit = providers.gradleProperty("commit").getOrElse("")
