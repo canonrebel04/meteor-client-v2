@@ -612,6 +612,7 @@ public class Modules extends System<Modules> {
         add(new NoChatReports());
         add(new NoTelemetry());
         add(new PacketGuard());
+        add(new Panic());
         add(new AIChat());
         add(new AntiPacketKick());
         add(new AutoReconnect());
