@@ -402,6 +402,7 @@ public class Modules extends System<Modules> {
         add(new AimAssist());
         add(new AntiBot());
         add(new SuperKnockback());
+        add(new TriggerBot());
         add(new AnchorAura());
         add(new AntiAnvil());
         add(new AntiBed());
