@@ -575,6 +575,7 @@ public class Modules extends System<Modules> {
         add(new Ambience());
         add(new AutoBreed());
         add(new AutoFarm());
+        add(new AutoLibrarian());
         add(new AutoBrewer());
         add(new AutoMount());
         add(new AutoNametag());
