@@ -460,6 +460,7 @@ public class Modules extends System<Modules> {
         add(new AutoFish());
         add(new AutoFood());
         add(new AutoGap());
+        add(new AutoPot());
         add(new AutoMend());
         add(new AutoReplenish());
         add(new AutoRespawn());
