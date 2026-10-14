@@ -58,7 +58,7 @@ public class AntiDetectionModule extends Module {
     private static final double OU_DT = 0.05;
 
     public AntiDetectionModule() {
-        super(Categories.Combat, "anti-detection", "Randomizes pitch/yaw using Ornstein-Uhlenbeck stochastic process and sneaks with Poisson-distributed intervals to evade anti-cheat detection during AFK combat.");
+        super(Categories.Combat, "anti-detection", "Randomizes pitch/yaw using Ornstein-Uhlenbeck stochastic process and sneaks with Poisson-distributed intervals to evade anti-cheat detection during AFK combat.", "humanizer", "anti-aim-noise");
     }
 
     @Override

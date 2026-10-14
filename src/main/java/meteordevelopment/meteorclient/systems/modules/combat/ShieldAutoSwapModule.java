@@ -33,7 +33,7 @@ public class ShieldAutoSwapModule extends Module {
     private int swapCooldown = 0;
 
     public ShieldAutoSwapModule() {
-        super(Categories.Combat, "shield-auto-swap", "Automatically swaps to shield when taking damage and swaps back when attacking.");
+        super(Categories.Combat, "shield-auto-swap", "Automatically swaps to shield when taking damage and swaps back when attacking.", "auto-shield", "shield-swap");
     }
 
     @Override

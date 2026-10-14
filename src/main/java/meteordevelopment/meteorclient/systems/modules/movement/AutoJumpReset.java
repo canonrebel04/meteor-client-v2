@@ -65,7 +65,7 @@ public class AutoJumpReset extends Module {
     private int hitsReceived = 0;
 
     public AutoJumpReset() {
-        super(Categories.Movement, "auto-jump-reset", "Automatically jumps right after taking knockback to negate it via the vanilla jump mechanic.");
+        super(Categories.Movement, "auto-jump-reset", "Automatically jumps right after taking knockback to negate it via the vanilla jump mechanic.", "jump-reset", "kb-reduce");
     }
 
     @Override

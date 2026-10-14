@@ -68,7 +68,7 @@ public class CombatDecisionOverlay extends Module {
     );
 
     public CombatDecisionOverlay() {
-        super(Categories.Combat, "combat-decision-overlay", "Shows AI decision state, target info, and timers for the SmartCombat system.");
+        super(Categories.Combat, "combat-decision-overlay", "Shows AI decision state, target info, and timers for the SmartCombat system.", "brain-overlay", "decision-hud");
     }
 
     @EventHandler
