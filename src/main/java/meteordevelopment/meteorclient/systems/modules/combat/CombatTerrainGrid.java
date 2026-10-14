@@ -301,6 +301,50 @@ public class CombatTerrainGrid {
         return threats;
     }
 
+    // --- AwarenessCube derived products ---
+
+    /** Solid cells in the 2-block shell around the player at feet/head height. */
+    public int getCoverCount() {
+        return AwarenessMath.coverCount(grid3D, dim, yLevels);
+    }
+
+    /** True when the player has cover in fewer than 2 of 8 directions within 6 blocks. */
+    public boolean isPlayerInOpen() {
+        return AwarenessMath.isInOpen(grid3D, dim, yLevels);
+    }
+
+    /** Living hostile entities (monsters + other players) within {@code radius} of the player. */
+    public int countHostiles(double radius) {
+        if (mc.player == null || mc.level == null) return 0;
+        double radiusSq = radius * radius;
+        int count = 0;
+        for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (!(entity instanceof LivingEntity le) || le == mc.player || !le.isAlive()) continue;
+            boolean hostile = le.getType().getCategory() == net.minecraft.world.entity.MobCategory.MONSTER
+                || le instanceof net.minecraft.world.entity.player.Player;
+            if (hostile && le.distanceToSqr(mc.player) <= radiusSq) count++;
+        }
+        return count;
+    }
+
+    /** Debug dump of the 3D cube, one XZ slice per y-level (bottom first). */
+    public String getGrid3DString() {
+        char[] charMap = {'.', '#', 'W', 'L', '?', 'P', 'T'};
+        int halfY = yLevels / 2;
+        StringBuilder sb = new StringBuilder();
+        for (int gy = 0; gy < yLevels; gy++) {
+            sb.append("y").append(gy - halfY >= 0 ? "+" : "").append(gy - halfY).append('\n');
+            for (int gz = 0; gz < dim; gz++) {
+                for (int gx = 0; gx < dim; gx++) {
+                    int cell = grid3D[gy * dim * dim + gz * dim + gx] & 0xFF;
+                    sb.append(cell < charMap.length ? charMap[cell] : '?');
+                }
+                sb.append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
     // --- Getters ---
 
     public int getCenterX() { return centerX; }
