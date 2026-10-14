@@ -127,6 +127,7 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         register(ActiveModulesHud.INFO);
         register(LagNotifierHud.INFO);
         register(PlayerRadarHud.INFO);
+        register(EntityRadarHud.INFO);
         register(ModuleInfosHud.INFO);
         register(PotionTimersHud.INFO);
         register(CombatHud.INFO);
