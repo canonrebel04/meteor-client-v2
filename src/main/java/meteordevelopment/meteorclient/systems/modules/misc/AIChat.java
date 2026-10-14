@@ -168,7 +168,7 @@ public class AIChat extends Module {
     private int statusFeedbackTicks = 0;
 
     public AIChat() {
-        super(Categories.Misc, "ai-chat", "LLM companion that thinks and talks through Minecraft chat and can run Baritone/Meteor commands.");
+        super(Categories.Misc, "ai-chat", "LLM companion that thinks and talks through Minecraft chat and can run Baritone/Meteor commands.", "llm", "ai", "chat-bot");
     }
 
     @Override
