@@ -401,6 +401,7 @@ public class Modules extends System<Modules> {
     private void initCombat() {
         add(new AimAssist());
         add(new AntiBot());
+        add(new SuperKnockback());
         add(new AnchorAura());
         add(new AntiAnvil());
         add(new AntiBed());
