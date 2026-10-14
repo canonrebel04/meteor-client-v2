@@ -5,6 +5,9 @@
 
 package meteordevelopment.meteorclient.systems.modules.movement.elytrafly;
 
+import net.minecraft.world.InteractionHand;
+import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.PlayerMoveEvent;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
@@ -41,6 +44,7 @@ public class ElytraFly extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgInventory = settings.createGroup("Inventory");
     private final SettingGroup sgAutopilot = settings.createGroup("Autopilot");
+    private final SettingGroup sgRecast = settings.createGroup("Recast");
 
     // General
 
@@ -365,6 +369,45 @@ public class ElytraFly extends Module {
         .build()
     );
 
+    public final Setting<Boolean> holdJumpRecast = sgRecast.add(new BoolSetting.Builder()
+        .name("hold-jump-recast")
+        .description("While holding jump in the air, re-open the elytra whenever gliding stops (all modes).")
+        .defaultValue(false)
+        .visible(() -> flightMode.get() != ElytraFlightModes.Bounce)
+        .build()
+    );
+
+    public final Setting<Integer> recastDelay = sgRecast.add(new IntSetting.Builder()
+        .name("recast-delay")
+        .description("Minimum ticks between recast attempts.")
+        .defaultValue(4)
+        .range(1, 40)
+        .sliderRange(1, 40)
+        .visible(() -> holdJumpRecast.get() && flightMode.get() != ElytraFlightModes.Bounce)
+        .build()
+    );
+
+    public final Setting<Double> recastMinFall = sgRecast.add(new DoubleSetting.Builder()
+        .name("recast-min-fall")
+        .description("Only recast after falling at least this many blocks (avoids triggering on normal jumps).")
+        .defaultValue(0.5)
+        .range(0, 5)
+        .sliderRange(0, 5)
+        .visible(() -> holdJumpRecast.get() && flightMode.get() != ElytraFlightModes.Bounce)
+        .build()
+    );
+
+    public final Setting<Boolean> recastFirework = sgRecast.add(new BoolSetting.Builder()
+        .name("firework-on-recast")
+        .description("Use a hotbar firework right after a successful recast.")
+        .defaultValue(false)
+        .visible(() -> holdJumpRecast.get() && flightMode.get() != ElytraFlightModes.Bounce)
+        .build()
+    );
+
+    private int ticksSinceRecast = 100;
+    private boolean pendingFirework;
+
     private ElytraFlightMode currentMode = new Vanilla();
 
     public ElytraFly() {
@@ -496,6 +539,7 @@ public class ElytraFly extends Module {
     @EventHandler
     private void onPreTick(TickEvent.Pre event) {
         currentMode.onPreTick();
+        handleRecast();
     }
 
     @EventHandler
@@ -582,5 +626,45 @@ public class ElytraFly extends Module {
     public enum AutoPilotMode {
         Vanilla,
         Pitch40
+    }
+
+    private void handleRecast() {
+        if (mc.player == null || mc.getConnection() == null) return;
+        ticksSinceRecast++;
+
+        if (pendingFirework && mc.player.isFallFlying()) {
+            pendingFirework = false;
+            FindItemResult fw = InvUtils.findInHotbar(Items.FIREWORK_ROCKET);
+            if (fw.found()) {
+                if (fw.isOffhand()) {
+                    mc.gameMode.useItem(mc.player, InteractionHand.OFF_HAND);
+                    mc.player.swing(InteractionHand.OFF_HAND);
+                } else {
+                    InvUtils.swap(fw.slot(), true);
+                    mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
+                    mc.player.swing(InteractionHand.MAIN_HAND);
+                    InvUtils.swapBack();
+                }
+            }
+        }
+
+        if (!holdJumpRecast.get() || flightMode.get() == ElytraFlightModes.Bounce) return;
+        ElytraRecastLogic.State st = new ElytraRecastLogic.State(
+            mc.player.getItemBySlot(EquipmentSlot.CHEST).has(DataComponents.GLIDER),
+            mc.player.isFallFlying(),
+            mc.player.onGround(),
+            mc.player.isInWater() || mc.player.isInLava(),
+            mc.player.isPassenger(),
+            mc.options.keyJump.isDown(),
+            mc.player.fallDistance,
+            ticksSinceRecast
+        );
+        if (!ElytraRecastLogic.shouldRecast(st, recastMinFall.get(), recastDelay.get())) return;
+
+        ticksSinceRecast = 0;
+        if (mc.player.tryToStartFallFlying()) {
+            mc.getConnection().send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));
+            if (recastFirework.get()) pendingFirework = true;
+        }
     }
 }
