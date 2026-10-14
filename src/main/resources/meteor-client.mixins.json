@@ -10,6 +10,7 @@
     "AbstractClientPlayerAccessor",
     "AbstractClientPlayerMixin",
     "AbstractContainerScreenAccessor",
+    "ClientTelemetryManagerMixin",
     "AbstractContainerScreenMixin",
     "AbstractFurnaceMenuMixin",
     "AbstractFurnaceScreenMixin",
