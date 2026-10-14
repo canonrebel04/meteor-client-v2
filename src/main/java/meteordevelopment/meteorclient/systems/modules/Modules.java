@@ -480,6 +480,7 @@ public class Modules extends System<Modules> {
     }
 
     private void initMovement() {
+        add(new NoJumpDelay());
         add(new AirJump());
         add(new Anchor());
         add(new AntiVoid());
