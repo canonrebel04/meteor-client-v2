@@ -583,6 +583,7 @@ public class Modules extends System<Modules> {
         add(new AutoSign());
         add(new AutoSmelter());
         add(new BaseFinder());
+        add(new AutoTrader());
         add(new BuildHeight());
         add(new Collisions());
         add(new EChestFarmer());
