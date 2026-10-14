@@ -572,6 +572,7 @@ public class Modules extends System<Modules> {
         add(new HighwayBuilder());
         add(new LiquidFiller());
         add(new NoGhostBlocks());
+        add(new NewChunks());
         add(new Nuker());
         add(new PacketMine());
         add(new StashFinder());
