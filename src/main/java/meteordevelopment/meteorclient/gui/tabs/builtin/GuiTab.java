@@ -56,8 +56,10 @@ public class GuiTab extends Tab {
 
             WButton resetLayout = opts.add(theme.button("Reset Layout")).expandX().widget();
             resetLayout.action = theme::clearWindowConfigs;
+            resetLayout.tooltip = "Reset window positions and sizes";
 
             WButton reset = opts.add(theme.button("Reset Colors")).right().widget();
+            reset.tooltip = "Reset theme colors to default";
             reset.action = () -> {
                 theme.settings.reset();
                 mc.gui.setScreen(null);
