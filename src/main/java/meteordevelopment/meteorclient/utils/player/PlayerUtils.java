@@ -47,6 +47,11 @@ public class PlayerUtils {
     private PlayerUtils() {
     }
 
+    /** Client-side hand swing (26.3: swing no longer sends a packet by itself). */
+    public static void swingHand(net.minecraft.world.InteractionHand hand) {
+        mc.player.swing(hand, mc.player.getItemInHand(hand).getAttackAnimation(), false);
+    }
+
     public static Color getPlayerColor(Player entity, Color defaultColor) {
         if (Friends.get().isFriend(entity)) {
             return color.set(Config.get().friendColor.get()).a(defaultColor.a);
@@ -206,7 +211,7 @@ public class PlayerUtils {
             }
 
             // Check for beds if in nether
-            if (mc.level.environmentAttributes().getDimensionValue(EnvironmentAttributes.BED_RULE).explodes()) {
+            if (mc.level.environmentAttributes().getDimensionValue(EnvironmentAttributes.BED_RULE).destroyOnUse()) {
                 BlockPos playerPos = mc.player.blockPosition();
                 int range = 6;
 

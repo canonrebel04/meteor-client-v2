@@ -92,6 +92,13 @@ dependencies {
     compileOnly(libs.modmenu)
 
     // Libraries (JAR-in-JAR)
+    // LWJGL tinyfd + natives (no longer shipped by Minecraft as of 26.3)
+    implementation(libs.lwjgl.tinyfd)
+    include(libs.lwjgl.tinyfd)
+    listOf("natives-windows", "natives-windows-arm64", "natives-linux", "natives-linux-arm64", "natives-macos", "natives-macos-arm64").forEach {
+        include(variantOf(libs.lwjgl.tinyfd) { classifier(it) })
+    }
+
     jij(libs.orbit)
     jij(libs.starscript)
     jij(libs.discord.ipc)
@@ -274,3 +281,4 @@ publishing {
         }
     }
 }
+

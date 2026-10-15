@@ -202,6 +202,6 @@ public class MaceKill extends Module {
 
     private void attack(Player target) {
         mc.player.connection.send(new ServerboundAttackPacket(target.getId()));
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
     }
 }

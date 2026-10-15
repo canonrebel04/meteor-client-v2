@@ -73,8 +73,8 @@ public abstract class BannerRendererMixin {
             -1,
             sprite,
             sprites,
-            0,
-            breakProgress
+            0
         );
+        // 26.3 submits block-breaking overlays separately (submitCrumblingOverlay); the custom pillar skips it.
     }
 }

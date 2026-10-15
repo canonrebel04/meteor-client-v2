@@ -5,15 +5,15 @@
 
 package meteordevelopment.meteorclient.renderer;
 
-import com.mojang.blaze3d.IndexType;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.renderpearl.api.pipeline.IndexType;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.systems.CommandEncoder;
-import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.renderpearl.api.commands.CommandEncoder;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.GpuSampler;
-import com.mojang.blaze3d.textures.GpuTextureView;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.PoseStack;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import meteordevelopment.meteorclient.utils.Utils;
@@ -176,7 +176,7 @@ public class MeshRenderer {
                 encoder.createRenderPass(() -> "Meteor MeshRenderer", colorAttachment, clearColor, depthAttachment, OptionalDouble.empty()) :
                 encoder.createRenderPass(() -> "Meteor MeshRenderer", colorAttachment, clearColor)) {
 
-                pass.setPipeline(pipeline);
+                pass.setPipeline(MeteorRenderPipelines.compiled(pipeline));
                 pass.setUniform("MeshData", meshData);
 
                 for (var entry : uniforms.entrySet()) {
@@ -184,7 +184,7 @@ public class MeshRenderer {
                 }
 
                 for (var entry : samplers.entrySet()) {
-                    pass.bindTexture(entry.getKey(), entry.getValue().textureView, entry.getValue().sampler);
+                    pass.setUniform(entry.getKey(), entry.getValue().textureView, entry.getValue().sampler);
                 }
 
                 pass.setVertexBuffer(0, vertexBuffer);

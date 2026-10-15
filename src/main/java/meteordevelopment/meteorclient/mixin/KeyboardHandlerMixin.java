@@ -44,12 +44,12 @@ public abstract class KeyboardHandlerMixin {
             }
 
             if (minecraft.gui.screen() instanceof WidgetScreen widgetScreen && action == InputConstants.REPEAT) {
-                widgetScreen.keyRepeated(new KeyEvent(event.key(), event.scancode(), modifiers));
+                widgetScreen.keyRepeated(new KeyEvent(event.key(), event.keycode(), modifiers));
             }
 
             if (GuiKeyEvents.canUseKeys) {
                 Input.setKeyState(event.key(), action != InputConstants.RELEASE);
-                if (MeteorClient.EVENT_BUS.post(KeyInputEvent.get(new KeyEvent(event.key(), event.scancode(), modifiers), KeyAction.get(action))).isCancelled())
+                if (MeteorClient.EVENT_BUS.post(KeyInputEvent.get(new KeyEvent(event.key(), event.keycode(), modifiers), KeyAction.get(action))).isCancelled())
                     ci.cancel();
             }
         }

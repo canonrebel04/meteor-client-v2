@@ -5,26 +5,20 @@
 
 package meteordevelopment.meteorclient.systems.accounts.types;
 
-import com.mojang.authlib.Environment;
-import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
-import com.mojang.util.UndashedUuid;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.systems.accounts.Account;
 import meteordevelopment.meteorclient.systems.accounts.AccountType;
 import meteordevelopment.meteorclient.systems.accounts.TokenAccount;
 import meteordevelopment.meteorclient.utils.misc.NbtException;
 import meteordevelopment.meteorclient.utils.network.Http;
-import net.minecraft.client.User;
 import net.minecraft.nbt.CompoundTag;
 
-import java.util.Optional;
 import java.util.UUID;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class TheAlteningAccount extends Account<TheAlteningAccount> implements TokenAccount {
-    private static final Environment ENVIRONMENT = new Environment("https://sessionserver.thealtening.com", "https://authserver.thealtening.com", "https://api.mojang.com", "The Altening");
-    private static final YggdrasilAuthenticationService SERVICE = new YggdrasilAuthenticationService(mc.getProxy(), ENVIRONMENT);
+    private static final String AUTH_HOST = "https://authserver.thealtening.com";
     private String token;
     private String accessToken;
 
@@ -57,19 +51,15 @@ public class TheAlteningAccount extends Account<TheAlteningAccount> implements T
     @Override
     public boolean login() {
         if (accessToken == null || cache.username.isEmpty() || cache.uuid.isEmpty()) return false;
-        applyLoginEnvironment(SERVICE);
 
-        try {
-            setSession(new User(cache.username, UndashedUuid.fromStringLenient(cache.uuid), accessToken, Optional.empty(), Optional.empty()));
-            return true;
-        } catch (Exception _) {
-            MeteorClient.LOG.error("Failed to login with TheAltening.");
-            return false;
-        }
+        // Authlib 10 (Minecraft 26.3) resolves the session server through Mojang's discovery service and no longer
+        // accepts custom session/auth hosts, so TheAltening sessions can't be joined with until that is reworked.
+        MeteorClient.LOG.error("TheAltening accounts are not supported on Minecraft 26.3 yet (authlib 10 removed custom auth environments).");
+        return false;
     }
 
     private AuthResponse authenticate() {
-        return Http.post(ENVIRONMENT.servicesHost() + "/authenticate")
+        return Http.post(AUTH_HOST + "/authenticate")
             .bodyJson(new AuthRequest("MINECRAFT", token, "Meteor on Crack!", UUID.randomUUID().toString(), true))
             .sendJson(AuthResponse.class);
     }

@@ -115,7 +115,7 @@ public class AutoJumpReset extends Module {
     private boolean isHoldingWeapon() {
         // MC 26.x removed SwordItem as a class (data-component driven); axe + mace cover the burst weapons.
         var item = mc.player.getMainHandItem().getItem();
-        return item instanceof net.minecraft.world.item.AxeItem
+        return item.getDefaultInstance().is(net.minecraft.tags.ItemTags.AXES)
             || item instanceof net.minecraft.world.item.MaceItem;
     }
 }

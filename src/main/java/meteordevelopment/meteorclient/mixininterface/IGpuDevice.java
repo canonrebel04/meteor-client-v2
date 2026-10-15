@@ -5,7 +5,7 @@
 
 package meteordevelopment.meteorclient.mixininterface;
 
-import com.mojang.blaze3d.systems.RenderPassBackend;
+import com.mojang.renderpearl.api.commands.RenderPass;
 
 public interface IGpuDevice {
     /**
@@ -20,5 +20,5 @@ public interface IGpuDevice {
      */
     @Deprecated
     @SuppressWarnings("DeprecatedIsStillUsed")
-    void meteor$onCreateRenderPass(RenderPassBackend backend);
+    void meteor$onCreateRenderPass(RenderPass pass);
 }

@@ -23,7 +23,7 @@ jobs:
         id: build
         uses: ./.github/actions/build-pair
         with:
-          baritone-ref: "26.1"
+          baritone-ref: "26.3"
           build-number: build.${{ github.run_number }}
 
       - name: Upload jars

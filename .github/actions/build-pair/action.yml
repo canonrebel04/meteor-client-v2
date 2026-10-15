@@ -9,7 +9,7 @@ inputs:
   baritone-ref:
     description: Branch, tag, or commit of canonrebel04/baritone-v2 to build
     required: false
-    default: "26.1"
+    default: "26.3"
   build-number:
     description: Suffix used for the Meteor version (meteor-client-<mc>-<build-number>.jar)
     required: true

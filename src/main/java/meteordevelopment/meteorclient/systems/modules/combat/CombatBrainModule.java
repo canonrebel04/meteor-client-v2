@@ -946,7 +946,7 @@ public class CombatBrainModule extends Module {
 
         float attackCooldown = mc.player.getAttackStrengthScale(0.5f);
         boolean isTakingDamage = mc.player.hurtTime > 0;
-        boolean isTargetAttacking = currentTarget.attackAnim > 0 || (currentTarget instanceof Player p && p.attackAnim > 0);
+        boolean isTargetAttacking = currentTarget.isSwinging();
 
         if (shieldRaisedForMelee) {
             shieldDwellTicks++;
@@ -1006,7 +1006,7 @@ public class CombatBrainModule extends Module {
                     if (mc.gameMode != null) {
                         mc.gameMode.attack(mc.player, entity);
                     }
-                    mc.player.swing(InteractionHand.MAIN_HAND);
+                    PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
                     break;
                 }
             }
@@ -2536,7 +2536,7 @@ public class CombatBrainModule extends Module {
             || item == Items.WOODEN_SHOVEL   || item == Items.STONE_SHOVEL
             || item == Items.IRON_SHOVEL     || item == Items.GOLDEN_SHOVEL
             || item == Items.DIAMOND_SHOVEL  || item == Items.NETHERITE_SHOVEL
-            || item instanceof net.minecraft.world.item.AxeItem;
+            || item.getDefaultInstance().is(net.minecraft.tags.ItemTags.AXES);
     }
 
     // --- Utilities ---
