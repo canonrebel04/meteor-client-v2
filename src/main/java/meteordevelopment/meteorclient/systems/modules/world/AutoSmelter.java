@@ -74,7 +74,7 @@ public class AutoSmelter extends Module {
     private boolean fuelItemFilter(Item item) {
         if (!Utils.canUpdate()) return false;
 
-        return mc.getConnection().fuelValues().fuelItems().contains(item);
+        return item.components().has(net.minecraft.core.component.DataComponents.COOKING_FUEL);
     }
 
     private boolean smeltableItemFilter(Item item) {

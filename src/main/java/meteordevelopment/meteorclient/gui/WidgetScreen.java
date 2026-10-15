@@ -354,7 +354,7 @@ public abstract class WidgetScreen extends Screen {
 
                     // Restore mouse position to where it was when the screen was closed
                     if (parent != null) {
-                        grabOrReleaseMouse(mc.getWindow(), CURSOR_NORMAL, restoreX, restoreY);
+                        releaseMouse(mc.getWindow(), restoreX, restoreY);
                     }
                 };
             }

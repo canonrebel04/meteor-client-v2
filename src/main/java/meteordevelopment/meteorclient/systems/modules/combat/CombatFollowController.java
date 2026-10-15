@@ -1,5 +1,6 @@
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.pathing.goals.GoalRunAway;
@@ -115,26 +116,26 @@ public class CombatFollowController {
             // a collision shape — not just isCollisionShapeFullBlock() full cubes.
             pos.set(bx, playerY, bz);
             var feetState = mc.level.getBlockState(pos);
-            if (feetState.blocksMotion()) {
+            if (BlockUtils.blocksMotion(feetState)) {
                 pos.set(bx, playerY + 1, bz);
-                if (mc.level.getBlockState(pos).blocksMotion()) return false; // Wall! Use Baritone A*
+                if (BlockUtils.blocksMotion(mc.level.getBlockState(pos))) return false; // Wall! Use Baritone A*
                 pos.set(bx, playerY + 2, bz);
-                if (mc.level.getBlockState(pos).blocksMotion()) return false; // Headroom after step! Use Baritone A*
+                if (BlockUtils.blocksMotion(mc.level.getBlockState(pos))) return false; // Headroom after step! Use Baritone A*
             }
 
             // Head clearance at playerY+1: ANY motion-blocking block (leaves, tree
             // canopies, slabs) means the player's 1.8-block body can't fit → Baritone A*.
             pos.set(bx, playerY + 1, bz);
-            if (mc.level.getBlockState(pos).blocksMotion()) return false;
+            if (BlockUtils.blocksMotion(mc.level.getBlockState(pos))) return false;
 
             // Side-cell checks: the hitbox overlaps the adjacent cell on the dominant
             // axis. ANY motion-blocking block there (feet or head level) means a corner
             // clip on a diagonal approach → Baritone A* routes around it properly.
             if (sideBx != bx || sideBz != bz) {
                 pos.set(sideBx, playerY, sideBz);
-                if (mc.level.getBlockState(pos).blocksMotion()) return false;
+                if (BlockUtils.blocksMotion(mc.level.getBlockState(pos))) return false;
                 pos.set(sideBx, playerY + 1, sideBz);
-                if (mc.level.getBlockState(pos).blocksMotion()) return false;
+                if (BlockUtils.blocksMotion(mc.level.getBlockState(pos))) return false;
             }
         }
 

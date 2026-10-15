@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.misc;
 
+import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.MultimapBuilder;
 import meteordevelopment.meteorclient.MeteorClient;
@@ -843,7 +844,7 @@ public class Notebot extends Module {
         }
 
         if (swingArm.get()) {
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
         }
 
         int iterations = 0;
@@ -913,7 +914,7 @@ public class Notebot extends Module {
 
             // Swing arm
             if (swingArm.get()) {
-                mc.player.swing(InteractionHand.MAIN_HAND);
+                PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
             }
 
             // Play notes

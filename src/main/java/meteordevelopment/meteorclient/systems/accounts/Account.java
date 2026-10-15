@@ -6,9 +6,9 @@
 package meteordevelopment.meteorclient.systems.accounts;
 
 import com.mojang.authlib.minecraft.UserApiService;
-import com.mojang.authlib.yggdrasil.FriendsService;
-import com.mojang.authlib.yggdrasil.ServicesKeyType;
-import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
+import com.mojang.authlib.services.FriendsService;
+import com.mojang.authlib.services.MinecraftServicesDiscoveryService;
+import com.mojang.authlib.services.ServicesKeyType;
 import meteordevelopment.meteorclient.mixin.FileCacheAccessor;
 import meteordevelopment.meteorclient.mixin.MinecraftAccessor;
 import meteordevelopment.meteorclient.mixin.SkinManagerAccessor;
@@ -47,8 +47,7 @@ public abstract class Account<T extends Account<?>> implements ISerializable<T> 
     public abstract boolean fetchInfo();
 
     public boolean login() {
-        YggdrasilAuthenticationService authenticationService = new YggdrasilAuthenticationService(mc.getProxy());
-        applyLoginEnvironment(authenticationService);
+        applyLoginEnvironment(MinecraftServicesDiscoveryService.create(mc.getProxy(), true));
 
         return true;
     }
@@ -70,10 +69,10 @@ public abstract class Account<T extends Account<?>> implements ISerializable<T> 
         MinecraftAccessor mca = (MinecraftAccessor) mc;
         mca.meteor$setUser(session);
 
-        YggdrasilAuthenticationService yggdrasilAuthenticationService = new YggdrasilAuthenticationService(mc.getProxy());
+        MinecraftServicesDiscoveryService discoveryService = MinecraftServicesDiscoveryService.create(mc.getProxy(), true);
 
-        UserApiService apiService = yggdrasilAuthenticationService.createUserApiService(session.getAccessToken());
-        FriendsService friendsService = yggdrasilAuthenticationService.createFriendsService(session.getAccessToken());
+        UserApiService apiService = discoveryService.createUserApiService(session.getAccessToken());
+        FriendsService friendsService = discoveryService.createFriendsService(session.getAccessToken());
         RemoteFriendListUpdateHandler remoteFriendListUpdateHandler = new RemoteFriendListUpdateHandler(friendsService, mc);
         mca.meteor$setUserApiService(apiService);
         mca.meteor$setPlayerSocialManager(new PlayerSocialManager(mc, apiService, friendsService, remoteFriendListUpdateHandler));
@@ -82,7 +81,7 @@ public abstract class Account<T extends Account<?>> implements ISerializable<T> 
         mca.meteor$setProfileFuture(CompletableFuture.supplyAsync(() -> mc.services().sessionService().fetchProfile(mc.getUser().getProfileId(), true), Util.ioPool()));
     }
 
-    public static void applyLoginEnvironment(YggdrasilAuthenticationService authService) {
+    public static void applyLoginEnvironment(MinecraftServicesDiscoveryService authService) {
         MinecraftAccessor mca = (MinecraftAccessor) mc;
         SignatureValidator.from(authService.getServicesKeySet(), ServicesKeyType.PROFILE_KEY);
         SkinManager.TextureCache skinCache = ((SkinManagerAccessor) mc.getSkinManager()).meteor$getSkinTextures();

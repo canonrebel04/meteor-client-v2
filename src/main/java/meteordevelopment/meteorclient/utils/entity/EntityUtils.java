@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.utils.entity;
 
+import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongBidirectionalIterator;
 import it.unimi.dsi.fastutil.longs.LongSortedSet;
@@ -113,7 +114,7 @@ public class EntityUtils {
         while (blockPos.getY() > bottom) {
             BlockState state = mc.level.getBlockState(blockPos);
 
-            if (state.blocksMotion()) break;
+            if (BlockUtils.blocksMotion(state)) break;
 
             Fluid fluid = state.getFluidState().getType();
             if (fluid == Fluids.WATER || fluid == Fluids.FLOWING_WATER) {

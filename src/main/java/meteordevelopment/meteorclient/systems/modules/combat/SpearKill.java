@@ -128,7 +128,7 @@ public class SpearKill extends Module {
 
     private void attack(Player target) {
         mc.player.connection.send(new ServerboundAttackPacket(target.getId()));
-        mc.player.swing(InteractionHand.MAIN_HAND);
+        PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
     }
 
     /** A spear = any item whose attack_range component extends past vanilla 3.0 reach. */

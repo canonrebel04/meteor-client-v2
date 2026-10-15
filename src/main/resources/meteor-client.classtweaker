@@ -19,16 +19,12 @@ accessible   class   net/minecraft/client/gui/screens/inventory/BeaconScreen$Bea
 accessible   class   net/minecraft/client/ResourceLoadStateTracker$ReloadState
 
 # ExtendedRenderPipelineBuilder
-accessible   method  com/mojang/blaze3d/pipeline/RenderPipeline$Builder <init> ()V
-accessible   method  com/mojang/blaze3d/pipeline/RenderPipeline$Builder withSnippet (Lcom/mojang/blaze3d/pipeline/RenderPipeline$Snippet;)V
 
 # OutlineRenderCommandQueue#order
 accessible   field   net/minecraft/client/renderer/SubmitNodeStorage submitsPerOrder Lit/unimi/dsi/fastutil/ints/Int2ObjectAVLTreeMap;
 
 # GlCommandEncoderMixin, GlDeviceMixin
-accessible   class   com/mojang/blaze3d/opengl/GlDevice
 # GlCommandEncoderMixin
-accessible   class   com/mojang/blaze3d/opengl/GlCommandEncoder
 
 # AutoFish#tryCatch
 accessible   class   net/minecraft/world/entity/projectile/FishingHook$FishHookState
@@ -38,8 +34,6 @@ accessible   method  net/minecraft/client/multiplayer/MultiPlayerGameMode startP
 
 # GuiGraphicsExtractorAccessor
 accessible   class   net/minecraft/client/gui/GuiGraphicsExtractor$ScissorStack
-# WireframeEntityRenderer#getBuffer
-accessible   field   net/minecraft/client/renderer/rendertype/RenderSetup outputTarget Lnet/minecraft/client/renderer/rendertype/OutputTarget;
 
 # ProjectileEntitySimulator#hitOrDeflect
 accessible   method   net/minecraft/world/entity/projectile/Projectile shouldBounceOnWorldBorder ()Z

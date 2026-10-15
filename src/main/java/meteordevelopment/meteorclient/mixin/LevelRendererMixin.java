@@ -6,7 +6,7 @@
 package meteordevelopment.meteorclient.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import com.mojang.blaze3d.resource.ResourceHandle;
@@ -129,8 +129,11 @@ public abstract class LevelRendererMixin implements ILevelRenderer {
 
         meteor$pushEntityOutlineFramebuffer(shader.framebuffer);
         try {
-            try (var frame = renderDispatcher.prepareFrame(outlineRenderCommandQueue)) {
-                frame.executeOutline();
+            try (var frame = renderDispatcher.prepareFrame(outlineRenderCommandQueue);
+                 var pass = com.mojang.blaze3d.systems.RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                     () -> "Meteor entity outline", shader.framebuffer.getColorTextureView(), java.util.Optional.empty(), null, java.util.OptionalDouble.empty())) {
+                com.mojang.blaze3d.systems.RenderSystem.bindDefaultUniforms(pass);
+                frame.executeOutline(pass);
             }
         } finally {
             outlineRenderCommandQueue.submitsPerOrder.clear();

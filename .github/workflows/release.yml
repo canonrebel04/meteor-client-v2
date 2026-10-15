@@ -21,7 +21,7 @@ on:
       baritone-ref:
         description: "canonrebel04/baritone-v2 branch, tag, or commit to bundle"
         required: false
-        default: "26.1"
+        default: "26.3"
         type: string
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
-      BARITONE_REF: ${{ github.event.inputs.baritone-ref || '26.1' }}
+      BARITONE_REF: ${{ github.event.inputs.baritone-ref || '26.3' }}
 
     steps:
       - name: Checkout Meteor

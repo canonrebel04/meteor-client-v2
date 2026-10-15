@@ -374,6 +374,7 @@ public class ProjectileEntitySimulator {
                 entity -> !entity.isSpectator() && entity.isAlive() && entity.isPickable(),
                 getToleranceMargin(),
                 ClipContext.Block.COLLIDER,
+                false,
                 false
             );
 

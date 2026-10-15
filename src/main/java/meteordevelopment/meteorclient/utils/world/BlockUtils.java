@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.utils.world;
 
+import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
@@ -19,7 +20,7 @@ import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
+import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -32,6 +33,7 @@ import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.*;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.level.block.state.properties.SlabType;
@@ -52,6 +54,11 @@ public class BlockUtils {
     }
 
     @PreInit
+    /** Replacement for the removed {@code BlockState#blocksMotion()} (same logic as 26.2). */
+    public static boolean blocksMotion(BlockState state) {
+        return !state.is(Blocks.COBWEB) && !state.is(Blocks.BAMBOO_SAPLING) && state.isSolid();
+    }
+
     public static void init() {
         MeteorClient.EVENT_BUS.subscribe(BlockUtils.class);
     }
@@ -137,8 +144,8 @@ public class BlockUtils {
         InteractionResult result = mc.gameMode.useItemOn(mc.player, hand, blockHitResult);
 
         if (result.consumesAction()) {
-            if (swing) mc.player.swing(hand);
-            else mc.getConnection().send(new ServerboundSwingPacket(hand));
+            if (swing) PlayerUtils.swingHand(hand);
+            else mc.getConnection().send(ServerboundPunchPacket.INSTANCE);
         }
 
         mc.player.setShiftKeyDown(wasSneaking);
@@ -240,7 +247,7 @@ public class BlockUtils {
         if (!canBreak(blockPos, mc.level.getBlockState(blockPos))) return false;
 
         // Creating new instance of block pos because minecraft assigns the parameter to a field, and we don't want it to change when it has been stored in a field somewhere
-        BlockPos pos = blockPos instanceof BlockPos.MutableBlockPos ? new BlockPos(blockPos) : blockPos;
+        BlockPos pos = blockPos instanceof BlockPos.MutableBlockPos ? blockPos.immutable() : blockPos;
 
         InstantRebreak ir = Modules.get().get(InstantRebreak.class);
         if (ir != null && ir.isActive() && ir.blockPos.equals(pos) && ir.shouldMine()) {
@@ -252,8 +259,8 @@ public class BlockUtils {
             mc.gameMode.continueDestroyBlock(pos, getDirection(blockPos));
         else mc.gameMode.startDestroyBlock(pos, getDirection(blockPos));
 
-        if (swing) mc.player.swing(InteractionHand.MAIN_HAND);
-        else mc.getConnection().send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        if (swing) PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
+        else mc.getConnection().send(ServerboundPunchPacket.INSTANCE);
 
         breaking = true;
         breakingThisTick = true;

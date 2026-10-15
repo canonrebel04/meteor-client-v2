@@ -5,6 +5,8 @@
 
 package meteordevelopment.meteorclient.commands.commands;
 
+import java.net.URI;
+import com.mojang.blaze3d.Blaze3D;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
@@ -48,7 +50,7 @@ public class NotebotCommand extends Command {
     @Override
     public void build(LiteralArgumentBuilder<ClientSuggestionProvider> builder) {
         builder.then(literal("help").executes(_ -> {
-            Util.getPlatform().openUri("https://github.com/MeteorDevelopment/meteor-client/wiki/Notebot-Guide");
+            Blaze3D.openUri(URI.create("https://github.com/MeteorDevelopment/meteor-client/wiki/Notebot-Guide"));
             return SINGLE_SUCCESS;
         }));
 
