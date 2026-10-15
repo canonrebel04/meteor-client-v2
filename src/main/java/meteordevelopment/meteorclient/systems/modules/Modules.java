@@ -609,6 +609,7 @@ public class Modules extends System<Modules> {
 
     private void initMisc() {
         add(new Derp());
+        add(new NoChatReports());
         add(new AIChat());
         add(new AntiPacketKick());
         add(new AutoReconnect());
