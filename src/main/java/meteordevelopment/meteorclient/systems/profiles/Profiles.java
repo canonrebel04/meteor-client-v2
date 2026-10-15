@@ -5,6 +5,8 @@
 
 package meteordevelopment.meteorclient.systems.profiles;
 
+import static meteordevelopment.meteorclient.MeteorClient.mc;
+import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.GameJoinedEvent;
 import meteordevelopment.meteorclient.systems.System;
@@ -65,11 +67,30 @@ public class Profiles extends System<Profiles> implements Iterable<Profile> {
 
     @EventHandler
     private void onGameJoined(GameJoinedEvent event) {
-        for (Profile profile : this) {
-            if (profile.loadOnJoin.get().contains(Utils.getWorldName())) {
-                profile.load();
-            }
+        boolean multiplayer = !mc.isLocalServer() && mc.getCurrentServer() != null;
+        Profile p = pickFor(Utils.getWorldName(), multiplayer);
+        if (p != null) {
+            p.load();
+            ChatUtils.info("Profiles", "Auto-loaded profile (highlight)%s(default).", p.name.get());
         }
+    }
+
+    /** Profile that would be auto-loaded for this address, or null. load-on-join entries count as exact patterns. */
+    public Profile pickFor(String address, boolean multiplayer) {
+        List<ServerProfileMatcher.Candidate> cands = new ArrayList<>();
+        for (Profile p : this) {
+            List<String> pats = new ArrayList<>(p.loadOnJoin.get());
+            pats.addAll(p.serverPatterns.get());
+            cands.add(new ServerProfileMatcher.Candidate(p.name.get(), pats, p.defaultFallback.get()));
+        }
+        String name = ServerProfileMatcher.pick(cands, address, multiplayer);
+        return name == null ? null : get(name);
+    }
+
+    /** Marks {@code profile} as the only default fallback (null clears it). */
+    public void setFallback(Profile profile) {
+        for (Profile p : this) p.defaultFallback.set(p.equals(profile));
+        save();
     }
 
     public boolean isEmpty() {
