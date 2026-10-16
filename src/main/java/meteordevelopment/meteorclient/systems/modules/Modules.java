@@ -558,6 +558,7 @@ public class Modules extends System<Modules> {
     private void initWorld() {
         add(new Ambience());
         add(new AutoBreed());
+        add(new AutoFarm());
         add(new AutoBrewer());
         add(new AutoMount());
         add(new AutoNametag());
