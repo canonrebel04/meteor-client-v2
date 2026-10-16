@@ -109,7 +109,7 @@ public class SmartCombatHud extends HudElement {
 
         String title = "Combat Mode";
         String status = cb.isActive() ? "Enabled" : "Disabled";
-        String mode = "Mode: " + (cb.isActive() ? cb.getCombatMode().name() : "N/A");
+        String mode = "Mode: " + (cb.isActive() ? modeLabel(cb) : "N/A");
         String targetLine = "Target: none";
         String stateLine = "State: " + (cb.isActive() ? cb.getState().name() : "IDLE");
 
@@ -168,7 +168,7 @@ public class SmartCombatHud extends HudElement {
         y += lineHeight;
 
         // Mode
-        String modeName = active ? cb.getCombatMode().name() : "N/A";
+        String modeName = active ? modeLabel(cb) : "N/A";
         renderer.text("Mode: " + modeName, x, y, secondaryColor.get(), false, getScale());
         y += lineHeight;
 
@@ -204,5 +204,14 @@ public class SmartCombatHud extends HudElement {
 
     private double getScale() {
         return customScale.get() ? scale.get() : Hud.get().getTextScale();
+    }
+
+    /** Mode name plus forced marker and resolved follow distance, e.g. "KITE* (follow 5.5m)". */
+    private static String modeLabel(CombatBrainModule cb) {
+        StringBuilder sb = new StringBuilder(cb.getCombatMode().name());
+        if (cb.getForcedMode() != null) sb.append('*');
+        double fd = cb.getFollowDistance();
+        if (!Double.isNaN(fd)) sb.append(" (follow ").append(Math.round(fd * 10.0) / 10.0).append("m)");
+        return sb.toString();
     }
 }

@@ -166,6 +166,9 @@ public class ModuleAutomator {
         if (brain.bowDetect.get() && target != null) {
             active = isHoldingRanged(target);
         }
+        // Mode loadout (spec section 3): KITE/SNIPE keep ArrowDodge up while we hold range.
+        CombatMode mode = brain.getCombatMode();
+        if (target != null && (mode == CombatMode.KITE || mode == CombatMode.SNIPE)) active = true;
         setModuleState(ArrowDodge.class, active);
         if (active) activeRuleNames.add("BowDetect");
     }
@@ -371,7 +374,10 @@ public class ModuleAutomator {
         // Only enable Surround if player actually has blocks to place (need at
         // least 4 for feet placement). Enabling with no blocks is a no-op that
         // wastes module state and confuses the user.
-        boolean shouldSurround = (holeActive || swarmActive) && hasPlaceableBlocks(4);
+        // Mode loadout (spec section 3): BURROW digs in with Surround.
+        boolean burrowMode = brain.getCombatMode() == CombatMode.BURROW;
+        if (burrowMode) activeRuleNames.add("BurrowMode");
+        boolean shouldSurround = (holeActive || swarmActive || burrowMode) && hasPlaceableBlocks(4);
         setModuleState(Surround.class, shouldSurround);
     }
 
