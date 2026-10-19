@@ -42,6 +42,20 @@ public class Profile implements ISerializable<Profile> {
         .build()
     );
 
+    public Setting<List<String>> serverPatterns = sgGeneral.add(new StringListSetting.Builder()
+        .name("server-patterns")
+        .description("Address globs that auto-load this profile, e.g. *.2b2t.org or play.example.net:25570. Most specific match wins.")
+        .filter((text, c) -> Utils.ipFilter(text, c) || c == '*')
+        .build()
+    );
+
+    public Setting<Boolean> defaultFallback = sgGeneral.add(new BoolSetting.Builder()
+        .name("default-fallback")
+        .description("Load this profile when joining a multiplayer server that no profile matches.")
+        .defaultValue(false)
+        .build()
+    );
+
     public Setting<Boolean> hud = sgSave.add(new BoolSetting.Builder()
         .name("hud")
         .description("Whether the profile should save hud.")
