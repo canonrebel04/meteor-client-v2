@@ -63,7 +63,7 @@ public class TargetESP extends Module {
     private boolean inRange;
 
     public TargetESP() {
-        super(Categories.Combat, "target-esp", "Renders an ESP box around the SmartCombat module's current target.");
+        super(Categories.Combat, "target-esp", "Renders an ESP box around the SmartCombat module's current target.", "brain-target-esp", "target-highlight");
     }
 
     @Override
