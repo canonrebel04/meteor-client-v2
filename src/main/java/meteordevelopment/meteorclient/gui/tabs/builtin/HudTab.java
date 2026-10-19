@@ -56,6 +56,7 @@ public class HudTab extends Tab {
 
             WButton openEditor = add(theme.button("Edit")).expandX().widget();
             openEditor.action = () -> mc.gui.setScreen(new HudEditorScreen(theme));
+            openEditor.tooltip = "Edit HUD elements";
 
             WHorizontalList buttons = add(theme.horizontalList()).expandX().widget();
             buttons.add(theme.confirmedButton("Clear", "Confirm")).expandX().widget().action = hud::clear;
