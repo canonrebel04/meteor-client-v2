@@ -1090,7 +1090,8 @@ public class CombatBrainModule extends Module {
         boolean wardenNear = false;
         if (wardenCounter.get() && mc.level != null) {
             for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
-                if (entity.getType() == EntityTypes.WARDEN && entity.distanceTo(mc.player) <= 16.0) {
+                // ⚡ Bolt: Use squared distance check to avoid JNI Math.sqrt overhead per entity
+                if (entity.getType() == EntityTypes.WARDEN && entity.distanceToSqr(mc.player) <= 256.0) {
                     wardenNear = true;
                     break;
                 }
