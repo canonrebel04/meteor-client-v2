@@ -1822,7 +1822,8 @@ public class CombatBrainModule extends Module {
         // Chase range is much larger than acquisition range: once a target is
         // acquired, the brain follows it (via baritone) up to max-chase-range
         // instead of abandoning the chase at target-range + 2.
-        if (entity.distanceTo(mc.player) > maxChaseRange.get()) return false;
+        double maxChase = maxChaseRange.get();
+        if (entity.distanceToSqr(mc.player) > maxChase * maxChase) return false; // ⚡ Bolt: Use distanceToSqr to avoid Math.sqrt overhead
         return true;
     }
 
