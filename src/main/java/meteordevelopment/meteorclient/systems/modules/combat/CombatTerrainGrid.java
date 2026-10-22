@@ -287,8 +287,11 @@ public class CombatTerrainGrid {
 
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
             if (entity instanceof LivingEntity le && le != mc.player && le.isAlive()) {
-                double distance = mc.player.distanceTo(le);
-                if (distance <= 2 * gridSize) {
+                double distanceSq = mc.player.distanceToSqr(le);
+                double limit = 2.0 * gridSize;
+                // ⚡ Bolt: Use distanceToSqr to avoid Math.sqrt overhead
+                if (distanceSq <= limit * limit) {
+                    double distance = Math.sqrt(distanceSq);
                     boolean visible = isTargetVisible(le);
                     threats.add(new ThreatEntry(le, distance, visible));
                 }
