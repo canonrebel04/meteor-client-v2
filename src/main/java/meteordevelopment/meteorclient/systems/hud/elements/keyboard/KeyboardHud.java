@@ -1054,6 +1054,7 @@ public class KeyboardHud extends HudElement {
         };
 
         WButton reset = table.add(theme.button(GuiRenderer.RESET)).widget();
+        reset.tooltip = "Reset";
         reset.action = () -> {
             setting.reset();
 
