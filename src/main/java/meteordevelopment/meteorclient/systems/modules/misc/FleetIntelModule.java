@@ -81,7 +81,7 @@ public class FleetIntelModule extends Module {
 
     private Thread readerThread;
     public FleetIntelModule() {
-        super(Categories.Misc, "fleet-intel", "Bridges the headless Mineflayer fleet (scout sightings) into the client: radar, alerts, and swarm relay.");
+        super(Categories.Misc, "fleet-intel", "Bridges the headless Mineflayer fleet (scout sightings) into the client: radar, alerts, and swarm relay.", "fleet", "mineflayer", "scouts");
     }
 
     @Override
