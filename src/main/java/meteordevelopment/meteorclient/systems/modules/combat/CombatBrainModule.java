@@ -618,6 +618,9 @@ public class CombatBrainModule extends Module {
     private CombatMode combatMode = CombatMode.AGGRESSIVE;
     private boolean stealthAntiDetectionEnabled = false;
     private int modeHoldTimer;
+    /** Manual override from `.combat-brain mode <name>`; null = automatic mode loop. */
+    private CombatMode forcedMode = null;
+    private double lastFollowDistance = Double.NaN;
     private int switchTimer;
     private int lastSwitchTick = -999;
     private double currentTargetScore;
@@ -751,6 +754,8 @@ public class CombatBrainModule extends Module {
         state = BrainState.IDLE;
         combatMode = CombatMode.AGGRESSIVE;
         modeHoldTimer = 0;
+        forcedMode = null;
+        lastFollowDistance = Double.NaN;
         currentTarget = null;
         followController = null;
         tacticalPositioner = null;
@@ -1311,7 +1316,14 @@ public class CombatBrainModule extends Module {
         double threat = computeThreatLevel();
 
         // Tactical combat-mode evaluation
-        if (modeSwitch.get()) {
+        if (forcedMode != null) {
+            if (combatMode != forcedMode) {
+                combatMode = forcedMode;
+                modeHoldTimer = 0;
+            } else {
+                modeHoldTimer += 2;
+            }
+        } else if (modeSwitch.get()) {
             CombatMode proposed = CombatMode.evaluateCombatMode(
                 threat,
                 engageThreshold.get(),
@@ -1320,8 +1332,8 @@ public class CombatBrainModule extends Module {
                 totems,
                 currentTarget,
                 terrainGrid,
-                false,
-                false,
+                InvUtils.find(Items.END_CRYSTAL).found(),
+                InvUtils.find(Items.RESPAWN_ANCHOR).found(),
                 crystal.get()
             );
             CombatMode prevMode = combatMode;
@@ -1332,18 +1344,19 @@ public class CombatBrainModule extends Module {
                 modeHoldTimer += 2;
             }
 
-            // STEALTH mode wiring: enable AntiDetectionModule while hidden so
-            // rotation jitter + sneak cycling mask bot-like behavior. Disable
-            // and release when leaving STEALTH.
-            if (combatMode == CombatMode.STEALTH) {
-                if (!stealthAntiDetectionEnabled) {
-                    enableModule(AntiDetectionModule.class);
-                    stealthAntiDetectionEnabled = true;
-                }
-            } else if (stealthAntiDetectionEnabled) {
-                disableModule(AntiDetectionModule.class);
-                stealthAntiDetectionEnabled = false;
+        }
+
+        // STEALTH mode wiring: enable AntiDetectionModule while hidden so
+        // rotation jitter + sneak cycling mask bot-like behavior. Disable
+        // and release when leaving STEALTH. Runs for both auto and forced modes.
+        if (combatMode == CombatMode.STEALTH) {
+            if (!stealthAntiDetectionEnabled) {
+                enableModule(AntiDetectionModule.class);
+                stealthAntiDetectionEnabled = true;
             }
+        } else if (stealthAntiDetectionEnabled) {
+            disableModule(AntiDetectionModule.class);
+            stealthAntiDetectionEnabled = false;
         }
 
         // Emergency check
@@ -1915,7 +1928,10 @@ public class CombatBrainModule extends Module {
         double envThreat = Math.min(1.0, envPressure * 0.8);
 
         double coverFactor = 1.0;
-        if (coverModifier.get() && mc.level != null) {
+        if (coverModifier.get() && terrainGrid != null && terrainGrid.getGridSize() > 0 && mc.level != null) {
+            // AwarenessCube cover: solid cells in the 2-block shell at feet/head height.
+            coverFactor = AwarenessMath.coverThreatFactor(terrainGrid.getCoverCount());
+        } else if (coverModifier.get() && mc.level != null) {
             BlockPos playerPos = mc.player.blockPosition();
             int solidNeighbors = 0;
             int[] dx = {-1, 1, 0, 0, -1, -1, 1, 1};
@@ -2160,6 +2176,7 @@ public class CombatBrainModule extends Module {
         if (dynamicFollow.get() && lastAnalysis != null) {
             targetDistance = CombatTargetAnalyzer.computeDynamicFollowDistance(lastAnalysis, CombatMode.modePadding(combatMode));
         }
+        lastFollowDistance = targetDistance;
         double effectiveStrikeDist = Math.min(strikeDistance.get(), targetDistance);
 
         // --- Tactical positioning: group-aware bubble movement, 1v1 circle strafing & ranged kiting ---
@@ -2551,6 +2568,24 @@ public class CombatBrainModule extends Module {
             if (mc.player.getInventory().getItem(i).getItem() == Items.TOTEM_OF_UNDYING) count++;
         }
         return count;
+    }
+
+    /** Force a combat mode (null = automatic). Used by `.combat-brain mode`. */
+    public void setForcedMode(CombatMode mode) {
+        this.forcedMode = mode;
+    }
+
+    public CombatMode getForcedMode() {
+        return forcedMode;
+    }
+
+    /** Last resolved follow/strike distance in blocks, or NaN if not engaged yet. */
+    public double getFollowDistance() {
+        return lastFollowDistance;
+    }
+
+    public CombatTerrainGrid getTerrainGrid() {
+        return terrainGrid;
     }
 
     public CombatMode getCombatMode() {
