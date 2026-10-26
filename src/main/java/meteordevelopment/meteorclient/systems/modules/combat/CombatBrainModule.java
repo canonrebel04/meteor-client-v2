@@ -1021,7 +1021,7 @@ public class CombatBrainModule extends Module {
         if (mc.level == null || mc.player == null) return;
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
             if (entity.getType() == EntityTypes.EVOKER && entity instanceof LivingEntity evoker && evoker.isAlive()) {
-                if (evoker.distanceTo(mc.player) <= 10.0) {
+                if (evoker.distanceToSqr(mc.player) <= 100.0) { // ⚡ Bolt: Use distanceToSqr to avoid Math.sqrt overhead
                     mc.options.keyLeft.setDown(true);
                     break;
                 }
