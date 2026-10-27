@@ -68,9 +68,10 @@ public class CombatFollowController {
         // Direct pursuit range up to 24 blocks (beyond this, use Baritone macro navigation)
         if (distSq > 24.0 * 24.0) return false;
 
-        double dist = Math.sqrt(distSq);
-        if (dist < 0.5) return true;
+        // ⚡ Bolt: Early return checking squared distance instead of Math.sqrt(distSq) < 0.5 to avoid JNI overhead in tight loops
+        if (distSq < 0.25) return true;
 
+        double dist = Math.sqrt(distSq);
         int steps = Math.max(1, (int) Math.ceil(dist / 0.6));
         double stepX = dx / steps;
         double stepZ = dz / steps;
