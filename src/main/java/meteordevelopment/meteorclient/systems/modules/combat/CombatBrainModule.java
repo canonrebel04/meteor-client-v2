@@ -988,12 +988,12 @@ public class CombatBrainModule extends Module {
 
             if (!isDeflectable) continue;
 
-            double dist = entity.distanceTo(mc.player);
-            if (dist <= 4.2) {
+            double distSq = entity.distanceToSqr(mc.player);
+            if (distSq <= 17.64) {
                 var delta = entity.getDeltaMovement();
                 var relPos = mc.player.position().subtract(entity.position());
                 double dot = delta.x * relPos.x + delta.y * relPos.y + delta.z * relPos.z;
-                if (dot > 0 || dist <= 3.0) {
+                if (dot > 0 || distSq <= 9.0) {
                     double yaw = Rotations.getYaw(entity);
                     double pitch = Rotations.getPitch(entity);
                     float deltaYaw = Mth.wrapDegrees((float) (yaw - mc.player.getYRot()));
