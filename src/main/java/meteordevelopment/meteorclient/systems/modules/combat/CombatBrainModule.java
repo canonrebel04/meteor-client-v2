@@ -2033,7 +2033,8 @@ public class CombatBrainModule extends Module {
     private void disableCombatModules() {
         // If an enemy is actively within 5.5 blocks pursuing us, DO NOT disarm!
         // Keep KillAura, AutoWeapon, AutoArmor, and Shield active so the bot fights back and knocks the pursuer away.
-        if (currentTarget != null && currentTarget.isAlive() && mc.player != null && mc.player.distanceTo(currentTarget) <= 5.5) {
+        // ⚡ Bolt: Use distanceToSqr to avoid Math.sqrt overhead
+        if (currentTarget != null && currentTarget.isAlive() && mc.player != null && mc.player.distanceToSqr(currentTarget) <= 5.5 * 5.5) {
             syncKillAura();
             enableModule(KillAura.class);
             if (autoArmor.get()) enableModule(AutoArmor.class);
