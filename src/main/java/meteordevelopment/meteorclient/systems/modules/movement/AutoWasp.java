@@ -165,7 +165,7 @@ public class AutoWasp extends Module {
 
         Vec3 targetPos = target.position().add(offset.get().x, offset.get().y, offset.get().z);
 
-        if (predictMovement.get()) targetPos.add(Entity.collideBoundingBox(target, target.getDeltaMovement(),
+        if (predictMovement.get()) targetPos = targetPos.add(Entity.collideBoundingBox(target, target.getDeltaMovement(),
             target.getBoundingBox(), mc.level, mc.level.getEntityCollisions(target, target.getBoundingBox().expandTowards(target.getDeltaMovement()))));
 
         if (avoidLanding.get()) {

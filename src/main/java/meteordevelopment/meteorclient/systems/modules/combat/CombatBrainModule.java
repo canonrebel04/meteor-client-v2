@@ -1006,7 +1006,7 @@ public class CombatBrainModule extends Module {
                     if (mc.gameMode != null) {
                         mc.gameMode.attack(mc.player, entity);
                     }
-                    PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
+                    PlayerUtils.punch(true);
                     break;
                 }
             }

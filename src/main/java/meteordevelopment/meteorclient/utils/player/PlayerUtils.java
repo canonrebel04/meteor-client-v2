@@ -22,7 +22,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
@@ -48,8 +50,18 @@ public class PlayerUtils {
     }
 
     /** Client-side hand swing (26.3: swing no longer sends a packet by itself). */
-    public static void swingHand(net.minecraft.world.InteractionHand hand) {
-        mc.player.swing(hand, mc.player.getItemInHand(hand).getAttackAnimation(), false);
+    public static void swingHand(InteractionHand hand) {
+        swingHand(hand, false);
+    }
+
+    public static void swingHand(InteractionHand hand, boolean interact) {
+        mc.player.swing(hand, interact ? mc.player.getItemInHand(hand).getInteractAnimation() : mc.player.getItemInHand(hand).getAttackAnimation(), false);
+    }
+
+    /** Left-click attack/break swing + ServerboundPunchPacket (mirrors vanilla 26.3 startAttack/continueAttack). */
+    public static void punch(boolean swing) {
+        if (swing) swingHand(InteractionHand.MAIN_HAND, false);
+        mc.getConnection().send(ServerboundPunchPacket.INSTANCE);
     }
 
     public static Color getPlayerColor(Player entity, Color defaultColor) {
@@ -217,7 +229,7 @@ public class PlayerUtils {
 
                 for (BlockPos bp : BlockPos.betweenClosed(playerPos.offset(-range, -range, -range), playerPos.offset(range, range, range))) {
                     if (mc.level.getBlockState(bp).getBlock() instanceof BedBlock) {
-                        Vec3 pos = new Vec3(bp.getX(), bp.getY(), bp.getZ());
+                        Vec3 pos = Vec3.atCenterOf(bp);
                         float explosionDamage = DamageUtils.bedDamage(mc.player, pos);
                         if (explosionDamage > damageTaken) damageTaken = explosionDamage;
                     }

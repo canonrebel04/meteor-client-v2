@@ -763,7 +763,7 @@ public class HighwayBuilder extends Module {
                 normalMining.stopDestroying();
             }
 
-            PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
+            PlayerUtils.punch(true);
         }
 
         if (packetMining != null) {

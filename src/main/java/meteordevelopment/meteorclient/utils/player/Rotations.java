@@ -186,7 +186,6 @@ public class Rotations {
         if (sensitivity < 0) sensitivity = 0.5;
         double f = sensitivity * 0.6 + 0.2;
         double gcdValue = f * f * f * 1.2;
-        if (pitch) gcdValue *= 0.1;
         if (gcdValue <= 0) return deltaDegrees;
         return (float) (Math.round(deltaDegrees / gcdValue) * gcdValue);
     }

@@ -23,6 +23,7 @@ import meteordevelopment.meteorclient.systems.modules.player.ChestSwap;
 import meteordevelopment.meteorclient.systems.modules.player.Rotation;
 import meteordevelopment.meteorclient.systems.modules.render.Freecam;
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.core.SectionPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
@@ -426,8 +427,8 @@ public class ElytraFly extends Module {
                 currentMode.handleVerticalSpeed(event);
             }
 
-            int chunkX = (int) ((mc.player.getX() + currentMode.velX) / 16);
-            int chunkZ = (int) ((mc.player.getZ() + currentMode.velZ) / 16);
+            int chunkX = SectionPos.blockToSectionCoord(Mth.floor(mc.player.getX() + currentMode.velX));
+            int chunkZ = SectionPos.blockToSectionCoord(Mth.floor(mc.player.getZ() + currentMode.velZ));
             if (dontGoIntoUnloadedChunks.get()) {
                 if (mc.level.getChunkSource().hasChunk(chunkX, chunkZ)) {
                     if (flightMode.get() != ElytraFlightModes.Bounce)

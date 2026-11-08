@@ -22,7 +22,7 @@ public class BuildHeight extends Module {
     private void onSendPacket(PacketEvent.Send event) {
         if (!(event.packet instanceof ServerboundUseItemOnPacket p)) return;
         if (mc.level == null) return;
-        if (p.hitResult().getLocation().y >= mc.level.getHeight() && p.hitResult().getDirection() == Direction.UP) {
+        if ((p.hitResult().getBlockPos().getY() >= mc.level.getMaxY() || p.hitResult().getLocation().y >= mc.level.getMaxY() + 1) && p.hitResult().getDirection() == Direction.UP) {
             ((BlockHitResultAccessor) p.hitResult()).meteor$setDirection(Direction.DOWN);
         }
     }

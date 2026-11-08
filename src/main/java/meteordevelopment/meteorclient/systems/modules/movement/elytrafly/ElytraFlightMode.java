@@ -125,12 +125,12 @@ public class ElytraFlightMode {
 
                 if (itemResult.isOffhand()) {
                     mc.gameMode.useItem(mc.player, InteractionHand.OFF_HAND);
-                    PlayerUtils.swingHand(InteractionHand.OFF_HAND);
+                    PlayerUtils.swingHand(InteractionHand.OFF_HAND, true);
                 } else {
                     InvUtils.swap(itemResult.slot(), true);
 
                     mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
-                    PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
+                    PlayerUtils.swingHand(InteractionHand.MAIN_HAND, true);
 
                     InvUtils.swapBack();
                 }

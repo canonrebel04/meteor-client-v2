@@ -493,7 +493,7 @@ public class KillAura extends Module {
             }
             // Passive mobs with baby variants (animals, villagers)
             if (entity instanceof AgeableMob && (!(entity instanceof Frog || entity instanceof Parrot))) {
-                passiveMobAgeFilter.get().test(livingEntity);
+                return passiveMobAgeFilter.get().test(livingEntity);
             }
         }
         return true;
@@ -521,7 +521,7 @@ public class KillAura extends Module {
             Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target, Target.Body));
 
         mc.gameMode.attack(mc.player, target);
-        PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
+        PlayerUtils.punch(true);
 
         hitTimer = 0;
     }

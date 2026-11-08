@@ -174,14 +174,20 @@ public class MaceKill extends Module {
         FindItemResult wc = InvUtils.findInHotbar(Items.WIND_CHARGE);
         if (!wc.found()) return;
 
-        InteractionHand hand = wc.getHand();
-        if (!wc.isOffhand() && hand == InteractionHand.MAIN_HAND && !InvUtils.testInMainHand(Items.WIND_CHARGE)) {
+        boolean isOffhand = wc.isOffhand();
+        int prevSlot = mc.player.getInventory().getSelectedSlot();
+        if (!isOffhand) {
             InvUtils.swap(wc.slot(), false);
         }
+
+        InteractionHand hand = isOffhand ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
 
         Rotations.rotate(mc.player.getYRot(), 90, 50, () -> {
             if (mc.player != null && mc.gameMode != null) {
                 mc.gameMode.useItem(mc.player, hand);
+                if (!isOffhand) {
+                    InvUtils.swap(prevSlot, false);
+                }
             }
         });
     }
@@ -202,6 +208,6 @@ public class MaceKill extends Module {
 
     private void attack(Player target) {
         mc.player.connection.send(new ServerboundAttackPacket(target.getId()));
-        PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
+        PlayerUtils.punch(true);
     }
 }

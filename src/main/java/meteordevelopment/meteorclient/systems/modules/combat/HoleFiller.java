@@ -358,7 +358,7 @@ public class HoleFiller extends Module {
                 player.isDeadOrDying() ||
                 !Friends.get().shouldAttack(player) ||
                 (ignoreSafe.get() && isSurrounded(player)) ||
-                (onlyMoving.get() && (player.getX() - player.xo != 0 || player.getY() - player.yo != 0 || player.getZ() - player.zo != 0))
+                (onlyMoving.get() && player.getX() - player.xo == 0 && player.getY() - player.yo == 0 && player.getZ() - player.zo == 0)
             ) continue;
 
             targets.add(player);

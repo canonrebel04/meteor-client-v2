@@ -77,7 +77,7 @@ public class RenderUtils {
         Matrix4f invProjection = new Matrix4f(projection).invert();
         Matrix4f invView = new Matrix4f(view).invert();
 
-        Vector4f center4 = new Vector4f(0, 0, 0, 1).mul(invProjection).mul(invView);
+        Vector4f center4 = new Vector4f(0, 0, 1, 1).mul(invProjection).mul(invView);
         center4.div(center4.w);
 
         Vec3 camera = mc.gameRenderer.mainCamera().position();

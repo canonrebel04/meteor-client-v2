@@ -133,14 +133,17 @@ public class Quiver extends Module {
         arrowSlots.clear();
         Set<MobEffect> usedEffects = new HashSet<>();
 
-        for (int i = mc.player.getInventory().getContainerSize(); i > 0; i--) {
+        for (int i = 35; i >= 0; i--) {
             if (i == mc.player.getInventory().getSelectedSlot()) continue;
 
             ItemStack item = mc.player.getInventory().getItem(i);
 
             if (item.getItem() != Items.TIPPED_ARROW) continue;
 
-            Iterator<MobEffectInstance> effects = item.getItem().components().get(DataComponents.POTION_CONTENTS).getAllEffects().iterator();
+            net.minecraft.world.item.alchemy.PotionContents potionContents = item.get(DataComponents.POTION_CONTENTS);
+            if (potionContents == null) continue;
+
+            Iterator<MobEffectInstance> effects = potionContents.getAllEffects().iterator();
 
             if (!effects.hasNext()) continue;
 

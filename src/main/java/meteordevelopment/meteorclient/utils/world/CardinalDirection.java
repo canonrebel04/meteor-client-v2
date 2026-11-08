@@ -26,8 +26,8 @@ public enum CardinalDirection {
         return switch (direction) {
             case NORTH -> North;
             case SOUTH -> South;
-            case WEST -> East;
-            case EAST -> West;
+            case WEST -> West;
+            case EAST -> East;
             case DOWN, UP -> null;
         };
     }

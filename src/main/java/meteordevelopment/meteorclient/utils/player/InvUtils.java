@@ -323,8 +323,10 @@ public class InvUtils {
             boolean hadEmptyCursor = mc.player.containerMenu.getCarried().isEmpty();
 
             if (type == ContainerInput.SWAP) {
-                data = from;
+                int hotbarId = from;
                 from = to;
+                // Minecraft AbstractContainerMenu#doClick expects button to be hotbar index (0..8) or 40 (offhand)
+                data = (hotbarId >= 36 && hotbarId <= 44) ? hotbarId - 36 : (hotbarId == 45 ? 40 : hotbarId);
             }
 
             if (type != null && from != -1 && to != -1) {

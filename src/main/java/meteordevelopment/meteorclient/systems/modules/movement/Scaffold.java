@@ -196,7 +196,7 @@ public class Scaffold extends Module {
             bp.set(vec.x(), vec.y(), vec.z());
         } else {
             Vec3 pos = mc.player.position();
-            if (aheadDistance.get() != 0 && !towering() && !mc.level.getBlockState(mc.player.blockPosition().below()).getCollisionShape(mc.level, mc.player.blockPosition()).isEmpty()) {
+            if (aheadDistance.get() != 0 && !towering() && !mc.level.getBlockState(mc.player.blockPosition().below()).getCollisionShape(mc.level, mc.player.blockPosition().below()).isEmpty()) {
                 Vec3 dir = Vec3.directionFromRotation(0, mc.player.getYRot()).multiply(aheadDistance.get(), 0, aheadDistance.get());
                 if (mc.options.keyUp.isDown()) pos = pos.add(dir.x, 0, dir.z);
                 if (mc.options.keyDown.isDown()) pos = pos.add(-dir.x, 0, -dir.z);
@@ -221,7 +221,7 @@ public class Scaffold extends Module {
             List<BlockPos> blockPosArray = new ArrayList<>();
             for (int x = (int) (mc.player.getX() - placeRange.get()); x < mc.player.getX() + placeRange.get(); x++) {
                 for (int z = (int) (mc.player.getZ() - placeRange.get()); z < mc.player.getZ() + placeRange.get(); z++) {
-                    for (int y = (int) Math.max(mc.level.getMinY(), mc.player.getY() - placeRange.get()); y < Math.min(mc.level.getHeight(), mc.player.getY() + placeRange.get()); y++) {
+                    for (int y = (int) Math.max(mc.level.getMinY(), mc.player.getY() - placeRange.get()); y < Math.min(mc.level.getMaxY(), mc.player.getY() + placeRange.get()); y++) {
                         bp.set(x, y, z);
                         if (BlockUtils.getPlaceSide(bp) == null) continue;
                         if (!BlockUtils.canPlace(bp)) continue;

@@ -51,7 +51,7 @@ public class BlockIterator {
         for (int x = px - hRadius; x <= px + hRadius; x++) {
             for (int z = pz - hRadius; z <= pz + hRadius; z++) {
                 for (int y = Math.max(mc.level.getMinY(), py - vRadius); y <= py + vRadius; y++) {
-                    if (y > mc.level.getHeight()) break;
+                    if (y > mc.level.getMaxY()) break;
 
                     blockPos.set(x, y, z);
                     BlockState blockState = mc.level.getBlockState(blockPos);

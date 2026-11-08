@@ -222,18 +222,18 @@ public class DamageUtils {
             damage *= 0.2f + charge * charge * 0.8f;
             enchantDamage *= charge;
 
+            // Factor critical hit
+            if (charge > 0.9f && attacker.fallDistance > 0f && !attacker.onGround() && !attacker.onClimbable() && !attacker.isInWater() && !attacker.hasEffect(MobEffects.BLINDNESS) && !attacker.isPassenger()) {
+                damage *= 1.5f;
+            }
+
             if (weapon.getItem() instanceof MaceItem item) {
                 float bonusDamage = item.getAttackDamageBonus(target, damage, damageSource);
                 if (bonusDamage > 0f) {
                     int density = Utils.getEnchantmentLevel(weapon, Enchantments.DENSITY);
-                    if (density > 0) bonusDamage += (float) (0.5f * attacker.fallDistance);
+                    if (density > 0) bonusDamage += (float) (0.5f * density * attacker.fallDistance);
                     damage += bonusDamage;
                 }
-            }
-
-            // Factor critical hit
-            if (charge > 0.9f && attacker.fallDistance > 0f && !attacker.onGround() && !attacker.onClimbable() && !attacker.isInWater() && !attacker.hasEffect(MobEffects.BLINDNESS) && !attacker.isPassenger()) {
-                damage *= 1.5f;
             }
         }
 

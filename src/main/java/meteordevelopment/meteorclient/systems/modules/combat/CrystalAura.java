@@ -1261,8 +1261,7 @@ public class CrystalAura extends Module {
                 }
             }
 
-            if (swingMode.get().client()) PlayerUtils.swingHand(hand);
-            if (swingMode.get().packet()) mc.getConnection().send(ServerboundPunchPacket.INSTANCE);
+            if (swingMode.get().client()) PlayerUtils.swingHand(hand, true);
 
             placing = true;
             placingTimer = 4;

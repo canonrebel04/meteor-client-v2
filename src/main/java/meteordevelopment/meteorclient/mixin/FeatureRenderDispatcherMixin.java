@@ -24,7 +24,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(FeatureRenderDispatcher.class)
 public class FeatureRenderDispatcherMixin {
     @Inject(method = "renderAllFeatures", at = @At("TAIL"))
-    private void onSubmitFeatures(CallbackInfo ci) {
+    private static void onSubmitFeatures(CallbackInfo ci) {
         PostProcessShaders.submitEntityVerticesIrisFallback();
     }
 }

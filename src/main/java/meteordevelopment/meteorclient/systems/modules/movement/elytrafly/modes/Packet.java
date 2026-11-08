@@ -32,22 +32,25 @@ public class Packet extends ElytraFlightMode {
     public void onTick() {
         super.onTick();
 
-        if (mc.player.getItemBySlot(EquipmentSlot.CHEST).getItem() != Items.ELYTRA || mc.player.fallDistance <= 0.2 || mc.options.keyShift.isDown())
+        if (mc.player.getItemBySlot(EquipmentSlot.CHEST).getItem() != Items.ELYTRA || mc.player.fallDistance <= 0.2)
             return;
 
-        if (mc.options.keyUp.isDown()) {
-            vec3d.add(0, 0, elytraFly.horizontalSpeed.get());
-            vec3d.yRot(-(float) Math.toRadians(mc.player.getYRot()));
-        } else if (mc.options.keyDown.isDown()) {
-            vec3d.add(0, 0, elytraFly.horizontalSpeed.get());
-            vec3d.yRot((float) Math.toRadians(mc.player.getYRot()));
+        double forward = 0;
+        double strafe = 0;
+        if (mc.options.keyUp.isDown()) forward += elytraFly.horizontalSpeed.get();
+        if (mc.options.keyDown.isDown()) forward -= elytraFly.horizontalSpeed.get();
+        if (mc.options.keyLeft.isDown()) strafe += elytraFly.horizontalSpeed.get();
+        if (mc.options.keyRight.isDown()) strafe -= elytraFly.horizontalSpeed.get();
+
+        double vertical = -elytraFly.fallMultiplier.get();
+        if (mc.options.keyJump.isDown()) {
+            vertical = elytraFly.verticalSpeed.get();
+        } else if (mc.options.keyShift.isDown()) {
+            vertical = -elytraFly.verticalSpeed.get();
         }
 
-        if (mc.options.keyJump.isDown()) {
-            vec3d.add(0, elytraFly.verticalSpeed.get(), 0);
-        } else if (!mc.options.keyJump.isDown()) {
-            vec3d.add(0, -elytraFly.verticalSpeed.get(), 0);
-        }
+        Vec3 velocity = new Vec3(strafe, vertical, forward).yRot(-(float) Math.toRadians(mc.player.getYRot()));
+        ((meteordevelopment.meteorclient.mixininterface.IVec3) vec3d).meteor$set(velocity.x, velocity.y, velocity.z);
 
         mc.player.setDeltaMovement(vec3d);
         mc.player.connection.send(new ServerboundPlayerCommandPacket(mc.player, ServerboundPlayerCommandPacket.Action.START_FALL_FLYING));

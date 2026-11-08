@@ -844,7 +844,7 @@ public class Notebot extends Module {
         }
 
         if (swingArm.get()) {
-            PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
+            PlayerUtils.swingHand(InteractionHand.MAIN_HAND, true);
         }
 
         int iterations = 0;
@@ -914,7 +914,7 @@ public class Notebot extends Module {
 
             // Swing arm
             if (swingArm.get()) {
-                PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
+                PlayerUtils.punch(true);
             }
 
             // Play notes

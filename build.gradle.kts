@@ -233,12 +233,69 @@ tasks {
         if (runErrorProne) {
             options.errorprone {
                 check("NullAway", net.ltgt.gradle.errorprone.CheckSeverity.ERROR)
-                option("NullAway:AnnotatedPackages", "meteordevelopment.meteorclient")
+                check("EqualsHashCode", net.ltgt.gradle.errorprone.CheckSeverity.WARN)
+                check("LabelledBreakTarget", net.ltgt.gradle.errorprone.CheckSeverity.WARN)
+                option("NullAway:OnlyNullMarked", "true")
                 option("NullAway:JSpecifyMode", "true")
                 // Event handlers are discovered reflectively by Orbit.
                 option("UnusedMethod:ExcludedAnnotations", "meteordevelopment.orbit.EventHandler")
             }
         }
+    }
+
+    val verifyMixins = register<JavaExec>("verifyMixins") {
+        group = "verification"
+        description = "Verifies all @Mixin targets, descriptors, @At instructions, and RenderPearl SPIR-V shaders/pipelines against 26.3."
+        dependsOn(compileJava, processResources)
+        javaLauncher.set(project.extensions.getByType<JavaToolchainService>().launcherFor(java.toolchain))
+        val verifierScript = layout.projectDirectory.file("gradle/MixinVerifier.java")
+        val classesDir = sourceSets.main.get().java.classesDirectory
+        val resourcesDir = layout.projectDirectory.dir("src/main/resources")
+        val compileCp = configurations.compileClasspath
+        val lwjglNatives = files(provider {
+            val osName = System.getProperty("os.name").lowercase()
+            val osArch = System.getProperty("os.arch").lowercase()
+            val classifier = when {
+                osName.contains("win") -> if (osArch.contains("aarch64") || osArch.contains("arm64")) "natives-windows-arm64" else "natives-windows"
+                osName.contains("mac") || osName.contains("darwin") -> if (osArch.contains("aarch64") || osArch.contains("arm64")) "natives-macos-arm64" else "natives-macos"
+                else -> if (osArch.contains("aarch64") || osArch.contains("arm64")) "natives-linux-arm64" else "natives-linux"
+            }
+            if (!gradle.startParameter.isOffline) {
+                val detached = configurations.detachedConfiguration(
+                    project.dependencies.create("org.lwjgl:lwjgl:3.4.3:$classifier"),
+                    project.dependencies.create("org.lwjgl:lwjgl-shaderc:3.4.3:$classifier"),
+                    project.dependencies.create("org.lwjgl:lwjgl-spvc:3.4.3:$classifier")
+                )
+                detached.isTransitive = false
+                runCatching { detached.resolve() }
+            }
+            compileCp.get().files
+                .filter { it.name.startsWith("lwjgl") && it.name.endsWith(".jar") }
+                .mapNotNull { it.parentFile?.parentFile }
+                .flatMap { versionDir ->
+                    versionDir.walkTopDown()
+                        .filter { it.isFile && it.name.endsWith("-$classifier.jar") }
+                        .toList()
+                }
+        })
+        inputs.file(verifierScript)
+        inputs.dir(classesDir)
+        inputs.dir(resourcesDir)
+        inputs.files(compileCp)
+        classpath(compileCp, lwjglNatives, classesDir)
+        jvmArgs("--enable-native-access=ALL-UNNAMED")
+        mainClass.set(verifierScript.asFile.absolutePath)
+        argumentProviders.add(CommandLineArgumentProvider {
+            listOf(
+                "--classpath", compileCp.get().asPath,
+                "--mixins", classesDir.get().asFile.absolutePath,
+                "--resources", resourcesDir.asFile.absolutePath
+            )
+        })
+    }
+
+    check {
+        dependsOn(verifyMixins)
     }
 
     javadoc {

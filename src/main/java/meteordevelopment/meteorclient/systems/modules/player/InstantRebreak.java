@@ -109,8 +109,6 @@ public class InstantRebreak extends Module {
                 if (rotate.get())
                     Rotations.rotate(Rotations.getYaw(blockPos), Rotations.getPitch(blockPos), this::sendPacket);
                 else sendPacket();
-
-                mc.getConnection().send(ServerboundPunchPacket.INSTANCE);
             }
         } else {
             ticks++;
@@ -121,6 +119,7 @@ public class InstantRebreak extends Module {
         mc.gameMode.startPrediction(mc.level, sequence ->
             new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK, blockPos, direction == null ? Direction.UP : direction, sequence)
         );
+        mc.getConnection().send(ServerboundPunchPacket.INSTANCE);
     }
 
     public boolean shouldMine() {

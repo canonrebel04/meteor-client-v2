@@ -126,13 +126,11 @@ public class Step extends Module {
         // one block when holding a movement key because standing on the
         // near edge of that block is technically safe
 
-        Vec3 inputOffset = mc.player.getLookAngle();
+        Vec3 inputOffset = Vec3.directionFromRotation(0, mc.player.getYRot()).scale(1.2);
         Vec2 input = mc.player.input.getMoveVector();
-        ((IVec3) inputOffset).meteor$setY(0);
-        inputOffset = inputOffset.normalize().scale(1.2);
         double zdot = inputOffset.z;
         double xdot = inputOffset.x;
-        inputOffset = new Vec3(input.y * xdot + input.x * zdot, 0, input.x * xdot + input.y * zdot);
+        inputOffset = new Vec3(input.y * xdot + input.x * zdot, 0, input.y * zdot - input.x * xdot);
 
         for (int i = 1; i < max; i++) {
             mc.player.setBoundingBox(initial.move(0, i, 0));

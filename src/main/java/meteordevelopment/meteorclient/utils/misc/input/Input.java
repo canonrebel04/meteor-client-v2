@@ -35,23 +35,26 @@ public class Input {
     }
 
     public static void setKeyState(KeyMapping bind, boolean pressed) {
-        setKeyState(getKey(bind), pressed);
+        InputConstants.Key key = ((KeyMappingAccessor) bind).meteor$getKey();
+        if (key.getType() == InputConstants.Type.MOUSE) setButtonState(key.getValue(), pressed);
+        else setKeyState(key.getValue(), pressed);
     }
 
     public static boolean isPressed(KeyMapping bind) {
-        return isKeyPressed(getKey(bind)) || isButtonPressed(getKey(bind));
+        InputConstants.Key key = ((KeyMappingAccessor) bind).meteor$getKey();
+        return key.getType() == InputConstants.Type.MOUSE ? isButtonPressed(key.getValue()) : isKeyPressed(key.getValue());
     }
 
     public static boolean isKeyPressed(int key) {
         if (!GuiKeyEvents.canUseKeys) return false;
 
         if (key == InputConstants.UNKNOWN.getValue()) return false;
-        return key < keys.length && keys[key];
+        return key >= 0 && key < keys.length && keys[key];
     }
 
     public static boolean isButtonPressed(int button) {
-        if (button == -1) return false;
-        return button < buttons.length && buttons[button];
+        if (button == InputConstants.UNKNOWN.getValue()) return false;
+        return button >= 0 && button < buttons.length && buttons[button];
     }
 
     public static void setCursorStyle(CursorStyle style) {

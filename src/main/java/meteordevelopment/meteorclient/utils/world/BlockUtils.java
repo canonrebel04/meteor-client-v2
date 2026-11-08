@@ -20,7 +20,6 @@ import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -53,12 +52,12 @@ public class BlockUtils {
     private BlockUtils() {
     }
 
-    @PreInit
     /** Replacement for the removed {@code BlockState#blocksMotion()} (same logic as 26.2). */
     public static boolean blocksMotion(BlockState state) {
         return !state.is(Blocks.COBWEB) && !state.is(Blocks.BAMBOO_SAPLING) && state.isSolid();
     }
 
+    @PreInit
     public static void init() {
         MeteorClient.EVENT_BUS.subscribe(BlockUtils.class);
     }
@@ -143,9 +142,8 @@ public class BlockUtils {
 
         InteractionResult result = mc.gameMode.useItemOn(mc.player, hand, blockHitResult);
 
-        if (result.consumesAction()) {
-            if (swing) PlayerUtils.swingHand(hand);
-            else mc.getConnection().send(ServerboundPunchPacket.INSTANCE);
+        if (result.consumesAction() && swing) {
+            PlayerUtils.swingHand(hand, true);
         }
 
         mc.player.setShiftKeyDown(wasSneaking);
@@ -259,8 +257,7 @@ public class BlockUtils {
             mc.gameMode.continueDestroyBlock(pos, getDirection(blockPos));
         else mc.gameMode.startDestroyBlock(pos, getDirection(blockPos));
 
-        if (swing) PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
-        else mc.getConnection().send(ServerboundPunchPacket.INSTANCE);
+        PlayerUtils.punch(swing);
 
         breaking = true;
         breakingThisTick = true;

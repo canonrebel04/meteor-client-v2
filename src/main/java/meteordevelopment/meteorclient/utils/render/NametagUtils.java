@@ -76,7 +76,7 @@ public class NametagUtils {
 
         if (Double.isInfinite(x) || Double.isInfinite(y)) return false;
 
-        pos.set(x / windowScale, mc.getWindow().getHeight() - y / windowScale, allowBehind ? pmMat4.w : pmMat4.z);
+        pos.set(x / windowScale, (mc.getWindow().getHeight() - y) / windowScale, allowBehind ? pmMat4.w : pmMat4.z);
         return true;
     }
 

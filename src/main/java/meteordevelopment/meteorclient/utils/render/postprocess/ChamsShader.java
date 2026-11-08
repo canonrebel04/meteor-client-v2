@@ -69,6 +69,14 @@ public class ChamsShader extends EntityShader {
 
                 STBImage.stbi_set_flip_vertically_on_load(true);
                 ByteBuffer image = STBImage.stbi_load_from_memory(data, width, height, comp, 4);
+                if (image == null) {
+                    STBImage.stbi_set_flip_vertically_on_load(false);
+                    return;
+                }
+
+                if (IMAGE_TEX != null) {
+                    IMAGE_TEX.close();
+                }
 
                 IMAGE_TEX = new Texture(width.get(0), height.get(0), GpuFormat.RGBA8_UNORM, FilterMode.NEAREST, FilterMode.NEAREST);
                 IMAGE_TEX.upload(image);
@@ -94,7 +102,7 @@ public class ChamsShader extends EntityShader {
             color.r / 255f, color.g / 255f, color.b / 255f, color.a / 255f
         )));
 
-        if (chams.isShader() && chams.shader.get() == Chams.Shader.Image && IMAGE_TEX != null) {
+        if (chams.isShader() && chams.shader.get() == Chams.Shader.Image && IMAGE_TEX != null && !IMAGE_TEX.getTextureView().isClosed()) {
             renderer.sampler("u_TextureI", IMAGE_TEX.getTextureView(), IMAGE_TEX.getSampler());
         }
     }
@@ -102,7 +110,7 @@ public class ChamsShader extends EntityShader {
     @Override
     protected boolean shouldDraw() {
         if (chams == null) chams = Modules.get().get(Chams.class);
-        return chams.isShader();
+        return chams.isShader() && IMAGE_TEX != null && !IMAGE_TEX.getTextureView().isClosed();
     }
 
     @Override

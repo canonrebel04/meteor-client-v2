@@ -94,7 +94,7 @@ public abstract class ModelBlockRendererMixin {
     }
 
     @ModifyReturnValue(method = "shouldRenderFace", at = @At("RETURN"))
-    private static boolean shouldRenderFace$xray(boolean original, BlockAndTintGetter level, BlockState state, Direction direction, BlockPos neighborPos) {
+    private boolean shouldRenderFace$xray(boolean original, BlockAndTintGetter level, BlockState state, Direction direction, BlockPos neighborPos) {
         Xray xray = Modules.get().get(Xray.class);
 
         if (xray.isActive()) {
