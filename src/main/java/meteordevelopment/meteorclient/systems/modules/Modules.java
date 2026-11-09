@@ -586,6 +586,7 @@ public class Modules extends System<Modules> {
     }
 
     private void initMisc() {
+        add(new Panic());
         add(new AIChat());
         add(new AntiPacketKick());
         add(new AutoReconnect());
