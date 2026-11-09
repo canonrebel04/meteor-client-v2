@@ -575,6 +575,7 @@ public class Modules extends System<Modules> {
         add(new Nuker());
         add(new PacketMine());
         add(new StashFinder());
+        add(new BaseFinder());
         add(new SpawnProofer());
         add(new Timer());
         add(new VeinMiner());
