@@ -11,6 +11,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import meteordevelopment.meteorclient.commands.Command;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
+import meteordevelopment.meteorclient.systems.modules.combat.CombatMode;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
 
 public class CombatBrainCommand extends Command {
@@ -38,11 +39,30 @@ public class CombatBrainCommand extends Command {
                     info("CombatMode is evaluated dynamically each tick based on reach, gear, health, and environment.");
                     return SINGLE_SUCCESS;
                 })
+                .then(literal("auto")
+                    .executes(context -> {
+                        CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+                        if (cb == null) { error("CombatBrain module not found."); return SINGLE_SUCCESS; }
+                        cb.setForcedMode(null);
+                        info("Combat mode set to (highlight)auto(default) (mode loop resumes).");
+                        return SINGLE_SUCCESS;
+                    })
+                )
                 .then(argument("modeName", StringArgumentType.word())
                     .executes(context -> {
                         String requested = StringArgumentType.getString(context, "modeName");
-                        info("Requested mode: (highlight)" + requested + "(default)");
-                        warning("Combat mode is automatically computed each tick. Adjust engage-threshold, flee-threshold, or threat settings to alter mode evaluation.");
+                        CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+                        if (cb == null) { error("CombatBrain module not found."); return SINGLE_SUCCESS; }
+                        CombatMode mode = null;
+                        for (CombatMode m : CombatMode.values()) {
+                            if (m.name().equalsIgnoreCase(requested)) { mode = m; break; }
+                        }
+                        if (mode == null) {
+                            error("Unknown mode: " + requested + ". Valid: auto, " + java.util.Arrays.toString(CombatMode.values()));
+                            return SINGLE_SUCCESS;
+                        }
+                        cb.setForcedMode(mode);
+                        info("Forced combat mode: (highlight)" + mode.name() + "(default). Use `.combat-brain mode auto` to resume the loop.");
                         return SINGLE_SUCCESS;
                     })
                 )
@@ -81,6 +101,21 @@ public class CombatBrainCommand extends Command {
             )
 
             // .combat-brain rules
+            .then(literal("grid")
+                .executes(context -> {
+                    CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+                    if (cb == null || cb.getTerrainGrid() == null) {
+                        error("CombatBrain / terrain grid not available. Enable CombatBrain first.");
+                        return SINGLE_SUCCESS;
+                    }
+                    info("Terrain grid (2D feet-level):");
+                    for (String line : cb.getTerrainGrid().getGridString().split("\n")) info(line);
+                    info("Cover count: (highlight)" + cb.getTerrainGrid().getCoverCount()
+                        + "(default)  inOpen=" + cb.getTerrainGrid().isPlayerInOpen());
+                    return SINGLE_SUCCESS;
+                })
+            )
+
             .then(literal("rules")
                 .executes(context -> {
                     info("(highlight)Automator Rules Status:(default)");

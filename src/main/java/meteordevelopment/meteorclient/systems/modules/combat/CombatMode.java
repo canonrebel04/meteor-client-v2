@@ -37,59 +37,33 @@ public enum CombatMode {
         boolean hasAnchor,
         boolean crystalSetting
     ) {
+        var mc = net.minecraft.client.Minecraft.getInstance();
         double viability = (target != null) ? CombatTargetAnalyzer.calculateViability(target) : 0.5;
-        int nearbyEnemies = (grid != null) ? grid.getThreatMap().size() : 0;
+        int nearbyEnemies = (grid != null) ? grid.countHostiles(BURROW_RADIUS) : 0;
         boolean targetVisible = (target != null && grid != null) ? grid.isTargetVisible(target) : true;
         double targetReach = (target != null) ? CombatTargetAnalyzer.getEntityReach(target) : 2.0;
-        double myReach = CombatTargetAnalyzer.getEntityReach(
-            net.minecraft.client.Minecraft.getInstance().player != null
-                ? net.minecraft.client.Minecraft.getInstance().player : target);
+        double myReach = CombatTargetAnalyzer.getEntityReach(mc.player != null ? mc.player : target);
         float targetHpRatio = (target != null && target.getMaxHealth() > 0)
             ? (target.getHealth() + target.getAbsorptionAmount()) / target.getMaxHealth() : 1.0f;
 
-        double[] scores = new double[CombatMode.values().length];
-
-        double vulnerability = 1.0 - Math.min(1.0, health / 20.0);
-        scores[RETREAT_HEAL.ordinal()] = 1.0 / (1.0 + Math.exp(-5.0 * (vulnerability * threat - 0.35)));
-        if (health <= 4.0f && totems == 0 && threat > 0.8) scores[RETREAT_HEAL.ordinal()] = 1.0;
-
-        scores[BURROW.ordinal()] = Math.tanh(nearbyEnemies / 3.0) * 0.75;
-        if (target != null && !targetVisible && crystalSetting) {
-            scores[BURROW.ordinal()] = Math.max(scores[BURROW.ordinal()], 0.65);
-        }
-
-        scores[RUSH.ordinal()] = Math.max(0.0, (1.0 - targetHpRatio) * viability);
-
-        // Ranged Kite evaluation: flying, elevated, or high-reach enemies.
-        // Requires line-of-sight -- never pull out the bow for a target behind cover.
-        if (target != null && hasRangedWeapon() && targetVisible) {
-            boolean isAirborneOrFlying = isAirborneTarget(target);
-            var mc = net.minecraft.client.Minecraft.getInstance();
+        boolean rangedKite = false;
+        if (target != null && targetVisible && hasRangedWeapon()) {
             boolean isElevated = mc.player != null && (target.getY() - mc.player.getY() > 2.5);
-            if (isAirborneOrFlying || isElevated) {
-                scores[RANGED_KITE.ordinal()] = 0.85;
-            }
+            rangedKite = isAirborneTarget(target) || isElevated;
         }
 
-        double reachDeficit = targetReach - myReach;
-        scores[KITE.ordinal()] = (reachDeficit > 0 && isMyWeaponMelee())
-            ? Math.tanh(reachDeficit) * 0.7 : 0.0;
+        boolean inOpen = grid == null || grid.isPlayerInOpen();
 
-        scores[SNIPE.ordinal()] = (target != null && isHoldingRanged(target)) ? 0.7 : 0.0;
-
-        scores[DEFENSIVE.ordinal()] = Math.max(0.0, 0.6 - viability);
-
-        scores[STEALTH.ordinal()] = (target != null && !targetVisible && nearbyEnemies == 0)
-            ? 0.6 : 0.0;
-
-        scores[AGGRESSIVE.ordinal()] = 0.3 + viability * 0.3;
-
-        int bestIdx = 0;
-        for (int i = 1; i < scores.length; i++) {
-            if (scores[i] > scores[bestIdx]) bestIdx = i;
-        }
-        return CombatMode.values()[bestIdx];
+        return CombatModeScorer.best(new CombatModeScorer.Inputs(
+            threat, health, totems, target != null, viability, nearbyEnemies, targetVisible,
+            targetReach, myReach, targetHpRatio, isMyWeaponMelee(),
+            target != null && isHoldingRanged(target), rangedKite,
+            crystalSetting, hasCrystal || hasAnchor, inOpen
+        ));
     }
+
+    /** Radius (blocks) used for the "crowded" BURROW trigger. */
+    public static final double BURROW_RADIUS = 8.0;
 
     public static double modePadding(CombatMode mode) {
         if (mode == null) return 0.5;
