@@ -477,6 +477,7 @@ public class Modules extends System<Modules> {
         add(new Rotation());
         add(new RotationFilter());
         add(new SpeedMine());
+        add(new XCarry());
     }
 
     private void initMovement() {
