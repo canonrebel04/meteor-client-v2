@@ -81,7 +81,7 @@ public class PathVisualizationOverlay extends Module {
     private CombatIntegrationBridge bridge;
 
     public PathVisualizationOverlay() {
-        super(Categories.Combat, "path-visualization-overlay", "Renders the current Baritone combat path goal as a 3D line and text overlay.");
+        super(Categories.Combat, "path-visualization-overlay", "Renders the current Baritone combat path goal as a 3D line and text overlay.", "path-overlay", "brain-path");
     }
 
     @Override

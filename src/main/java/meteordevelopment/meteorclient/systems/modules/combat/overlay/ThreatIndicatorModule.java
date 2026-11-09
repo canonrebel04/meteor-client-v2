@@ -86,7 +86,7 @@ public class ThreatIndicatorModule extends Module {
     private final List<ThreatEntry> threats = new ArrayList<>();
 
     public ThreatIndicatorModule() {
-        super(Categories.Combat, "threat-indicator", "Draws screen-edge indicators pointing toward nearby hostile entities.");
+        super(Categories.Combat, "threat-indicator", "Draws screen-edge indicators pointing toward nearby hostile entities.", "threat-arrows", "offscreen-indicators");
     }
 
     @EventHandler
