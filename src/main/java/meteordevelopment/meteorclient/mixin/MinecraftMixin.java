@@ -292,6 +292,9 @@ public abstract class MinecraftMixin implements IMinecraft {
     // Freecam
     @Inject(method = "pick", at = @At("HEAD"), cancellable = true)
     private void updateTargetedEntityInvoke(float partialTicks, CallbackInfo ci) {
+        // Loading frames call pick before the constructor's TAIL initializes Meteor.
+        if (player == null || level == null) return;
+
         Freecam freecam = Modules.get().get(Freecam.class);
         boolean highwayBuilder = Modules.get().isActive(HighwayBuilder.class);
 

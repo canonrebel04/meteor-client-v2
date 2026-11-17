@@ -126,7 +126,12 @@ public final class MixinVerifier {
         return list;
     }
 
-    private static List<MethodModel> findMethodsInHierarchy(String owner, String spec) {
+    /**
+     * Matches only methods declared directly on {@code owner}. Mixin injection (@Inject and friends) can only
+     * land in methods declared on the target class itself; an inherited method is not part of the target's
+     * bytecode, so selecting one there fails at runtime with a critical injection failure.
+     */
+    private static List<MethodModel> findMethodsDeclared(String owner, String spec) {
         ClassModel cm = getModel(owner);
         if (cm == null) return List.of();
         String name = spec;
@@ -151,13 +156,20 @@ public final class MixinVerifier {
                 matches.add(mm);
             }
         }
-        if (matches.isEmpty()) {
-            if (cm.superclass().isPresent()) {
-                matches.addAll(findMethodsInHierarchy(cm.superclass().get().asInternalName(), spec));
-            }
-            for (ClassEntry iface : cm.interfaces()) {
-                matches.addAll(findMethodsInHierarchy(iface.asInternalName(), spec));
-            }
+        return matches;
+    }
+
+    /** Hierarchical lookup for @Shadow/@Overwrite/@Invoker, which may validly reference inherited members. */
+    private static List<MethodModel> findMethodsInHierarchy(String owner, String spec) {
+        List<MethodModel> matches = findMethodsDeclared(owner, spec);
+        if (!matches.isEmpty()) return matches;
+        ClassModel cm = getModel(owner);
+        if (cm == null) return matches;
+        if (cm.superclass().isPresent()) {
+            matches.addAll(findMethodsInHierarchy(cm.superclass().get().asInternalName(), spec));
+        }
+        for (ClassEntry iface : cm.interfaces()) {
+            matches.addAll(findMethodsInHierarchy(iface.asInternalName(), spec));
         }
         return matches;
     }
@@ -223,6 +235,11 @@ public final class MixinVerifier {
         return params;
     }
 
+    private static String parseReturnType(String methodDesc) {
+        int close = methodDesc.indexOf(')');
+        return close < 0 ? "" : methodDesc.substring(close + 1);
+    }
+
     private static void auditMixinClass(Path cf) throws Exception {
         ClassModel cm = ClassFile.of().parse(cf);
         String mixinName = cm.thisClass().asInternalName();
@@ -286,7 +303,7 @@ public final class MixinVerifier {
                                 String atValue = atVals.isEmpty() ? "" : atVals.get(0);
                                 String atTarget = atTargets.isEmpty() ? "" : atTargets.get(0);
                                 for (String spec : getStrings(map.get("method"))) {
-                                    for (MethodModel tm : findMethodsInHierarchy(target, spec)) {
+                                    for (MethodModel tm : findMethodsDeclared(target, spec)) {
                                         if (checkAtTargetInMethod(tm, atValue, atTarget)) {
                                             satisfiedGroups.add(groupName);
                                         }
@@ -366,7 +383,7 @@ public final class MixinVerifier {
                         }
                         List<String> methodSpecs = getStrings(map.get("method"));
                         for (String spec : methodSpecs) {
-                            List<MethodModel> matchedMethods = findMethodsInHierarchy(target, spec);
+                            List<MethodModel> matchedMethods = findMethodsDeclared(target, spec);
                             if (matchedMethods.isEmpty()) {
                                 if (methodGroup != null && satisfiedGroups.contains(methodGroup)) {
                                     continue;
@@ -419,6 +436,14 @@ public final class MixinVerifier {
                                         }
                                     }
                                 });
+                                List<Annotation> atAnns = new ArrayList<>();
+                                AnnotationValue atVal = map.get("at");
+                                if (atVal instanceof AnnotationValue.OfAnnotation oa) atAnns.add(oa.annotation());
+                                else if (atVal instanceof AnnotationValue.OfArray arr) {
+                                    for (AnnotationValue v : arr.values()) {
+                                        if (v instanceof AnnotationValue.OfAnnotation oa) atAnns.add(oa.annotation());
+                                    }
+                                }
                                 if (annType.equals("Lorg/spongepowered/asm/mixin/injection/Inject;")) {
                                     List<String> hParams = parseParamTypes(mm.methodType().stringValue());
                                     int ciIdx = -1;
@@ -429,11 +454,11 @@ public final class MixinVerifier {
                                         }
                                     }
                                     if (ciIdx > 0) {
-                                        List<String> prefixParams = hParams.subList(0, ciIdx);
+                                        List<String> handlerTargetArgs = hParams.subList(0, ciIdx);
                                         boolean sigOk = false;
                                         for (MethodModel tm : matchedMethods) {
                                             List<String> tParams = parseParamTypes(tm.methodType().stringValue());
-                                            if (tParams.size() >= prefixParams.size() && tParams.subList(0, prefixParams.size()).equals(prefixParams)) {
+                                            if (tParams.equals(handlerTargetArgs)) {
                                                 sigOk = true;
                                                 break;
                                             }
@@ -442,13 +467,65 @@ public final class MixinVerifier {
                                             ERRORS.add("[MISMATCHED @Inject PARAMS] " + mixinName + "#" + mm.methodName().stringValue() + mm.methodType().stringValue() + " vs " + target + "." + spec + " -> " + matchedMethods.get(0).methodType().stringValue());
                                         }
                                     }
-                                }
-                                List<Annotation> atAnns = new ArrayList<>();
-                                AnnotationValue atVal = map.get("at");
-                                if (atVal instanceof AnnotationValue.OfAnnotation oa) atAnns.add(oa.annotation());
-                                else if (atVal instanceof AnnotationValue.OfArray arr) {
-                                    for (AnnotationValue v : arr.values()) {
-                                        if (v instanceof AnnotationValue.OfAnnotation oa) atAnns.add(oa.annotation());
+                                } else if (annType.equals("Lorg/spongepowered/asm/mixin/injection/ModifyArg;")) {
+                                    // Mixin 0.17 ModifyArgInjector: handler return type must equal the selected invocation
+                                    // arg (with index < 0 the arg is inferred as the unique arg of the return type).
+                                    // Handler params must be either just that arg (single-arg mode) or the complete
+                                    // invocation argument list (multi-arg mode); trailing MixinExtras sugar params allowed.
+                                    int index = map.get("index") instanceof AnnotationValue.OfInt oi ? oi.intValue() : -1;
+                                    String hDesc = mm.methodType().stringValue();
+                                    List<String> hParams = parseParamTypes(hDesc);
+                                    String hRet = parseReturnType(hDesc);
+                                    List<List<Annotation>> paramAnns = new ArrayList<>();
+                                    mm.findAttribute(Attributes.runtimeVisibleParameterAnnotations()).ifPresent(pa -> paramAnns.addAll(pa.parameterAnnotations()));
+                                    mm.findAttribute(Attributes.runtimeInvisibleParameterAnnotations()).ifPresent(pa -> paramAnns.addAll(pa.parameterAnnotations()));
+                                    int realCount = hParams.size();
+                                    while (realCount > 0 && realCount <= paramAnns.size() && paramAnns.get(realCount - 1).stream()
+                                        .anyMatch(pa -> pa.className().stringValue().startsWith("Lcom/llamalad7/mixinextras/sugar/"))) {
+                                        realCount--;
+                                    }
+                                    List<String> effParams = hParams.subList(0, realCount);
+                                    for (Annotation atAnn : atAnns) {
+                                        Map<String, AnnotationValue> atMap = getAnnotationMap(atAnn);
+                                        List<String> atVals = getStrings(atMap.get("value"));
+                                        String atValue = atVals.isEmpty() ? "" : atVals.get(0);
+                                        List<String> atTargets = getStrings(atMap.get("target"));
+                                        String atTarget = atTargets.isEmpty() ? "" : atTargets.get(0);
+                                        if (!atValue.startsWith("INVOKE") || atTarget.isEmpty()) continue;
+                                        int paren = atTarget.indexOf('(');
+                                        if (paren < 0) continue;
+                                        List<String> invokeParams = parseParamTypes(atTarget.substring(paren));
+                                        if (invokeParams.isEmpty()) {
+                                            ERRORS.add("[INVALID @ModifyArg TARGET] " + mixinName + "#" + mm.methodName().stringValue() + hDesc + " in " + target + "." + spec + " -> @At(target=\"" + atTarget + "\"): invocation has no arguments to modify");
+                                            continue;
+                                        }
+                                        int effIndex = index;
+                                        if (effIndex < 0) {
+                                            effIndex = -1;
+                                            for (int i = 0; i < invokeParams.size(); i++) {
+                                                if (invokeParams.get(i).equals(hRet)) {
+                                                    if (effIndex >= 0) { effIndex = -2; break; }
+                                                    effIndex = i;
+                                                }
+                                            }
+                                            if (effIndex == -2) {
+                                                ERRORS.add("[AMBIGUOUS @ModifyArg INDEX] " + mixinName + "#" + mm.methodName().stringValue() + hDesc + " in " + target + "." + spec + " -> @At(target=\"" + atTarget + "\"): return type " + hRet + " matches multiple invocation args");
+                                                continue;
+                                            }
+                                            if (effIndex < 0) {
+                                                ERRORS.add("[MISMATCHED @ModifyArg RETURN] " + mixinName + "#" + mm.methodName().stringValue() + hDesc + " in " + target + "." + spec + " -> @At(target=\"" + atTarget + "\"): return type " + hRet + " matches no invocation arg");
+                                                continue;
+                                            }
+                                        }
+                                        if (effIndex >= invokeParams.size() || !invokeParams.get(effIndex).equals(hRet)) {
+                                            ERRORS.add("[MISMATCHED @ModifyArg RETURN] " + mixinName + "#" + mm.methodName().stringValue() + hDesc + " in " + target + "." + spec + " -> @At(target=\"" + atTarget + "\", index=" + index + "): arg " + effIndex + " is " + (effIndex < invokeParams.size() ? invokeParams.get(effIndex) : "<none>") + ", handler returns " + hRet);
+                                            continue;
+                                        }
+                                        String argType = invokeParams.get(effIndex);
+                                        boolean sigOk = (effParams.size() == 1 && effParams.get(0).equals(argType)) || effParams.equals(invokeParams);
+                                        if (!sigOk) {
+                                            ERRORS.add("[MISMATCHED @ModifyArg SIGNATURE] " + mixinName + "#" + mm.methodName().stringValue() + hDesc + " in " + target + "." + spec + " -> @At(target=\"" + atTarget + "\", index=" + index + "): expected (" + argType + ") or (" + String.join("", invokeParams) + ") returning " + argType);
+                                        }
                                     }
                                 }
                                 for (Annotation atAnn : atAnns) {

@@ -8,6 +8,7 @@ package meteordevelopment.meteorclient.mixin;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.render.HandView;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.FirstPersonHandsAndItems;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.tags.ItemTags;
@@ -43,7 +44,8 @@ public abstract class FirstPersonHandsAndItemsMixin {
     }
 
     @ModifyArg(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/Mth;clamp(FFF)F", ordinal = 2), index = 0)
-    private float modifyEquipProgressMainhand(float value, LocalPlayer player) {
+    private float modifyEquipProgressMainhand(float value) {
+        LocalPlayer player = Minecraft.getInstance().player;
         HandView handView = Modules.get().get(HandView.class);
         if (handView.swordSlash() && player.getMainHandItem().is(ItemTags.SWORDS)) return value;
 
@@ -54,7 +56,8 @@ public abstract class FirstPersonHandsAndItemsMixin {
     }
 
     @ModifyArg(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/Mth;clamp(FFF)F", ordinal = 3), index = 0)
-    private float modifyEquipProgressOffhand(float value, LocalPlayer player) {
+    private float modifyEquipProgressOffhand(float value) {
+        LocalPlayer player = Minecraft.getInstance().player;
         return (shouldInstantlyReplaceVisibleItem(offHandItem, player.getOffhandItem(), player) ? 1 : 0) - offHandHeight;
     }
 }

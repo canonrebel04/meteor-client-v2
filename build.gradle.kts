@@ -103,6 +103,7 @@ dependencies {
     jij(libs.starscript)
     jij(libs.discord.ipc)
     jij(libs.reflections)
+    jij(libs.javassist)
     jij(libs.netty.handler.proxy) { isTransitive = false }
     jij(libs.netty.codec.socks) { isTransitive = false }
     jij(libs.waybackauthlib)

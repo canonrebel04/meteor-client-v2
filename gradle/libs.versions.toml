@@ -30,6 +30,8 @@ starscript = "0.2.5"
 discordipc = "1.1"
 # Reflections (https://github.com/ronmamo/reflections)
 reflections = "0.10.2"
+# Javassist (https://github.com/jboss-javassist/javassist) — mandatory non-optional compile dep of Reflections 0.10.2 (POM javassist.version), required at runtime by Reflections.scan
+javassist = "3.28.0-GA"
 # Netty (https://github.com/netty/netty)
 netty = "4.2.15.Final"
 # ViaFabricPlus (https://github.com/ViaVersion/ViaFabricPlus)
@@ -66,6 +68,7 @@ orbit = { module = "meteordevelopment:orbit", version.ref = "orbit" }
 starscript = { module = "org.meteordev:starscript", version.ref = "starscript" }
 discord-ipc = { module = "meteordevelopment:discord-ipc", version.ref = "discordipc" }
 reflections = { module = "org.reflections:reflections", version.ref = "reflections" }
+javassist = { module = "org.javassist:javassist", version.ref = "javassist" }
 netty-handler-proxy = { module = "io.netty:netty-handler-proxy", version.ref = "netty" }
 netty-codec-socks = { module = "io.netty:netty-codec-socks", version.ref = "netty" }
 waybackauthlib = { module = "de.florianreuth:waybackauthlib", version.ref = "waybackauthlib" }

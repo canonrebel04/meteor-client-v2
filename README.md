@@ -20,11 +20,23 @@
 ## Usage
 
 ### Building
-- Clone this repository
-- Run `./gradlew build`
+- Use Azul Zulu JDK 25, including its `jmods` directory.
+- Build the matching Baritone checkout and publish its Fabric API-preserving runtime locally before building Meteor:
+
+```sh
+(cd ../baritone-v2 && ./gradlew build :fabric:publishToMavenLocal)
+./gradlew build -Perrorprone -Pbuild_number=dev -Pcommit=local
+```
+
+- Keep the Minecraft and Baritone dependency versions aligned across both checkouts.
+- `verifyMixins` checks mixin targets/signatures and renderer pipelines, but cannot replace a live launch and world-entry test. Minecraft 26.3 renders loading frames before client initialization finishes; custom rendering must leave those frames on the vanilla path until Meteor is ready.
 
 ### Installation
 Follow the [guide](https://meteorclient.com/faq/installation) on the wiki.
+
+For this fork, install exactly one Meteor runtime JAR and one matching **API-preserving Fabric Baritone runtime** (`baritone-api-fabric-<version>.jar`). The Baritone API distribution contains the full runtime; Meteor does not embed it. Do not use the standalone variant, which removes API preservation, or development, unoptimized, sources, or Javadoc artifacts.
+
+Stop Minecraft before replacing the runtime pair, keep older JARs outside the active mods directory, and verify the installed files match the intended build outputs. Before treating an update as stable, use a disposable world to exercise movement, mining, building, elytra, module interactions, cancellation, and save/reload.
 
 ## Contributions
 We will review and help with all reasonable pull requests as long as the guidelines below are met.

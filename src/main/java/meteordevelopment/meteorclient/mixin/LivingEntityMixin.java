@@ -8,6 +8,7 @@ package meteordevelopment.meteorclient.mixin;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.entity.DropItemsEvent;
 import meteordevelopment.meteorclient.events.entity.player.CanWalkOnFluidEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.movement.HighJump;
@@ -20,11 +21,14 @@ import meteordevelopment.meteorclient.systems.modules.render.HandView;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.util.Prediction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.FluidState;
@@ -54,6 +58,13 @@ public abstract class LivingEntityMixin extends Entity {
     private void spawnItemParticles(ItemStack itemStack, int count, CallbackInfo ci) {
         NoRender noRender = Modules.get().get(NoRender.class);
         if (noRender.noEatParticles() && itemStack.getComponents().has(DataComponents.FOOD)) ci.cancel();
+    }
+
+    @Inject(method = "drop(Lnet/minecraft/world/item/ItemStack;ZLnet/minecraft/util/Prediction;)Lnet/minecraft/world/entity/item/ItemEntity;", at = @At("HEAD"), cancellable = true)
+    private void onDropItem(ItemStack itemStack, boolean thrownFromHand, Prediction prediction, CallbackInfoReturnable<ItemEntity> cir) {
+        if ((Object) this instanceof Player && level().isClientSide() && !itemStack.isEmpty()) {
+            if (MeteorClient.EVENT_BUS.post(DropItemsEvent.get(itemStack)).isCancelled()) cir.setReturnValue(null);
+        }
     }
 
     @ModifyVariable(method = "swing(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/component/SwingAnimation;Z)Z", at = @At("HEAD"), argsOnly = true, name = "hand")

@@ -51,6 +51,11 @@ public abstract class GuiRendererMixin {
     @Inject(method = "render", at = @At("HEAD"))
     private void render$preGui(CallbackInfo ci) {
         if ((GuiRenderer) (Object) this instanceof MeteorMcGuiRenderer) return;
+
+        // MC 26.3 renders loading frames from inside Minecraft.<init> (renderFrame at <init>:783),
+        // before Meteor initializes and sets MeteorClient.mc at Minecraft <init> TAIL. Until then
+        // GuiRenderer.render must run the vanilla GUI path unchanged (no custom 2D rendering).
+        if (MeteorClient.mc == null) return;
         var mc = Minecraft.getInstance();
 
         if (mc.gui.screen() == null || mc.gui.screen() instanceof WidgetScreen) return;
@@ -60,6 +65,8 @@ public abstract class GuiRendererMixin {
     @Inject(method = "render", at = @At("TAIL"))
     private void render$postGui(CallbackInfo ci) {
         if ((GuiRenderer) (Object) this instanceof MeteorMcGuiRenderer) return;
+
+        if (MeteorClient.mc == null) return;
         var mc = Minecraft.getInstance();
 
         RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(mc.gameRenderer.mainRenderTarget().getDepthTexture(), 1.0);
