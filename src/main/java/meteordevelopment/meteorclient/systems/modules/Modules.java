@@ -487,6 +487,7 @@ public class Modules extends System<Modules> {
         add(new AutoWalk());
         add(new AutoWasp());
         add(new Blink());
+        add(new BoatFly());
         add(new ClickTP());
         add(new ElytraBoost());
         add(new ElytraFly());
@@ -500,6 +501,7 @@ public class Modules extends System<Modules> {
         add(new NoFall());
         add(new NoSlow());
         add(new Parkour());
+        add(new PearlPhase());
         add(new ReverseStep());
         add(new SafeWalk());
         add(new Scaffold());
@@ -564,6 +566,7 @@ public class Modules extends System<Modules> {
         add(new AutoShearer());
         add(new AutoSign());
         add(new AutoSmelter());
+        add(new BaseFinder());
         add(new BuildHeight());
         add(new Collisions());
         add(new EChestFarmer());
@@ -571,6 +574,7 @@ public class Modules extends System<Modules> {
         add(new Flamethrower());
         add(new HighwayBuilder());
         add(new LiquidFiller());
+        add(new NewChunks());
         add(new NoGhostBlocks());
         add(new Nuker());
         add(new PacketMine());
