@@ -52,7 +52,9 @@ public final class AgentBridge {
     private AgentBridge() {}
 
     public static void init() {
-        if (!Boolean.getBoolean("meteor.agentBridge")) return;
+        boolean enabled = Boolean.getBoolean("meteor.agentBridge")
+            || new java.io.File(MeteorClient.FOLDER, "agent-bridge.flag").exists();
+        if (!enabled) return;
         INSTANCE.start();
     }
 
