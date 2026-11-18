@@ -87,7 +87,8 @@ Selecting a profile updates default behavior without locking individual toggles:
 4. **Auto-Fishing (`FishTask`):**
    - Eligible when holding/carrying a fishing rod and water (`>= 3x3`) is within `searchRadius`. Paths to shoreline, casts rod, detects bobber splash/bite velocity, reels in, and collects drops.
 5. **Expanded Hunting (`HuntAnimalsTask`):**
-   - Adds Hoglins (high porkchop yield, respects extra spacing) and passive fish mobs in shallow water when land animals are absent.
+   - Adds Hoglins (high porkchop yield, respects extra spacing) and passive fish mobs (cod, salmon, tropical fish, pufferfish skipped as hazardous) in water.
+   - **Underwater Oxygen Guard:** Allows diving/swimming underwater to chase detected fish, while continuously monitoring `mc.player.getAirSupply()` against `maxAirSupply`. When air drops below a safe threshold (e.g., `<= 30%` / `<= 90` air ticks), `HuntAnimalsTask` pauses pursuit, surfaces to breathe (pathing upward / holding jump until air recovers), and then resumes or yields.
 
 ### Phase 3: Self-Bootstrap & Villager Trading
 1. **`BootstrapTask` (`self-bootstrap`, default `false`):**
