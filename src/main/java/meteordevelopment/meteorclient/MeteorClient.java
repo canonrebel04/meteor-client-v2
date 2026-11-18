@@ -26,6 +26,7 @@ import meteordevelopment.meteorclient.utils.PostInit;
 import meteordevelopment.meteorclient.utils.PreInit;
 import meteordevelopment.meteorclient.utils.ReflectInit;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.bot.AgentBridge;
 import meteordevelopment.meteorclient.utils.misc.Version;
 import meteordevelopment.meteorclient.utils.misc.input.KeyAction;
 import meteordevelopment.meteorclient.utils.misc.input.KeyBinds;
@@ -139,6 +140,7 @@ public class MeteorClient implements ClientModInitializer {
 
         // Post init
         ReflectInit.init(PostInit.class);
+        AgentBridge.init();
 
         // Save on shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
