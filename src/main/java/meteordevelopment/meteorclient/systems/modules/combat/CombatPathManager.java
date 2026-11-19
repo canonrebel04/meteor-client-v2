@@ -122,6 +122,28 @@ public class CombatPathManager {
         enableFavoring();
     }
 
+    /**
+     * P1 (C41): flee to a destination chosen by the terrain-scored planner. Keeps the current goal unless the new
+     * destination moved more than 4 blocks, so re-plans don't cancel a working path every tick.
+     */
+    public void startFleeTo(LivingEntity enemy, BlockPos dest) {
+        if (mc.player == null || dest == null) return;
+        this.activeTarget = enemy;
+        boolean needNewGoal = !this.active || this.activeHole != null || !(this.activeGoal instanceof GoalXZ existing)
+            || Math.hypot(existing.getX() - dest.getX(), existing.getZ() - dest.getZ()) > 4.0;
+        enableCombatMode(true);
+        if (needNewGoal) {
+            if (this.active && this.combatModeActive) {
+                baritone.getPathingBehavior().cancelEverything();
+            }
+            this.activeHole = null;
+            this.activeGoal = new GoalXZ(dest.getX(), dest.getZ());
+            this.activeCommandType = PathingCommandType.SET_GOAL_AND_PATH;
+        }
+        this.active = true;
+        enableFavoring();
+    }
+
     public void releaseControl() {
         boolean wasActive = this.active;
         this.active = false;
