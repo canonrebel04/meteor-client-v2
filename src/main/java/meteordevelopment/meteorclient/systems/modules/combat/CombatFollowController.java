@@ -1,5 +1,6 @@
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
@@ -14,7 +15,6 @@ import net.minecraft.world.phys.Vec3;
 import java.util.UUID;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
-import static meteordevelopment.meteorclient.utils.player.Rotations.gcdQuantize;
 
 public class CombatFollowController {
 
@@ -216,10 +216,9 @@ public class CombatFollowController {
                 if (dx * dx + dz * dz > 1.0E-6) {
                     float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
 
-                    // Smoothly steer player movement yaw straight towards the target
-                    float currentYaw = mc.player.getYRot();
-                    float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
-                    mc.player.setYRot(gcdQuantize(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f), false));
+                    // Steer movement yaw towards the target through the camera arbiter (plan S15): smoothed by
+                    // the active look profile and yielding to higher-priority aim/defense claims
+                    CameraArbiter.claimYaw(this, CameraArbiter.PRIORITY_STEER, targetYaw);
                 }
 
                 // Optimal combat spacing: stop running forward at followDistance (2.2m) to prevent overshooting
@@ -330,9 +329,7 @@ public class CombatFollowController {
         // Face the target so backward movement is directly away from it
         if (dx * dx + dz * dz > 1.0E-6) {
             float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
-            float currentYaw = mc.player.getYRot();
-            float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
-            mc.player.setYRot(gcdQuantize(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f), false));
+            CameraArbiter.claimYaw(this, CameraArbiter.PRIORITY_STEER, targetYaw);
         }
 
         if (dist < minDist - 0.2) {

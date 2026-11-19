@@ -24,6 +24,7 @@ import baritone.api.utils.Rotation;
 public class LookPriorityBridge {
 
     private static ILookRequest request;
+    private static ILookRequest cameraRequest;
     private static volatile boolean silentMovementCorrectionActive;
     private static volatile float activeCombatYaw;
 
@@ -43,6 +44,9 @@ public class LookPriorityBridge {
                     ILookPriorityHub.COMBAT_PRIORITY,
                     new Rotation((float) yaw, (float) pitch),
                     -1);
+            // Meteor already applies (and packet-sends) this rotation itself; Baritone must agree, not re-smooth it
+            request.setSmooth(false);
+            request.setOwner("Meteor/Rotations");
         } else {
             request.setRotation((float) yaw, (float) pitch);
             request.setPriority(ILookPriorityHub.COMBAT_PRIORITY);
@@ -59,6 +63,41 @@ public class LookPriorityBridge {
             request.release();
             request = null;
         }
+    }
+
+    /**
+     * Plan S15: hands this tick's winning camera claim (from {@code CameraArbiter}) to Baritone, which turns the
+     * camera through its active look profile (Legit-Smooth by default) at its PRE player update, i.e. after the
+     * entity's previous rotation was latched, so the turn is interpolated per frame (S2).
+     *
+     * @param priority arbiter priority, used to order claims just above combat priority
+     * @param smooth   false for urgent claims that were already applied directly
+     */
+    public static void syncCamera(String owner, int priority, float yaw, float pitch, boolean smooth) {
+        double prio = ILookPriorityHub.COMBAT_PRIORITY + 1 + priority * 0.01;
+        if (cameraRequest == null || cameraRequest.isReleased()) {
+            cameraRequest = BaritoneAPI.getLookPriorityHub().requestRotation(prio, new Rotation(yaw, pitch), -1);
+        } else {
+            cameraRequest.setRotation(yaw, pitch);
+            cameraRequest.setPriority(prio);
+        }
+        cameraRequest.setCamera(true);
+        cameraRequest.setSmooth(smooth ? Boolean.TRUE : Boolean.FALSE);
+        cameraRequest.setOwner(owner);
+    }
+
+    /** Releases the camera claim so Baritone returns to its own look behaviour. */
+    public static void releaseCamera() {
+        if (cameraRequest != null) {
+            cameraRequest.release();
+            cameraRequest = null;
+        }
+    }
+
+    /** Pushes Meteor's smoothness profile to Baritone's {@code lookProfile} setting. */
+    public static void applyLookProfile(String baritoneName) {
+        var setting = BaritoneAPI.getSettings().lookProfile;
+        if (!baritoneName.equals(setting.value)) setting.value = baritoneName;
     }
 
     /**

@@ -9,6 +9,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
@@ -86,7 +87,8 @@ public class AimAssist extends Module {
         float newYaw = mc.player.getYRot() + (float) Mth.clamp(Mth.wrapDegrees(targetYaw - mc.player.getYRot()), -step, step);
         float newPitch = mc.player.getXRot() + (float) Mth.clamp(Mth.wrapDegrees(targetPitch - mc.player.getXRot()), -step, step);
 
-        mc.player.setYRot(newYaw);
-        mc.player.setXRot(Mth.clamp(newPitch, -90, 90));
+        // Already rate-limited by the speed setting: applied right away, but through the camera arbiter (plan S15)
+        // so it yields to higher-priority camera owners instead of fighting them
+        CameraArbiter.claim(this, CameraArbiter.PRIORITY_ASSIST, newYaw, Mth.clamp(newPitch, -90, 90), false);
     }
 }

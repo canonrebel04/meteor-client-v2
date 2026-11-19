@@ -11,17 +11,20 @@ import com.llamalad7.mixinextras.sugar.Local;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.render.GetFovEvent;
 import meteordevelopment.meteorclient.mixininterface.ICamera;
+import meteordevelopment.meteorclient.systems.config.Config;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.render.CameraTweaks;
 import meteordevelopment.meteorclient.systems.modules.render.FreeLook;
 import meteordevelopment.meteorclient.systems.modules.render.Freecam;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import meteordevelopment.meteorclient.systems.modules.world.HighwayBuilder;
+import meteordevelopment.meteorclient.utils.player.smooth.FovSmoother;
 import net.minecraft.client.Camera;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.material.FogType;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
@@ -42,6 +45,20 @@ public abstract class CameraMixin implements ICamera {
 
     @Shadow
     protected abstract void setRotation(float yRot, float xRot);
+
+    @Unique
+    private final FovSmoother meteor$fovSmoother = new FovSmoother();
+
+    // Plan S14: extra low-pass on the FOV target so sprint / speed / bow FOV changes ease in over a few ticks
+    @ModifyVariable(method = "tickFov", at = @At(value = "LOAD", ordinal = 0), name = "targetFovModifier")
+    private float meteor$smoothFovTarget(float targetFovModifier) {
+        Config config = Config.get();
+        if (config == null || !config.smoothFov.get()) {
+            meteor$fovSmoother.reset();
+            return targetFovModifier;
+        }
+        return meteor$fovSmoother.apply(targetFovModifier, config.fovSmoothTicks.get());
+    }
 
     @Inject(method = "getFluidInCamera", at = @At("HEAD"), cancellable = true)
     private void getSubmergedFluidState(CallbackInfoReturnable<FogType> cir) {

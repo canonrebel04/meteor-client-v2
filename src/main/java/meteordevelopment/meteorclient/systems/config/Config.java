@@ -7,12 +7,15 @@ package meteordevelopment.meteorclient.systems.config;
 
 import meteordevelopment.meteorclient.utils.debug.DebugLog;
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.pathing.BaritoneUtils;
+import meteordevelopment.meteorclient.pathing.LookPriorityBridge;
 import meteordevelopment.meteorclient.renderer.Fonts;
 import meteordevelopment.meteorclient.renderer.text.FontFace;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.System;
 import meteordevelopment.meteorclient.systems.Systems;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.utils.player.smooth.SmoothProfile;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -31,6 +34,7 @@ public class Config extends System<Config> {
     private final SettingGroup sgModules = settings.createGroup("Modules");
     private final SettingGroup sgChat = settings.createGroup("Chat");
     private final SettingGroup sgMisc = settings.createGroup("Misc");
+    private final SettingGroup sgSmooth = settings.createGroup("Smoothness");
 
     // Visual
 
@@ -203,6 +207,42 @@ public class Config extends System<Config> {
         .build()
     );
 
+    // Smoothness (plan PS1)
+
+    public final Setting<SmoothProfile> lookProfile = sgSmooth.add(new EnumSetting.Builder<SmoothProfile>()
+        .name("look-profile")
+        .description("How camera turns are smoothed. Legit-Smooth: human-like timed turns with a slow settle (safest on anticheat servers). Balanced: quicker. Fast: legacy snappy spring.")
+        .defaultValue(SmoothProfile.LegitSmooth)
+        .onChanged(_ -> syncSmoothProfile())
+        .build()
+    );
+
+    public final Setting<Boolean> smoothFov = sgSmooth.add(new BoolSetting.Builder()
+        .name("smooth-fov")
+        .description("Ease sprint / speed / bow FOV changes in over a few ticks instead of jumping.")
+        .defaultValue(true)
+        .build()
+    );
+
+    public final Setting<Integer> fovSmoothTicks = sgSmooth.add(new IntSetting.Builder()
+        .name("fov-smooth-ticks")
+        .description("Time constant of the FOV smoothing in ticks.")
+        .defaultValue(3)
+        .range(1, 20)
+        .sliderRange(1, 10)
+        .visible(smoothFov::get)
+        .build()
+    );
+
+    public final Setting<Integer> chatThrottleMs = sgSmooth.add(new IntSetting.Builder()
+        .name("chat-throttle")
+        .description("Collapse identical module chat messages repeated within this many milliseconds (0 disables).")
+        .defaultValue(1000)
+        .range(0, 10000)
+        .sliderRange(0, 5000)
+        .build()
+    );
+
     public List<String> dontShowAgainPrompts = new ArrayList<>();
 
     public Config() {
@@ -211,6 +251,16 @@ public class Config extends System<Config> {
 
     public static Config get() {
         return Systems.get(Config.class);
+    }
+
+    /** Pushes {@link #lookProfile} to Baritone's {@code lookProfile} setting when Baritone is installed. */
+    public void syncSmoothProfile() {
+        if (!BaritoneUtils.IS_AVAILABLE) return;
+        try {
+            LookPriorityBridge.applyLookProfile(lookProfile.get().baritoneName);
+        } catch (Throwable t) {
+            DebugLog.warn("Config", "Could not apply look profile to Baritone: {}", t.toString());
+        }
     }
 
     @Override
