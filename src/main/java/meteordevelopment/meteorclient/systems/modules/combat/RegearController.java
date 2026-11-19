@@ -42,7 +42,9 @@ public final class RegearController {
 
     private Phase phase = Phase.IDLE;
     private @Nullable BlockPos stash;
-    private int timer, clickTimer;
+    private int timer, closeIn = -1;
+    private RegearPacer pacer = RegearPacer.create(0);
+    private int pacerDelay = 0;
     private List<Integer> queue = new ArrayList<>();
     private @Nullable String failure;
     private int attempts;
@@ -99,7 +101,7 @@ public final class RegearController {
         baritone().ifPresent(b -> b.getPathingBehavior().cancelEverything());
     }
 
-    /** @param clickDelay ticks between shift-clicks; @param extras user extra item list */
+    /** @param clickDelay ticks between shift-clicks, 0 = Baritone's shared GUI pacing; @param extras user extra item list */
     public void tick(int clickDelay, List<Item> extras, RegearPlan.Targets targets) {
         if (mc.player == null || mc.level == null || stash == null || mc.gameMode == null) return;
         timer++;
@@ -124,7 +126,15 @@ public final class RegearController {
                     queue = planFor(mc.player.containerMenu, extras, targets);
                     phase = Phase.LOOTING;
                     timer = 0;
-                    clickTimer = clickDelay + 4; // humans need a moment to see the contents
+                    closeIn = -1;
+                    if (pacerDelay != clickDelay) {
+                        pacerDelay = clickDelay;
+                        pacer = RegearPacer.create(clickDelay);
+                    }
+                    int stacks = 0;
+                    AbstractContainerMenu menu = mc.player.containerMenu;
+                    for (int i = 0; i < menu.slots.size() - 36; i++) if (!menu.getSlot(i).getItem().isEmpty()) stacks++;
+                    pacer.opened(stacks); // S41: time to read the contents
                     return;
                 }
                 Vec3 c = Vec3.atCenterOf(chest);
@@ -144,13 +154,16 @@ public final class RegearController {
                     if (!queue.isEmpty()) failure = "container closed early";
                     return;
                 }
-                if (--clickTimer > 0) return;
-                clickTimer = clickDelay;
-                if (queue.isEmpty() || InvUtils.findEmpty().slot() < 0) {
+                if (closeIn < 0 && (queue.isEmpty() || InvUtils.findEmpty().slot() < 0)) {
+                    closeIn = pacer.closeDelay(); // S41: a short beat before closing
+                }
+                if (closeIn >= 0) {
+                    if (closeIn-- > 0) return;
                     mc.player.closeContainer();
                     phase = Phase.DONE;
                     return;
                 }
+                if (!pacer.ready(queue.get(0), 9)) return; // S40: shared pacing incl. cursor travel
                 InvUtils.shiftClick().slotId(queue.remove(0));
             }
             default -> {

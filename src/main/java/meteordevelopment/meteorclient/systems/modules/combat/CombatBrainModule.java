@@ -759,10 +759,10 @@ public class CombatBrainModule extends Module {
 
     private final Setting<Integer> regearClickDelay = sgSurvival.add(new IntSetting.Builder()
         .name("regear-click-delay")
-        .description("Ticks between stash shift-clicks (human pacing).")
-        .defaultValue(4)
-        .range(1, 20)
-        .sliderRange(1, 20)
+        .description("Ticks between stash shift-clicks. 0 = auto: Baritone's shared GUI pacing (follows Baritone's look profile, cursor travel, open/close delays, lag aware).")
+        .defaultValue(0)
+        .range(0, 20)
+        .sliderRange(0, 20)
         .visible(autoRegear::get)
         .build()
     );
