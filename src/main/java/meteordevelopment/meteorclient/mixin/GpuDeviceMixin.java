@@ -44,7 +44,9 @@ public abstract class GpuDeviceMixin implements IGpuDevice {
     @Override
     public void meteor$onCreateRenderPass(RenderPass pass) {
         if (set) {
-            pass.enableScissor(x, y, width, height);
+            // 26.3 RenderPearl throws IllegalArgumentException if scissor width/height <= 0
+            // (e.g. widgets clipped to zero height inside scrolled/collapsing WSection).
+            pass.enableScissor(Math.max(0, x), Math.max(0, y), Math.max(1, width), Math.max(1, height));
         }
     }
 }
