@@ -234,6 +234,29 @@ public class Config extends System<Config> {
         .build()
     );
 
+    public final Setting<Boolean> reduceMotion = sgSmooth.add(new BoolSetting.Builder()
+        .name("reduce-motion")
+        .description("Accessibility: HUD/overlay animations snap instead of easing, pulses are static.")
+        .defaultValue(false)
+        .onChanged(v -> meteordevelopment.meteorclient.utils.render.anim.Anim.reduceMotion = v)
+        .build()
+    );
+
+    public final Setting<Boolean> highContrast = sgSmooth.add(new BoolSetting.Builder()
+        .name("high-contrast")
+        .description("Accessibility: opaque HUD backgrounds behind animated elements.")
+        .defaultValue(false)
+        .onChanged(v -> meteordevelopment.meteorclient.utils.render.anim.Anim.highContrast = v)
+        .build()
+    );
+
+    public final Setting<Boolean> adaptiveQuality = sgSmooth.add(new BoolSetting.Builder()
+        .name("adaptive-quality")
+        .description("Lower overlay detail (animations, extra lines) while frame times are over budget; restore when they recover.")
+        .defaultValue(true)
+        .build()
+    );
+
     public final Setting<Integer> chatThrottleMs = sgSmooth.add(new IntSetting.Builder()
         .name("chat-throttle")
         .description("Collapse identical module chat messages repeated within this many milliseconds (0 disables).")
