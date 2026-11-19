@@ -37,6 +37,8 @@ import meteordevelopment.meteorclient.systems.modules.player.AutoTool;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.level.block.state.BlockState;
 import meteordevelopment.meteorclient.events.entity.player.AttackEntityEvent;
+import meteordevelopment.meteorclient.utils.misc.perf.TickBudget;
+import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.entity.Target;
@@ -841,12 +843,8 @@ public class CombatBrainModule extends Module {
         // 2. Smoothly rotate player to face the creeper directly so the shield block arc covers the blast
         double yaw = Rotations.getYaw(imminentCreeper);
         double pitch = Rotations.getPitch(imminentCreeper, Target.Body);
-        float deltaYaw = Mth.wrapDegrees((float) (yaw - mc.player.getYRot()));
-        float deltaPitch = (float) (pitch - mc.player.getXRot());
-        // GCD-quantize so the rotation deltas land on the sensitivity grid
-        // (Grim/Vulcan flag non-GCD rotation changes).
-        mc.player.setYRot(Rotations.gcdQuantize(mc.player.getYRot() + Mth.clamp(deltaYaw * 0.6f, -45.0f, 45.0f), false));
-        mc.player.setXRot(Rotations.gcdQuantize(mc.player.getXRot() + Mth.clamp(deltaPitch * 0.6f, -30.0f, 30.0f), true));
+        // Through the camera arbiter (plan S15): smoothed by the active look profile, GCD-quantized
+        CameraArbiter.claim(this, CameraArbiter.PRIORITY_DEFENSE, (float) yaw, (float) pitch, true);
 
         if (hasShieldEquipped) {
             // 3. Raise shield
@@ -884,20 +882,9 @@ public class CombatBrainModule extends Module {
         double targetYaw = Rotations.getYaw(currentTarget);
         double targetPitch = Rotations.getPitch(currentTarget, Target.Body);
 
-        float currentYaw = mc.player.getYRot();
-        float currentPitch = mc.player.getXRot();
-
-        float deltaYaw = Mth.wrapDegrees((float) (targetYaw - currentYaw));
-        float deltaPitch = (float) (targetPitch - currentPitch);
-
-        // Smooth exponential interpolation (max 35° yaw, 25° pitch per tick),
-        // GCD-quantized so deltas land on the sensitivity grid (Grim/Vulcan flag
-        // non-GCD rotation changes — the "rotation GCD" ban vector).
-        float stepYaw = Mth.clamp(deltaYaw * 0.45f, -35.0f, 35.0f);
-        float stepPitch = Mth.clamp(deltaPitch * 0.45f, -25.0f, 25.0f);
-
-        mc.player.setYRot(Rotations.gcdQuantize(currentYaw + stepYaw, false));
-        mc.player.setXRot(Rotations.gcdQuantize(currentPitch + stepPitch, true));
+        // Through the camera arbiter (plan S15): the active look profile (Legit-Smooth by default) times and
+        // shapes the turn, GCD-quantized and interpolated per frame.
+        CameraArbiter.claim(this, CameraArbiter.PRIORITY_COMBAT_AIM, (float) targetYaw, (float) targetPitch, true);
     }
 
     /**
@@ -1014,10 +1001,11 @@ public class CombatBrainModule extends Module {
                     double pitch = Rotations.getPitch(entity);
                     float deltaYaw = Mth.wrapDegrees((float) (yaw - mc.player.getYRot()));
                     float deltaPitch = (float) (pitch - mc.player.getXRot());
-                    // GCD-quantize so the rotation deltas land on the sensitivity grid
-                    // (Grim/Vulcan flag non-GCD rotation changes).
-                    mc.player.setYRot(Rotations.gcdQuantize(mc.player.getYRot() + Mth.clamp(deltaYaw * 0.6f, -45.0f, 45.0f), false));
-                    mc.player.setXRot(Rotations.gcdQuantize(mc.player.getXRot() + Mth.clamp(deltaPitch * 0.6f, -30.0f, 30.0f), true));
+                    // Urgent: the swing below goes out this tick, so the arbiter applies this step right away
+                    // (GCD-quantized) instead of smoothing it over the next ticks
+                    CameraArbiter.claim(this, CameraArbiter.PRIORITY_URGENT,
+                        mc.player.getYRot() + Mth.clamp(deltaYaw * 0.6f, -45.0f, 45.0f),
+                        mc.player.getXRot() + Mth.clamp(deltaPitch * 0.6f, -30.0f, 30.0f), false);
 
                     if (mc.gameMode != null) {
                         mc.gameMode.attack(mc.player, entity);
@@ -1349,6 +1337,12 @@ public class CombatBrainModule extends Module {
         int totems = countTotems();
         double threat = computeThreatLevel();
 
+        // Pre-warm the time-sliced emergency-hole search while health is getting low (plan S86), so a result is
+        // ready the moment health drops below the emergency threshold
+        if (health >= 6.0f && health < 10.0f && state != BrainState.EMERGENCY_HOLE) {
+            pollSafeHole(SAFE_HOLE_RADIUS);
+        }
+
         // Tactical combat-mode evaluation
         if (forcedMode != null) {
             if (combatMode != forcedMode) {
@@ -1501,8 +1495,10 @@ public class CombatBrainModule extends Module {
 
                 // Critically low health: try emergency hole first, then heal
                 if (health < 6.0f && !isReentryCooldownActive(BrainState.EMERGENCY_HOLE)) {
-                    // Only enter EMERGENCY_HOLE if a safe hole actually exists nearby
-                    BlockPos hole = findNearestSafeHole(16);
+                    // Only enter EMERGENCY_HOLE if a safe hole actually exists nearby. The search is time-sliced
+                    // (and pre-warmed below 10 HP), so wait the few ticks it may still need.
+                    if (!pollSafeHole(SAFE_HOLE_RADIUS)) break;
+                    BlockPos hole = safeHoleResult();
                     if (hole != null) {
                         emergencyHoleTarget = hole;
                         emergencyHoleTimer = 0;
@@ -2509,7 +2505,9 @@ public class CombatBrainModule extends Module {
 
         // Search for or reuse the hole target
         if (emergencyHoleTarget == null) {
-            emergencyHoleTarget = findNearestSafeHole(16);
+            // Time-sliced search: keep waiting (the timeout above still applies) until it has an answer
+            if (!pollSafeHole(SAFE_HOLE_RADIUS)) return;
+            emergencyHoleTarget = safeHoleResult();
             if (emergencyHoleTarget == null) {
                 // No safe hole nearby — just flee
                 transitionTo(BrainState.FLEEING);
@@ -2547,101 +2545,112 @@ public class CombatBrainModule extends Module {
         }
     }
 
+    private static final int[] HOLE_DX = {0, 0, 1, -1};
+    private static final int[] HOLE_DZ = {-1, 1, 0, 0};
+    private static final int SAFE_HOLE_RADIUS = 16;
+
+    /** Time-sliced emergency-hole search (plan S86/S88): spread over ticks, cached while fresh. */
+    private final SafeHoleSearch holeSearch = new SafeHoleSearch(40, 3);
+    private final BlockPos.MutableBlockPos holeProbePos = new BlockPos.MutableBlockPos();
+    private final SafeHoleSearch.Probe holeProbe = this::scoreSafeHole;
+
     /**
-     * Searches for the optimal safe 1x1 hole (surrounded by bedrock or obsidian
-     * on all 4 sides) within {@code radius} blocks of the player.
-     * Scores candidates by distance, vertical climb penalty, bedrock wall bonus,
-     * and enemy intercept margin.
+     * Advances the time-sliced search for the best safe 1x1 hole (surrounded by bedrock or obsidian on all
+     * 4 sides) within {@code radius} blocks of the player. Candidates are scored by distance, vertical climb
+     * penalty, bedrock wall bonus and enemy intercept margin.
      *
-     * @param radius search radius in blocks
-     * @return the BlockPos of the floor of the highest-scoring safe hole, or null
+     * @return true once a result for the current position is ready; read it with {@link #safeHoleResult()}
      */
-    private BlockPos findNearestSafeHole(int radius) {
-        if (mc.player == null || mc.level == null) return null;
-        BlockPos playerPos = mc.player.blockPosition();
-        BlockPos best = null;
-        double bestScore = Double.MAX_VALUE;
-
-        for (int x = -radius; x <= radius; x++) {
-            for (int z = -radius; z <= radius; z++) {
-                for (int y = -4; y <= 4; y++) {
-                    BlockPos candidate = playerPos.offset(x, y, z);
-                    if (!isSafeHole(candidate) || isHoleOccupied(candidate)) continue;
-
-                    double dist = Math.sqrt(candidate.distSqr(playerPos));
-                    int dy = candidate.getY() - playerPos.getY();
-                    double verticalPenalty = dy > 0 ? dy * 3.5 : Math.abs(dy) * 0.5;
-                    double bedrockBonus = countBedrockSurroundings(candidate) * 1.1;
-
-                    double interceptPenalty = 0.0;
-                    if (currentTarget != null) {
-                        double targetDistSq = candidate.distSqr(currentTarget.blockPosition());
-                        double playerDistSq = candidate.distSqr(playerPos);
-                        if (targetDistSq < playerDistSq) {
-                            double margin = Math.sqrt(playerDistSq) - Math.sqrt(targetDistSq);
-                            interceptPenalty += 12.0 + margin * 2.0;
-                        }
-                        if (targetDistSq < 9.0) {
-                            interceptPenalty += 4.0;
-                        }
-                    }
-
-                    double score = dist + verticalPenalty - bedrockBonus + interceptPenalty;
-                    if (score < bestScore) {
-                        bestScore = score;
-                        best = candidate;
-                    }
-                }
-            }
-        }
-        return best;
+    private boolean pollSafeHole(int radius) {
+        if (mc.player == null || mc.level == null) return false;
+        BlockPos p = mc.player.blockPosition();
+        return holeSearch.tick(mc.player.tickCount, p.getX(), p.getY(), p.getZ(), radius, TickBudget.game(), holeProbe);
     }
 
-    private boolean isHoleOccupied(BlockPos pos) {
+    /**
+     * The ready search result re-validated against the current world (the cached hole may have been filled or
+     * taken since the scan), or null when there is no usable hole.
+     */
+    private BlockPos safeHoleResult() {
+        if (!holeSearch.found()) return null;
+        int x = holeSearch.x(), y = holeSearch.y(), z = holeSearch.z();
+        if (!isSafeHoleAt(x, y, z) || isHoleOccupied(x, y, z)) {
+            holeSearch.invalidate();
+            return null;
+        }
+        return new BlockPos(x, y, z);
+    }
+
+    /** Score of a candidate hole floor cell for {@link SafeHoleSearch} (lower is better, NaN when unusable). */
+    private double scoreSafeHole(int x, int y, int z) {
+        if (mc.player == null || !isSafeHoleAt(x, y, z) || isHoleOccupied(x, y, z)) return Double.NaN;
+        BlockPos playerPos = mc.player.blockPosition();
+        double ddx = x - playerPos.getX(), ddy = y - playerPos.getY(), ddz = z - playerPos.getZ();
+        double playerDistSq = ddx * ddx + ddy * ddy + ddz * ddz;
+        double dist = Math.sqrt(playerDistSq);
+        int dy = y - playerPos.getY();
+        double verticalPenalty = dy > 0 ? dy * 3.5 : Math.abs(dy) * 0.5;
+        double bedrockBonus = countBedrockSurroundingsAt(x, y, z) * 1.1;
+
+        double interceptPenalty = 0.0;
+        if (currentTarget != null) {
+            BlockPos t = currentTarget.blockPosition();
+            double tdx = x - t.getX(), tdy = y - t.getY(), tdz = z - t.getZ();
+            double targetDistSq = tdx * tdx + tdy * tdy + tdz * tdz;
+            if (targetDistSq < playerDistSq) {
+                double margin = dist - Math.sqrt(targetDistSq);
+                interceptPenalty += 12.0 + margin * 2.0;
+            }
+            if (targetDistSq < 9.0) {
+                interceptPenalty += 4.0;
+            }
+        }
+        return dist + verticalPenalty - bedrockBonus + interceptPenalty;
+    }
+
+    private boolean isHoleOccupied(int x, int y, int z) {
         if (mc.level == null) return false;
-        double cx = pos.getX() + 0.5;
-        double cy = pos.getY();
-        double cz = pos.getZ() + 0.5;
+        double cx = x + 0.5;
+        double cz = z + 0.5;
         for (Player player : mc.level.players()) {
             if (player == mc.player || player.isDeadOrDying()) continue;
-            if (Math.abs(player.getX() - cx) < 0.8 && Math.abs(player.getZ() - cz) < 0.8 && Math.abs(player.getY() - cy) <= 1.2) {
+            if (Math.abs(player.getX() - cx) < 0.8 && Math.abs(player.getZ() - cz) < 0.8 && Math.abs(player.getY() - y) <= 1.2) {
                 return true;
             }
         }
         return false;
     }
 
-    private int countBedrockSurroundings(BlockPos pos) {
+    private int countBedrockSurroundingsAt(int x, int y, int z) {
         if (mc.level == null) return 0;
+        BlockPos.MutableBlockPos m = holeProbePos;
         int count = 0;
-        if (mc.level.getBlockState(pos.below()).getBlock() == net.minecraft.world.level.block.Blocks.BEDROCK) count++;
-        for (BlockPos wall : new BlockPos[]{pos.north(), pos.south(), pos.east(), pos.west()}) {
-            if (mc.level.getBlockState(wall).getBlock() == net.minecraft.world.level.block.Blocks.BEDROCK) count++;
-            if (mc.level.getBlockState(wall.above()).getBlock() == net.minecraft.world.level.block.Blocks.BEDROCK) count++;
+        if (mc.level.getBlockState(m.set(x, y - 1, z)).getBlock() == net.minecraft.world.level.block.Blocks.BEDROCK) count++;
+        for (int i = 0; i < 4; i++) {
+            if (mc.level.getBlockState(m.set(x + HOLE_DX[i], y, z + HOLE_DZ[i])).getBlock() == net.minecraft.world.level.block.Blocks.BEDROCK) count++;
+            if (mc.level.getBlockState(m.set(x + HOLE_DX[i], y + 1, z + HOLE_DZ[i])).getBlock() == net.minecraft.world.level.block.Blocks.BEDROCK) count++;
         }
         return count;
     }
 
     /**
-     * Returns true if {@code pos} is a valid safe hole: the block at pos and
-     * one above are air, and all 4 cardinal sides plus the floor are blast-resistant
-     * (bedrock or obsidian).
+     * Returns true if the cell is a valid safe hole: it and the block above are air, the cell above that has no
+     * collision (entry opening), and all 4 cardinal sides (2 high) plus the floor are blast-resistant.
+     * Allocation free (plan S88).
      */
-    private boolean isSafeHole(BlockPos pos) {
+    private boolean isSafeHoleAt(int x, int y, int z) {
         if (mc.level == null) return false;
-        // Floor and walls must be blast-resistant
-        BlockPos floor = pos.below();
-        if (!isBlastResistant(mc.level.getBlockState(floor))) return false;
-        // Cardinal walls
-        for (BlockPos wall : new BlockPos[]{pos.north(), pos.south(), pos.east(), pos.west()}) {
-            if (!isBlastResistant(mc.level.getBlockState(wall))) return false;
-            if (!isBlastResistant(mc.level.getBlockState(wall.above()))) return false;
+        BlockPos.MutableBlockPos m = holeProbePos;
+        // Cheapest rejections first: the hole itself must be air (2 blocks tall)
+        if (!mc.level.getBlockState(m.set(x, y, z)).isAir()) return false;
+        if (!mc.level.getBlockState(m.set(x, y + 1, z)).isAir()) return false;
+        if (!isBlastResistant(mc.level.getBlockState(m.set(x, y - 1, z)))) return false;
+        for (int i = 0; i < 4; i++) {
+            if (!isBlastResistant(mc.level.getBlockState(m.set(x + HOLE_DX[i], y, z + HOLE_DZ[i])))) return false;
+            if (!isBlastResistant(mc.level.getBlockState(m.set(x + HOLE_DX[i], y + 1, z + HOLE_DZ[i])))) return false;
         }
-        // The hole itself must be air (2 blocks tall) and have an entry opening above
-        if (!mc.level.getBlockState(pos).isAir()) return false;
-        if (!mc.level.getBlockState(pos.above()).isAir()) return false;
-        if (!mc.level.getBlockState(pos.above(2)).getCollisionShape(mc.level, pos.above(2)).isEmpty()) return false;
-        return true;
+        m.set(x, y + 2, z);
+        return mc.level.getBlockState(m).getCollisionShape(mc.level, m).isEmpty();
     }
 
     private boolean isBlastResistant(BlockState state) {

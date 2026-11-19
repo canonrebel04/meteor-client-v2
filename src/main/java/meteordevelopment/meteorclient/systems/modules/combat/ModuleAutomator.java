@@ -343,10 +343,12 @@ public class ModuleAutomator {
     private boolean isTargetNearBed(LivingEntity target) {
         BlockPos pos = target.blockPosition();
         int radius = 4;
+        // Allocation free (plan S88): one mutable position instead of 405 BlockPos per call
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
         for (int x = -radius; x <= radius; x++) {
             for (int y = -2; y <= 2; y++) {
                 for (int z = -radius; z <= radius; z++) {
-                    BlockPos p = pos.offset(x, y, z);
+                    p.set(pos.getX() + x, pos.getY() + y, pos.getZ() + z);
                     BlockState state = mc.level.getBlockState(p);
                     if (state.getBlock() instanceof BedBlock) {
                         return true;
