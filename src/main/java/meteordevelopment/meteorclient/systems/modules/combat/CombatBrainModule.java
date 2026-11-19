@@ -6,6 +6,8 @@
 package meteordevelopment.meteorclient.systems.modules.combat;
 
 import baritone.api.BaritoneAPI;
+import baritone.api.process.IRestockProcess;
+import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.pathing.PathManagers;
 import meteordevelopment.meteorclient.settings.*;
@@ -21,6 +23,7 @@ import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.meteorclient.mixin.LevelAccessor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityTypes;
@@ -640,6 +643,7 @@ public class CombatBrainModule extends Module {
     // Group awareness and tactical positioning
     private CombatGroupAwareness.GroupSnapshot lastGroupSnapshot = null;
     private CombatTacticalPositioner tacticalPositioner = null;
+    private CombatPathManager combatPathManager = null;
     private int groupAwarenessTimer = 0;
 
     // KillAura settings save/restore state
@@ -648,6 +652,8 @@ public class CombatBrainModule extends Module {
     private boolean savedPauseBaritone = false;
     private boolean savedAutoSwitch = false;
     private boolean savedSwapBack = false;
+    private boolean savedAutoShieldBreak = true;
+    private KillAura.ShieldMode savedShieldMode = KillAura.ShieldMode.None;
     private int savedMaxTargets = 1;
     private double savedRange = 4.5;
     private KillAura.RotationMode savedRotate = KillAura.RotationMode.Always;
@@ -707,6 +713,9 @@ public class CombatBrainModule extends Module {
         terrainGrid = new CombatTerrainGrid();
         automator = new ModuleAutomator(this);
         tacticalPositioner = new CombatTacticalPositioner();
+        if (combatPathManager == null) {
+            combatPathManager = new CombatPathManager();
+        }
         lastGroupSnapshot = null;
         groupAwarenessTimer = 0;
         stealthAntiDetectionEnabled = false;
@@ -733,6 +742,7 @@ public class CombatBrainModule extends Module {
 
     @Override
     public void onDeactivate() {
+        if (combatPathManager != null) combatPathManager.stop();
         if (followController != null) followController.stop();
         if (tacticalPositioner != null) tacticalPositioner.stop();
         if (automator != null) automator.shutdown();
@@ -1047,6 +1057,29 @@ public class CombatBrainModule extends Module {
         if (wTapSprintReset.get() && mc.player != null && mc.player.isSprinting() && mc.player.onGround()) {
             if (mc.options != null) mc.options.keySprint.setDown(false);
             wTapTicks = 2;
+        }
+    }
+
+    @EventHandler
+    private void onPacketReceive(PacketEvent.Receive event) {
+        if (mc.level == null || !(event.packet instanceof ClientboundEntityEventPacket packet)) return;
+        if (packet.getEventId() != 35) return;
+
+        Entity entity = packet.getEntity(mc.level);
+        if (!(entity instanceof Player player) || player == mc.player) return;
+
+        PopCounter popCounter = Modules.get().get(PopCounter.class);
+        if (popCounter != null && !popCounter.isActive()) {
+            popCounter.recordPop(player);
+        }
+    }
+
+    private boolean isRestocking() {
+        try {
+            IRestockProcess restock = BaritoneAPI.getProvider().getPrimaryBaritone().getRestockProcess();
+            return restock != null && restock.isActive();
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
@@ -1582,7 +1615,12 @@ public class CombatBrainModule extends Module {
 
     private void onEnterState(BrainState s) {
         switch (s) {
+            case IDLE:
+            case SCANNING:
+                if (combatPathManager != null) combatPathManager.stop();
+                break;
             case ENGAGING:
+                if (combatPathManager != null) combatPathManager.releaseControl();
                 if (autoModules.get()) enableCombatModules();
                 // H4 fix: a stale REQUEST_PAUSE from KillAura/BowAimbot/AutoEat
                 // (PathManagers.get().pause()) can leave BaritonePathManager's
@@ -1955,6 +1993,8 @@ public class CombatBrainModule extends Module {
             savedMaxTargets = ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).get();
             savedRange = ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).get();
             savedRotate = ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).get();
+            savedAutoShieldBreak = killAura.autoShieldBreak.get();
+            savedShieldMode = ((Setting<KillAura.ShieldMode>) (Setting<?>) killAura.settings.get("shield-mode")).get();
             savedEntities = new java.util.HashSet<>(
                 ((Setting<Set<EntityType<?>>>) (Setting<?>) killAura.settings.get("entities")).get()
             );
@@ -1964,6 +2004,7 @@ public class CombatBrainModule extends Module {
         ((Setting<Boolean>) (Setting<?>) killAura.settings.get("pause-baritone")).set(false);
         ((Setting<Boolean>) (Setting<?>) killAura.settings.get("auto-switch")).set(true);
         ((Setting<Boolean>) (Setting<?>) killAura.settings.get("swap-back")).set(false);
+        killAura.autoShieldBreak.set(true);
 
         Set<EntityType<?>> killAuraEntities = new java.util.HashSet<>(entities.get());
         if (targetPlayers.get()) killAuraEntities.add(EntityTypes.PLAYER);
@@ -2007,6 +2048,8 @@ public class CombatBrainModule extends Module {
             ((Setting<Integer>) (Setting<?>) killAura.settings.get("max-targets")).set(savedMaxTargets);
             ((Setting<Double>) (Setting<?>) killAura.settings.get("range")).set(savedRange);
             ((Setting<KillAura.RotationMode>) (Setting<?>) killAura.settings.get("rotate")).set(savedRotate);
+            killAura.autoShieldBreak.set(savedAutoShieldBreak);
+            ((Setting<KillAura.ShieldMode>) (Setting<?>) killAura.settings.get("shield-mode")).set(savedShieldMode);
         }
         savedKillAura = false;
     }
@@ -2104,8 +2147,9 @@ public class CombatBrainModule extends Module {
         // distance → constant path recalculation that also steals control from
         // the dig. KillAura (walls-range 0, pause-on-use true) still swings at
         // mobs that come into actual reach.
-        if (isCurrentlyDigging()) {
+        if (isCurrentlyDigging() || isRestocking()) {
             if (followController != null) followController.releaseDirectKeys();
+            if (combatPathManager != null && isRestocking()) combatPathManager.releaseControl();
             return;
         }
 
@@ -2117,35 +2161,7 @@ public class CombatBrainModule extends Module {
             || (hasUsableShield() && (totems > 0 || health >= 14.0f || (combatMode == CombatMode.AGGRESSIVE && health >= 10.0f)));
 
         // --- Gather the full threat group every 4 ticks ---
-        groupAwarenessTimer += 2;
-        if (lastGroupSnapshot == null || groupAwarenessTimer >= 4) {
-            groupAwarenessTimer = 0;
-            java.util.List<LivingEntity> allThreats = new java.util.ArrayList<>();
-            double acquireRangeSq = acquireRange.get() * acquireRange.get();
-            if (mc.level != null) {
-                for (net.minecraft.world.entity.Entity e : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
-                    if (!(e instanceof LivingEntity le) || le == mc.player || !le.isAlive()) continue;
-                    if (le.distanceToSqr(mc.player) > acquireRangeSq) continue;
-                    Set<EntityType<?>> types = entities.get();
-                    if (!types.isEmpty() && !types.contains(le.getType())) continue;
-                    if (le instanceof Player p) {
-                        if (!targetPlayers.get() || p.isCreative() || !Friends.get().shouldAttack(p)) continue;
-                    }
-                    allThreats.add(le);
-                }
-                allThreats.sort((a, b) -> Double.compare(scoreTarget(b), scoreTarget(a)));
-            }
-            lastGroupSnapshot = CombatGroupAwareness.compute(
-                (net.minecraft.client.player.LocalPlayer) mc.player, allThreats);
-
-            // Favor frontline threat as currentTarget when engaging groups
-            if (lastGroupSnapshot != null && lastGroupSnapshot.frontlineTarget() != null) {
-                LivingEntity front = lastGroupSnapshot.frontlineTarget();
-                if (isTargetValid(front)) {
-                    currentTarget = front;
-                }
-            }
-        }
+        refreshGroupAwarenessAndFavoring(true);
 
         // --- Re-analyze primary target periodically ---
         if (lastAnalysis == null
@@ -2164,8 +2180,9 @@ public class CombatBrainModule extends Module {
         double effectiveStrikeDist = Math.min(strikeDistance.get(), targetDistance);
 
         // --- Tactical positioning: group-aware bubble movement, 1v1 circle strafing & ranged kiting ---
+        CombatTacticalPositioner.TacticalMode tacticalMode = CombatTacticalPositioner.TacticalMode.IDLE;
         if (tacticalPositioner != null && lastGroupSnapshot != null && !lastGroupSnapshot.targets().isEmpty()) {
-            tacticalPositioner.tick(
+            tacticalMode = tacticalPositioner.tick(
                 (net.minecraft.client.player.LocalPlayer) mc.player,
                 followController,
                 lastGroupSnapshot,
@@ -2174,6 +2191,11 @@ public class CombatBrainModule extends Module {
                 targetDistance,
                 combatMode
             );
+        }
+
+        if (tacticalMode == CombatTacticalPositioner.TacticalMode.SPEAR_SWEET_SPOT) {
+            if (terrainGrid != null) terrainGrid.update(currentTarget);
+            return;
         }
 
         // --- Ranged Kite Combat Execution ---
@@ -2217,6 +2239,17 @@ public class CombatBrainModule extends Module {
             terrainGrid.update(currentTarget);
         }
         double dist = mc.player.distanceTo(currentTarget);
+
+        // Post-pop finish push: keep AGGRESSIVE_STRIKE active without bouncing to bubble
+        if (tacticalMode == CombatTacticalPositioner.TacticalMode.AGGRESSIVE_STRIKE
+            && CombatTargetAnalyzer.isRecentlyPopped(currentTarget, 3500L)) {
+            strikePhase = StrikePhase.STRIKE;
+            strikeTimer = 0;
+            if (followController != null) {
+                followController.follow(currentTarget, Math.min(2.4, effectiveStrikeDist));
+            }
+            return;
+        }
 
         // If hit-and-run is disabled, maintain direct follow
         if (!hitAndRun.get()) {
@@ -2312,16 +2345,67 @@ public class CombatBrainModule extends Module {
         return count;
     }
 
+    private void refreshGroupAwarenessAndFavoring(boolean allowTargetSwitch) {
+        if (mc.level == null || mc.player == null) return;
+        groupAwarenessTimer += 2;
+        if (lastGroupSnapshot != null && groupAwarenessTimer < 4) return;
+
+        groupAwarenessTimer = 0;
+        java.util.List<LivingEntity> allThreats = new java.util.ArrayList<>();
+        double acquireRangeSq = acquireRange.get() * acquireRange.get();
+        for (net.minecraft.world.entity.Entity e : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (!(e instanceof LivingEntity le) || le == mc.player || !le.isAlive()) continue;
+            if (le.distanceToSqr(mc.player) > acquireRangeSq) continue;
+            Set<EntityType<?>> types = entities.get();
+            if (!types.isEmpty() && !types.contains(le.getType())) continue;
+            if (le instanceof Player p) {
+                if (!targetPlayers.get() || p.isCreative() || !Friends.get().shouldAttack(p)) continue;
+            }
+            allThreats.add(le);
+        }
+        allThreats.sort((a, b) -> Double.compare(scoreTarget(b), scoreTarget(a)));
+        lastGroupSnapshot = CombatGroupAwareness.compute(
+            (net.minecraft.client.player.LocalPlayer) mc.player, allThreats);
+
+        if (allowTargetSwitch && lastGroupSnapshot != null && lastGroupSnapshot.frontlineTarget() != null) {
+            LivingEntity front = lastGroupSnapshot.frontlineTarget();
+            if (isTargetValid(front)) {
+                currentTarget = front;
+            }
+        }
+        if (combatPathManager != null) {
+            combatPathManager.updateThreatFavoring(currentTarget, allThreats);
+        }
+    }
+
     private void doRetreatTick() {
-        // Move away from threat using baritone flee
-        if (currentTarget != null && followController != null) {
+        if (isRestocking()) {
+            if (followController != null) followController.releaseDirectKeys();
+            if (combatPathManager != null) combatPathManager.releaseControl();
+            return;
+        }
+        refreshGroupAwarenessAndFavoring(false);
+        // Move away from threat using group-aware Baritone flee
+        if (followController != null) followController.releaseDirectKeys();
+        if (combatPathManager != null && currentTarget != null) {
+            combatPathManager.startFlee(currentTarget, fleeDistance.get(), lastGroupSnapshot);
+        } else if (currentTarget != null && followController != null) {
             followController.flee(currentTarget, fleeDistance.get());
         }
     }
 
     private void doHealTick() {
-        // Sprint away from threats while healing
-        if (followController != null && currentTarget != null) {
+        if (isRestocking()) {
+            if (followController != null) followController.releaseDirectKeys();
+            if (combatPathManager != null) combatPathManager.releaseControl();
+            return;
+        }
+        refreshGroupAwarenessAndFavoring(false);
+        // Sprint away from threats along largest gap bearing while healing
+        if (followController != null) followController.releaseDirectKeys();
+        if (combatPathManager != null && currentTarget != null) {
+            combatPathManager.startFlee(currentTarget, fleeDistance.get() * 1.5, lastGroupSnapshot);
+        } else if (followController != null && currentTarget != null) {
             followController.flee(currentTarget, fleeDistance.get() * 1.5);
         }
         if (mc.player != null && mc.player.getHealth() < mc.player.getMaxHealth() && mc.options != null) {
@@ -2330,11 +2414,20 @@ public class CombatBrainModule extends Module {
     }
 
     private void doFleeTick() {
-        // Sprint away from everything
+        if (isRestocking()) {
+            if (followController != null) followController.releaseDirectKeys();
+            if (combatPathManager != null) combatPathManager.releaseControl();
+            return;
+        }
+        refreshGroupAwarenessAndFavoring(false);
+        // Sprint away from everything along safest open vector
         if (mc.player != null && mc.options != null) {
             mc.options.keySprint.setDown(true);
         }
-        if (followController != null && currentTarget != null) {
+        if (followController != null) followController.releaseDirectKeys();
+        if (combatPathManager != null && currentTarget != null) {
+            combatPathManager.startFlee(currentTarget, fleeDistance.get(), lastGroupSnapshot);
+        } else if (followController != null && currentTarget != null) {
             followController.flee(currentTarget, fleeDistance.get());
         }
     }
@@ -2368,7 +2461,10 @@ public class CombatBrainModule extends Module {
                 if (mc.player != null) {
                     mc.player.setSprinting(true);
                 }
-                if (followController != null && currentTarget != null) {
+                if (followController != null) followController.releaseDirectKeys();
+                if (combatPathManager != null && currentTarget != null) {
+                    combatPathManager.startFlee(currentTarget, fleeDistance.get() * 2.0, lastGroupSnapshot);
+                } else if (followController != null && currentTarget != null) {
                     followController.flee(currentTarget, fleeDistance.get() * 2.0);
                 }
                 transitionTo(BrainState.FLEEING);
@@ -2407,6 +2503,7 @@ public class CombatBrainModule extends Module {
             BlockPos playerPos = mc.player.blockPosition();
             if (playerPos.equals(emergencyHoleTarget) || playerPos.equals(emergencyHoleTarget.above())) {
                 // Inside the hole: enable Surround if blocks available, then heal
+                if (combatPathManager != null) combatPathManager.releaseControl();
                 if (hasPlaceableBlocksInHotbar(4)) {
                     enableModule(Surround.class);
                 } else {
@@ -2418,42 +2515,91 @@ public class CombatBrainModule extends Module {
             }
         }
 
-        // Path to the hole using Baritone's GoalBlock
-        baritone.api.BaritoneAPI.getProvider().getPrimaryBaritone()
-            .getCustomGoalProcess()
-            .setGoalAndPath(new baritone.api.pathing.goals.GoalBlock(
-                emergencyHoleTarget.getX(), emergencyHoleTarget.getY(), emergencyHoleTarget.getZ()));
+        // Path to the hole using CombatPathManager (or CustomGoalProcess fallback)
+        if (combatPathManager != null) {
+            if (followController != null) followController.releaseDirectKeys();
+            combatPathManager.startRetreat(emergencyHoleTarget, currentTarget);
+        } else {
+            baritone.api.BaritoneAPI.getProvider().getPrimaryBaritone()
+                .getCustomGoalProcess()
+                .setGoalAndPath(new baritone.api.pathing.goals.GoalBlock(
+                    emergencyHoleTarget.getX(), emergencyHoleTarget.getY(), emergencyHoleTarget.getZ()));
+        }
     }
 
     /**
-     * Searches for the nearest safe 1x1 hole (surrounded by bedrock or obsidian
+     * Searches for the optimal safe 1x1 hole (surrounded by bedrock or obsidian
      * on all 4 sides) within {@code radius} blocks of the player.
-     * The floor of the hole must also be bedrock or obsidian.
+     * Scores candidates by distance, vertical climb penalty, bedrock wall bonus,
+     * and enemy intercept margin.
      *
      * @param radius search radius in blocks
-     * @return the BlockPos of the floor of the nearest safe hole, or null
+     * @return the BlockPos of the floor of the highest-scoring safe hole, or null
      */
     private BlockPos findNearestSafeHole(int radius) {
         if (mc.player == null || mc.level == null) return null;
         BlockPos playerPos = mc.player.blockPosition();
         BlockPos best = null;
-        double bestDist = Double.MAX_VALUE;
+        double bestScore = Double.MAX_VALUE;
 
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
                 for (int y = -4; y <= 4; y++) {
                     BlockPos candidate = playerPos.offset(x, y, z);
-                    if (isSafeHole(candidate)) {
-                        double dist = candidate.distSqr(playerPos);
-                        if (dist < bestDist) {
-                            bestDist = dist;
-                            best = candidate;
+                    if (!isSafeHole(candidate) || isHoleOccupied(candidate)) continue;
+
+                    double dist = Math.sqrt(candidate.distSqr(playerPos));
+                    int dy = candidate.getY() - playerPos.getY();
+                    double verticalPenalty = dy > 0 ? dy * 3.5 : Math.abs(dy) * 0.5;
+                    double bedrockBonus = countBedrockSurroundings(candidate) * 1.1;
+
+                    double interceptPenalty = 0.0;
+                    if (currentTarget != null) {
+                        double targetDistSq = candidate.distSqr(currentTarget.blockPosition());
+                        double playerDistSq = candidate.distSqr(playerPos);
+                        if (targetDistSq < playerDistSq) {
+                            double margin = Math.sqrt(playerDistSq) - Math.sqrt(targetDistSq);
+                            interceptPenalty += 12.0 + margin * 2.0;
                         }
+                        if (targetDistSq < 9.0) {
+                            interceptPenalty += 4.0;
+                        }
+                    }
+
+                    double score = dist + verticalPenalty - bedrockBonus + interceptPenalty;
+                    if (score < bestScore) {
+                        bestScore = score;
+                        best = candidate;
                     }
                 }
             }
         }
         return best;
+    }
+
+    private boolean isHoleOccupied(BlockPos pos) {
+        if (mc.level == null) return false;
+        double cx = pos.getX() + 0.5;
+        double cy = pos.getY();
+        double cz = pos.getZ() + 0.5;
+        for (Player player : mc.level.players()) {
+            if (player == mc.player || player.isDeadOrDying()) continue;
+            if (Math.abs(player.getX() - cx) < 0.8 && Math.abs(player.getZ() - cz) < 0.8 && Math.abs(player.getY() - cy) <= 1.2) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int countBedrockSurroundings(BlockPos pos) {
+        if (mc.level == null) return 0;
+        int count = 0;
+        if (mc.level.getBlockState(pos.below()).getBlock() == net.minecraft.world.level.block.Blocks.BEDROCK) count++;
+        for (BlockPos wall : new BlockPos[]{pos.north(), pos.south(), pos.east(), pos.west()}) {
+            if (mc.level.getBlockState(wall).getBlock() == net.minecraft.world.level.block.Blocks.BEDROCK) count++;
+            if (mc.level.getBlockState(wall.above()).getBlock() == net.minecraft.world.level.block.Blocks.BEDROCK) count++;
+        }
+        return count;
     }
 
     /**
@@ -2471,9 +2617,10 @@ public class CombatBrainModule extends Module {
             if (!isBlastResistant(mc.level.getBlockState(wall))) return false;
             if (!isBlastResistant(mc.level.getBlockState(wall.above()))) return false;
         }
-        // The hole itself must be air (2 blocks tall)
+        // The hole itself must be air (2 blocks tall) and have an entry opening above
         if (!mc.level.getBlockState(pos).isAir()) return false;
         if (!mc.level.getBlockState(pos.above()).isAir()) return false;
+        if (!mc.level.getBlockState(pos.above(2)).getCollisionShape(mc.level, pos.above(2)).isEmpty()) return false;
         return true;
     }
 

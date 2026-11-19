@@ -12,14 +12,17 @@ import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
 import meteordevelopment.meteorclient.systems.hud.HudRenderer;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
+import meteordevelopment.meteorclient.systems.modules.combat.CombatTargetAnalyzer;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 
 public class SmartCombatHud extends HudElement {
     private static final Color GREEN = new Color(15, 255, 15);
+    private static final Color AMBER = new Color(255, 190, 15);
     private static final Color RED = new Color(255, 15, 15);
 
     public static final HudElementInfo<SmartCombatHud> INFO = new HudElementInfo<>(Hud.GROUP, "smart-combat", "Displays SmartCombat state: current target, mode, and timers.", SmartCombatHud::new);
@@ -111,16 +114,23 @@ public class SmartCombatHud extends HudElement {
         String status = cb.isActive() ? "Enabled" : "Disabled";
         String mode = "Mode: " + (cb.isActive() ? cb.getCombatMode().name() : "N/A");
         String targetLine = "Target: none";
+        String armorLine = "Min Armor: none";
         String stateLine = "State: " + (cb.isActive() ? cb.getState().name() : "IDLE");
 
         if (isInEditor()) {
             targetLine = "Target: Zombie (4.2m)";
+            armorLine = "Min Armor: 42%";
             stateLine = "State: ENGAGING (STRIKE)";
         } else if (cb.isActive()) {
             Entity target = cb.getCurrentTarget();
             if (target != null && mc.player != null) {
                 double dist = Math.round(mc.player.distanceTo(target) * 10.0) / 10.0;
                 targetLine = "Target: " + target.getName().getString() + " (" + dist + "m)";
+            }
+            if (target instanceof LivingEntity living && CombatTargetAnalyzer.hasDamageableArmor(living)) {
+                double ratio = CombatTargetAnalyzer.getLowestArmorDurabilityRatio(living);
+                int pct = (int) Math.round(ratio * 100.0);
+                armorLine = ratio < 0.18 ? "Min Armor: " + pct + "% (LOW)" : "Min Armor: " + pct + "%";
             }
             stateLine = "State: " + cb.getState().name() + " (" + cb.getStrikePhase().name() + ")";
         }
@@ -132,9 +142,10 @@ public class SmartCombatHud extends HudElement {
         width = Math.max(width, renderer.textWidth(status, false, getScale()));
         width = Math.max(width, renderer.textWidth(mode, false, getScale()));
         width = Math.max(width, renderer.textWidth(targetLine, false, getScale()));
+        width = Math.max(width, renderer.textWidth(armorLine, false, getScale()));
         width = Math.max(width, renderer.textWidth(stateLine, false, getScale()));
 
-        double height = 5 * lineHeight;
+        double height = 6 * lineHeight;
 
         setSize(width, height);
     }
@@ -174,8 +185,12 @@ public class SmartCombatHud extends HudElement {
 
         // Target
         String targetLine;
+        String armorLine = "Min Armor: none";
+        Color armorColor = secondaryColor.get();
         if (isInEditor()) {
             targetLine = "Target: Zombie (4.2m)";
+            armorLine = "Min Armor: 42%";
+            armorColor = AMBER;
         } else if (active) {
             Entity target = cb.getCurrentTarget();
             if (target != null && mc.player != null) {
@@ -184,10 +199,21 @@ public class SmartCombatHud extends HudElement {
             } else {
                 targetLine = "Target: none";
             }
+            if (target instanceof LivingEntity living && CombatTargetAnalyzer.hasDamageableArmor(living)) {
+                double ratio = CombatTargetAnalyzer.getLowestArmorDurabilityRatio(living);
+                int pct = (int) Math.round(ratio * 100.0);
+                armorLine = ratio < 0.18 ? "Min Armor: " + pct + "% (LOW)" : "Min Armor: " + pct + "%";
+                if (ratio < 0.18) armorColor = RED;
+                else if (ratio < 0.50) armorColor = AMBER;
+                else armorColor = GREEN;
+            }
         } else {
             targetLine = "Target: none";
         }
         renderer.text(targetLine, x, y, primaryColor.get(), false, getScale());
+        y += lineHeight;
+
+        renderer.text(armorLine, x, y, armorColor, false, getScale());
         y += lineHeight;
 
         // State / Phase

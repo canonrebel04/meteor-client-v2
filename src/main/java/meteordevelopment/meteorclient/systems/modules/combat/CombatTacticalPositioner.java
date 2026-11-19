@@ -1,7 +1,11 @@
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.systems.modules.Modules;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.AttackRange;
 
 /**
  * Dynamically gauges combat distance and aggression based on group positioning and health/risk profile.
@@ -16,6 +20,7 @@ public class CombatTacticalPositioner {
         SURROUND_EVADE,    // Surrounded from behind with low HP: evade to open gap
         RANGED_KITING,     // Flying or elevated targets: hold 8-12 block distance with bow/crossbow
         CIRCLE_STRAFE,     // 1v1 melee engagement: orbit around target to dodge direct swing arc
+        SPEAR_SWEET_SPOT,  // 26.x Spear standoff: hold 2.5-4.1 block band outside <2.0 block dead-zone
         IDLE
     }
 
@@ -62,6 +67,22 @@ public class CombatTacticalPositioner {
             return currentMode;
         }
 
+        // --- Spear Stand-Off Sweet Spot (keep 2.5-4.1 blocks out of <2.0 dead-zone) ---
+        if (isUsingSpear(player)) {
+            currentMode = TacticalMode.SPEAR_SWEET_SPOT;
+            followController.maintainDistance(frontline, 2.5, 4.1);
+            return currentMode;
+        }
+
+        // --- Post-Pop Finish Push ---
+        boolean safeForPostPopPush = canTakeRisk
+            || (!snap.isSurrounded() && (player.getHealth() + player.getAbsorptionAmount()) >= 12.0f);
+        if (safeForPostPopPush && CombatTargetAnalyzer.isRecentlyPopped(frontline, 3500L)) {
+            currentMode = TacticalMode.AGGRESSIVE_STRIKE;
+            followController.follow(frontline, Math.min(2.4, baseStrikeDist));
+            return currentMode;
+        }
+
         // --- 1v1 Circle Strafing ---
         if (snap.targets().size() == 1 && currentDist <= 3.8 && canTakeRisk) {
             currentMode = TacticalMode.CIRCLE_STRAFE;
@@ -100,6 +121,16 @@ public class CombatTacticalPositioner {
         followController.follow(frontline, desiredDistance);
 
         return currentMode;
+    }
+
+    private boolean isUsingSpear(LocalPlayer player) {
+        ItemStack mainHand = player.getMainHandItem();
+        AttackRange attackRange = mainHand.get(DataComponents.ATTACK_RANGE);
+        if (attackRange != null && attackRange.effectiveMaxRange(player) > 3.0f) {
+            return true;
+        }
+        SpearKill spearKill = Modules.get().get(SpearKill.class);
+        return spearKill != null && spearKill.isActive();
     }
 
     public TacticalMode getCurrentMode() {

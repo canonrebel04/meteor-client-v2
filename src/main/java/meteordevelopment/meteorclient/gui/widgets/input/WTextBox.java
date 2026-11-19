@@ -559,7 +559,20 @@ public abstract class WTextBox extends WWidget {
 
     @Override
     public boolean render(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
-        if (isFocused()) GuiKeyEvents.canUseKeys = false;
+        if (isFocused()) {
+            GuiKeyEvents.canUseKeys = false;
+            if (mc != null && mc.getWindow() != null) {
+                double s = mc.getWindow().getGuiScale();
+                if (s > 0) {
+                    mc.textInputManager().setTextInputArea(
+                        (int) (x / s),
+                        (int) (y / s),
+                        (int) Math.max(1, width / s),
+                        (int) Math.max(1, height / s)
+                    );
+                }
+            }
+        }
 
         if (completionsW != null && focused) {
             renderer.absolutePost(() -> {
@@ -716,6 +729,10 @@ public abstract class WTextBox extends WWidget {
         boolean wasJustFocused = focused && !this.focused;
 
         this.focused = focused;
+
+        if (mc != null) {
+            mc.textInputManager().onTextInputFocusChange(this, focused);
+        }
 
         resetSelection();
 

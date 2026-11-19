@@ -5,7 +5,10 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import baritone.api.BaritoneAPI;
+import baritone.api.process.IRestockProcess;
 import meteordevelopment.meteorclient.mixin.LevelAccessor;
+import meteordevelopment.meteorclient.systems.friends.Friends;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.combat.Surround;
 import meteordevelopment.meteorclient.systems.modules.movement.NoFall;
@@ -18,6 +21,7 @@ import meteordevelopment.meteorclient.systems.modules.player.AutoGap;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.effect.MobEffect;
@@ -33,10 +37,12 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.PotionContents;
+import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluids;
 
@@ -63,6 +69,7 @@ public class ModuleAutomator {
     /** Per-rule cooldown tracker: maps rule name -> tick of last toggle to prevent rapid flapping. */
     private final java.util.HashMap<String, Integer> lastRuleToggleTick = new java.util.HashMap<>();
     private int automatorTickCounter = 0;
+    private int lastRestockTriggerTick = -200;
     private static final int DEFAULT_RULE_COOLDOWN = 20;
 
     public ModuleAutomator(CombatBrainModule brain) {
@@ -87,6 +94,7 @@ public class ModuleAutomator {
         evalLowHealthRule();
         evalWaterRule(target);
         evalSurroundRule();
+        evalShulkerRestockRule(target);
         evalScaffoldFleeRule();
     }
 
@@ -106,6 +114,7 @@ public class ModuleAutomator {
         activeRuleNames.clear();
         waterRuleTimer = 0;
         lastRuleToggleTick.clear();
+        lastRestockTriggerTick = -200;
         automatorTickCounter = 0;
     }
 
@@ -531,6 +540,103 @@ public class ModuleAutomator {
         double rangeSq = range * range;
         for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
             if (entity.getType() == EntityTypes.WARDEN && entity.distanceToSqr(mc.player) <= rangeSq) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void evalShulkerRestockRule(LivingEntity target) {
+        if (mc.player == null || mc.level == null) return;
+
+        IRestockProcess restockProcess;
+        try {
+            restockProcess = BaritoneAPI.getProvider().getPrimaryBaritone().getRestockProcess();
+        } catch (Exception ignored) {
+            return;
+        }
+        if (restockProcess == null) return;
+        if (restockProcess.isActive()) {
+            activeRuleNames.add("ShulkerRestock");
+            return;
+        }
+
+        if (!mc.player.onGround()) return;
+        if (automatorTickCounter - lastRestockTriggerTick < 60) return;
+
+        boolean safe = isIn1x1Hole(target) || isFarFromEnemies(target, 14.0);
+        if (!safe) return;
+
+        Item itemToRestock = null;
+        if (countTotems() <= 1 && hasShulkerContaining(Items.TOTEM_OF_UNDYING)) {
+            itemToRestock = Items.TOTEM_OF_UNDYING;
+        } else {
+            CrystalAura crystalAura = Modules.get().get(CrystalAura.class);
+            if (crystalAura != null && crystalAura.isActive()
+                && countInventoryItem(Items.END_CRYSTAL) < 8
+                && hasShulkerContaining(Items.END_CRYSTAL)) {
+                itemToRestock = Items.END_CRYSTAL;
+            }
+        }
+
+        if (itemToRestock != null && restockProcess.restock(itemToRestock)) {
+            lastRestockTriggerTick = automatorTickCounter;
+            activeRuleNames.add("ShulkerRestock");
+        }
+    }
+
+    private boolean isIn1x1Hole(LivingEntity target) {
+        if (mc.player == null || mc.level == null) return false;
+        if (target != null && target != mc.player && target.distanceToSqr(mc.player) <= 2.25) {
+            return false;
+        }
+        BlockPos feet = mc.player.blockPosition();
+        if (mc.level.getBlockState(feet.below()).getCollisionShape(mc.level, feet.below()).isEmpty()) {
+            return false;
+        }
+        for (Direction dir : Direction.Plane.HORIZONTAL) {
+            BlockPos side = feet.relative(dir);
+            if (mc.level.getBlockState(side).getCollisionShape(mc.level, side).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isFarFromEnemies(LivingEntity target, double minDistance) {
+        if (mc.player == null || mc.level == null) return false;
+        double minSq = minDistance * minDistance;
+        if (target != null && target != mc.player && !target.isDeadOrDying() && target.distanceToSqr(mc.player) <= minSq) {
+            return false;
+        }
+        for (Entity entity : ((LevelAccessor) mc.level).meteor$getEntityLookup().getAll()) {
+            if (entity instanceof Player player && player != mc.player && !player.isDeadOrDying() && Friends.get().shouldAttack(player)) {
+                if (player.distanceToSqr(mc.player) <= minSq) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private int countInventoryItem(Item item) {
+        if (mc.player == null) return 0;
+        int total = 0;
+        if (mc.player.getOffhandItem().is(item)) total += mc.player.getOffhandItem().getCount();
+        for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+            ItemStack stack = mc.player.getInventory().getItem(i);
+            if (stack.is(item)) total += stack.getCount();
+        }
+        return total;
+    }
+
+    private boolean hasShulkerContaining(Item targetItem) {
+        if (mc.player == null) return false;
+        for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+            ItemStack stack = mc.player.getInventory().getItem(i);
+            if (stack.isEmpty() || !(Block.byItem(stack.getItem()) instanceof ShulkerBoxBlock)) continue;
+            ItemContainerContents contents = stack.get(DataComponents.CONTAINER);
+            if (contents != null && contents.nonEmptyItemCopyStream().anyMatch(inner -> inner.is(targetItem))) {
                 return true;
             }
         }

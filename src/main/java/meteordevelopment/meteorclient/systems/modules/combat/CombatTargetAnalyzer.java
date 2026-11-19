@@ -5,7 +5,9 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.entity.DamageUtils;
+import meteordevelopment.meteorclient.systems.modules.combat.model.MatchupAssessment;
 import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -108,6 +110,12 @@ public class CombatTargetAnalyzer {
 
         if (mc.player != null && a.entity() != null) {
             net.minecraft.world.phys.Vec3 targetVel = a.entity().getDeltaMovement();
+            if (targetVel.lengthSqr() <= 1.0E-4) {
+                net.minecraft.world.phys.Vec3 known = a.entity().getKnownSpeed();
+                if (known.lengthSqr() <= 6.25) {
+                    targetVel = known;
+                }
+            }
             net.minecraft.world.phys.Vec3 towardsUs = mc.player.position().subtract(a.entity().position());
             double toLen = towardsUs.length();
             if (toLen > 0.01) {
@@ -175,8 +183,16 @@ public class CombatTargetAnalyzer {
         float targetHealth = target.getHealth() + target.getAbsorptionAmount();
         if (myHealth <= 0.0f) return 0.0;
 
-        if (target instanceof Player) {
-            if (hasHighEndArmor(target) && hasSharpnessSword(target)) return 0.2;
+        boolean recentlyPopped = isRecentlyPopped(target, 3500L);
+        double lowestArmorDurability = getLowestArmorDurabilityRatio(target);
+        boolean criticalArmor = lowestArmorDurability < 0.18;
+        boolean mendingArmor = isMendingArmor(target);
+
+        if (target instanceof Player && !recentlyPopped && !criticalArmor && !mendingArmor) {
+            if (hasHighEndArmor(target) && (hasSharpnessSword(target) || !hasAnyMeleeWeapon(mc.player))) return 0.1;
+        }
+        if (!hasAnyMeleeWeapon(mc.player) && target instanceof Player && target.getArmorValue() >= 10) {
+            return 0.05;
         }
         boolean noArmor = target.getArmorValue() <= 0;
         boolean noWeapon = target.getMainHandItem().isEmpty();
@@ -233,6 +249,10 @@ public class CombatTargetAnalyzer {
         double theirReach = getEntityReach(target);
         if (myReach > theirReach) score += 0.05;
         else if (theirReach > myReach) score -= 0.05;
+
+        if (recentlyPopped) score += 0.22;
+        if (criticalArmor) score += 0.18;
+        if (mendingArmor) score += 0.12;
 
         return Mth.clamp(score, 0.0, 1.0);
     }
@@ -350,7 +370,52 @@ public class CombatTargetAnalyzer {
                       + defenseWeight * defenseTerm
                       + weaponWeight * weaponTerm) / totalWeight;
 
+        if (a.entity() instanceof LivingEntity living) {
+            if (isRecentlyPopped(living, 3500L)) score += 0.25;
+            if (getLowestArmorDurabilityRatio(living) < 0.18) score += 0.18;
+            if (isMendingArmor(living)) score += 0.12;
+        }
+
         return Mth.clamp(score, 0.0, 1.0);
+    }
+
+    public static boolean isRecentlyPopped(LivingEntity target, long windowMs) {
+        if (!(target instanceof Player player) || windowMs <= 0L) return false;
+        PopCounter popCounter = Modules.get().get(PopCounter.class);
+        return popCounter != null && popCounter.poppedRecently(player.getUUID(), windowMs);
+    }
+
+    public static boolean hasDamageableArmor(LivingEntity entity) {
+        if (entity == null) return false;
+        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            ItemStack stack = entity.getItemBySlot(slot);
+            if (!stack.isEmpty() && stack.isDamageableItem() && stack.getMaxDamage() > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static double getLowestArmorDurabilityRatio(LivingEntity entity) {
+        if (entity == null) return 1.0;
+        double lowest = 1.0;
+        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            ItemStack stack = entity.getItemBySlot(slot);
+            if (stack.isEmpty() || !stack.isDamageableItem()) continue;
+            int maxDamage = stack.getMaxDamage();
+            if (maxDamage <= 0) continue;
+            double ratio = Math.max(0.0, (double) (maxDamage - stack.getDamageValue()) / maxDamage);
+            if (ratio < lowest) lowest = ratio;
+        }
+        return lowest;
+    }
+
+    public static boolean isMendingArmor(LivingEntity entity) {
+        if (entity == null) return false;
+        boolean holdingXp = entity.getMainHandItem().getItem() == Items.EXPERIENCE_BOTTLE
+            || entity.getOffhandItem().getItem() == Items.EXPERIENCE_BOTTLE;
+        if (!holdingXp) return false;
+        return getLowestArmorDurabilityRatio(entity) < 0.98 || entity.getArmorValue() > 0;
     }
 
     private static double getWeaponScore(ItemStack stack) {
@@ -439,6 +504,160 @@ public class CombatTargetAnalyzer {
         var item = weapon.getItem();
         if (item != Items.NETHERITE_SWORD && item != Items.DIAMOND_SWORD) return false;
         return Utils.getEnchantmentLevel(weapon, Enchantments.SHARPNESS) > 0;
+    }
+
+    /**
+     * Returns true if {@code entity} is holding (or for local player, carrying in hotbar)
+     * a real melee weapon (sword, axe, trident, mace).
+     */
+    public static boolean hasAnyMeleeWeapon(LivingEntity entity) {
+        if (entity == null) return false;
+        if (isRealWeapon(entity.getMainHandItem())) return true;
+        if (entity == mc.player && mc.player != null) {
+            for (int i = 0; i < 9; i++) {
+                if (isRealWeapon(mc.player.getInventory().getItem(i))) return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isRealWeapon(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        var item = stack.getItem();
+        return item == Items.NETHERITE_SWORD || item == Items.DIAMOND_SWORD || item == Items.IRON_SWORD
+            || item == Items.STONE_SWORD || item == Items.GOLDEN_SWORD || item == Items.WOODEN_SWORD
+            || item == Items.NETHERITE_AXE || item == Items.DIAMOND_AXE || item == Items.IRON_AXE
+            || item == Items.STONE_AXE || item == Items.GOLDEN_AXE || item == Items.WOODEN_AXE
+            || item == Items.MACE || item == Items.TRIDENT;
+    }
+
+    private static int totalProtectionEpf(LivingEntity entity) {
+        int epf = 0;
+        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            ItemStack stack = entity.getItemBySlot(slot);
+            if (!stack.isEmpty()) {
+                epf += Utils.getEnchantmentLevel(stack, Enchantments.PROTECTION);
+            }
+        }
+        return epf;
+    }
+
+    private static int effectLevel(LivingEntity entity, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect) {
+        var inst = entity.getEffect(effect);
+        return inst != null ? inst.getAmplifier() + 1 : 0;
+    }
+
+    private static double estimateRawWeaponDamage(LivingEntity entity) {
+        ItemStack stack = entity.getMainHandItem();
+        if (entity == mc.player && !isRealWeapon(stack) && mc.player != null) {
+            // Check best weapon in hotbar
+            for (int i = 0; i < 9; i++) {
+                ItemStack hot = mc.player.getInventory().getItem(i);
+                if (isRealWeapon(hot)) {
+                    stack = hot;
+                    break;
+                }
+            }
+        }
+        if (stack.isEmpty()) return 1.0;
+        var item = stack.getItem();
+        double base = 1.0;
+        if (item == Items.NETHERITE_SWORD) base = 8.0;
+        else if (item == Items.DIAMOND_SWORD) base = 7.0;
+        else if (item == Items.IRON_SWORD) base = 6.0;
+        else if (item == Items.STONE_SWORD) base = 5.0;
+        else if (item == Items.WOODEN_SWORD || item == Items.GOLDEN_SWORD) base = 4.0;
+        else if (item == Items.NETHERITE_AXE) base = 10.0;
+        else if (item == Items.DIAMOND_AXE || item == Items.IRON_AXE || item == Items.STONE_AXE) base = 9.0;
+        else if (item == Items.WOODEN_AXE || item == Items.GOLDEN_AXE) base = 7.0;
+        else if (item == Items.TRIDENT) base = 9.0;
+        else if (item == Items.MACE) base = 6.0;
+        int sharp = Utils.getEnchantmentLevel(stack, Enchantments.SHARPNESS);
+        if (sharp > 0) base += 0.5 * sharp + 0.5;
+        return base;
+    }
+
+    /**
+     * Full Fight-or-Flight MatchupAssessment between mc.player and target (Enhancements C1-C7).
+     */
+    public static MatchupAssessment.Result assessMatchup(
+        LivingEntity target,
+        MatchupAssessment.AggressionProfile profile,
+        boolean cornered,
+        boolean hasLineOfSight
+    ) {
+        if (mc.player == null || target == null) {
+            return MatchupAssessment.evaluate(null, null, null, profile);
+        }
+        int myTotems = 0;
+        if (mc.player.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) myTotems++;
+        for (int i = 0; i < mc.player.getInventory().getContainerSize(); i++) {
+            if (mc.player.getInventory().getItem(i).is(Items.TOTEM_OF_UNDYING)) myTotems++;
+        }
+        boolean hasGaps = meteordevelopment.meteorclient.utils.player.InvUtils.find(
+            Items.GOLDEN_APPLE, Items.ENCHANTED_GOLDEN_APPLE
+        ).found();
+        boolean hasPearl = meteordevelopment.meteorclient.utils.player.InvUtils.findInHotbar(Items.ENDER_PEARL).found();
+        boolean hasWindCharge = meteordevelopment.meteorclient.utils.player.InvUtils.findInHotbar(Items.WIND_CHARGE).found();
+        boolean hasElytra = mc.player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA);
+        boolean hasSpeed = effectLevel(mc.player, MobEffects.SPEED) > 0;
+
+        double myArmor = mc.player.getAttributeValue(Attributes.ARMOR);
+        double myToughness = mc.player.getAttributeValue(Attributes.ARMOR_TOUGHNESS);
+        double myAtkSpeed = 1.6;
+        try { myAtkSpeed = mc.player.getAttributeValue(Attributes.ATTACK_SPEED); } catch (Exception ignored) {}
+
+        MatchupAssessment.KitSnapshot me = new MatchupAssessment.KitSnapshot(
+            mc.player.getHealth(),
+            mc.player.getAbsorptionAmount(),
+            myArmor,
+            myToughness,
+            totalProtectionEpf(mc.player),
+            estimateRawWeaponDamage(mc.player),
+            myAtkSpeed,
+            hasAnyMeleeWeapon(mc.player),
+            mc.player.getOffhandItem().is(Items.SHIELD) || mc.player.getMainHandItem().is(Items.SHIELD),
+            mc.player.isBlocking(),
+            myTotems,
+            hasGaps,
+            effectLevel(mc.player, MobEffects.RESISTANCE),
+            effectLevel(mc.player, MobEffects.STRENGTH),
+            effectLevel(mc.player, MobEffects.WEAKNESS),
+            true
+        );
+
+        double theirArmor = target.getAttributeValue(Attributes.ARMOR);
+        double theirToughness = target.getAttributeValue(Attributes.ARMOR_TOUGHNESS);
+        double theirAtkSpeed = target instanceof Player ? 1.6 : 1.0;
+        if (target instanceof Player p) {
+            try { theirAtkSpeed = p.getAttributeValue(Attributes.ATTACK_SPEED); } catch (Exception ignored) {}
+        }
+        boolean theirTotem = target.getOffhandItem().is(Items.TOTEM_OF_UNDYING);
+
+        MatchupAssessment.KitSnapshot them = new MatchupAssessment.KitSnapshot(
+            target.getHealth(),
+            target.getAbsorptionAmount(),
+            theirArmor,
+            theirToughness,
+            totalProtectionEpf(target),
+            estimateRawWeaponDamage(target),
+            theirAtkSpeed,
+            hasAnyMeleeWeapon(target) || !(target instanceof Player),
+            target.getOffhandItem().is(Items.SHIELD) || target.getMainHandItem().is(Items.SHIELD),
+            target.isBlocking(),
+            theirTotem ? 1 : 0,
+            false,
+            effectLevel(target, MobEffects.RESISTANCE),
+            effectLevel(target, MobEffects.STRENGTH),
+            effectLevel(target, MobEffects.WEAKNESS),
+            target instanceof Player
+        );
+
+        MatchupAssessment.EscapeProfile esc = new MatchupAssessment.EscapeProfile(
+            hasPearl, hasWindCharge, hasElytra, hasSpeed, cornered,
+            mc.player.distanceTo(target), hasLineOfSight
+        );
+        return MatchupAssessment.evaluate(me, them, esc, profile);
     }
 
     // --- Target Analysis POJO ---

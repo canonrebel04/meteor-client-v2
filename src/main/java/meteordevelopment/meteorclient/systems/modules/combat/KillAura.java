@@ -44,6 +44,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -99,10 +100,17 @@ public class KillAura extends Module {
         .description("""
                 What to do when your target is blocking with a shield:
                 - Ignore:   Don't attack them if they are blocking
-                - Break:    Swap to an axe to disable the shield (Only if Auto Switch is enabled)
+                - Break:    Swap to an axe to disable the shield
                 - None:     Attack them as normal
             """)
         .defaultValue(ShieldMode.None)
+        .build()
+    );
+
+    public final Setting<Boolean> autoShieldBreak = sgGeneral.add(new BoolSetting.Builder()
+        .name("auto-shield-break")
+        .description("Silently swaps to a hotbar axe to break a target player's shield facing you, even when Auto Switch is off.")
+        .defaultValue(true)
         .build()
     );
 
@@ -391,7 +399,7 @@ public class KillAura extends Module {
 
         attacking = true;
         if (rotation.get() == RotationMode.Always)
-            Rotations.rotate(Rotations.getYaw(primary), Rotations.getPitch(primary, Target.Body));
+            rotateToTarget(primary);
         if (pauseOnCombat.get() && PathManagers.get().isPathing() && !wasPathing) {
             PathManagers.get().pause();
             wasPathing = true;
@@ -442,14 +450,30 @@ public class KillAura extends Module {
 
     private boolean shouldShieldBreak() {
         for (Entity target : targets) {
-            if (target instanceof Player player) {
-                if (player.isBlocking() && shieldMode.get() == ShieldMode.Break) {
-                    return true;
-                }
+            if (target instanceof Player player && shouldAutoBreakShield(player)) {
+                return true;
             }
         }
 
         return false;
+    }
+
+    private boolean shouldAutoBreakShield(Player player) {
+        if (shieldMode.get() == ShieldMode.Ignore || !player.isBlocking()) return false;
+        if (shieldMode.get() == ShieldMode.Break) return true;
+        return autoShieldBreak.get() && isBlockingTowardUs(player);
+    }
+
+    private boolean isBlockingTowardUs(Player player) {
+        if (mc.player == null) return false;
+        Vec3 toUs = mc.player.position().subtract(player.position());
+        double toUsLenSq = toUs.x * toUs.x + toUs.z * toUs.z;
+        if (toUsLenSq < 1e-6) return true;
+        Vec3 look = player.getLookAngle();
+        double lookLenSq = look.x * look.x + look.z * look.z;
+        if (lookLenSq < 1e-6) return true;
+        double dot = (toUs.x * look.x + toUs.z * look.z) / Math.sqrt(toUsLenSq * lookLenSq);
+        return dot >= -0.05;
     }
 
     private boolean entityCheck(Entity entity) {
@@ -457,17 +481,18 @@ public class KillAura extends Module {
         if ((entity instanceof LivingEntity livingEntity && livingEntity.isDeadOrDying()) || !entity.isAlive())
             return false;
 
-        AABB hitbox = entity.getBoundingBox();
-        if (!PlayerUtils.isWithin(
-            Mth.clamp(mc.player.getX(), hitbox.minX, hitbox.maxX),
-            Mth.clamp(mc.player.getY(), hitbox.minY, hitbox.maxY),
-            Mth.clamp(mc.player.getZ(), hitbox.minZ, hitbox.maxZ),
-            range.get()
-        )) return false;
+        Backtrack backtrack = Modules.get().get(Backtrack.class);
+        AABB hitbox = backtrack != null && backtrack.isActive()
+            ? backtrack.getBacktrackedBox(entity)
+            : entity.getBoundingBox();
+        double closestX = Mth.clamp(mc.player.getX(), hitbox.minX, hitbox.maxX);
+        double closestY = Mth.clamp(mc.player.getY(), hitbox.minY, hitbox.maxY);
+        double closestZ = Mth.clamp(mc.player.getZ(), hitbox.minZ, hitbox.maxZ);
+        if (!PlayerUtils.isWithin(closestX, closestY, closestZ, range.get())) return false;
 
         if (!entities.get().contains(entity.getType())) return false;
         if (ignoreNamed.get() && entity.hasCustomName()) return false;
-        if (!PlayerUtils.canSeeEntity(entity) && !PlayerUtils.isWithin(entity, wallsRange.get())) return false;
+        if (!PlayerUtils.canSeeEntity(entity) && !PlayerUtils.isWithin(closestX, closestY, closestZ, wallsRange.get())) return false;
         if (ignoreTamed.get()) {
             if (entity instanceof OwnableEntity tameable
                 && tameable.getOwner() != null
@@ -516,18 +541,50 @@ public class KillAura extends Module {
         } else return mc.player.getAttackStrengthScale(delay) >= 1;
     }
 
+    private void rotateToTarget(Entity target) {
+        Backtrack backtrack = Modules.get().get(Backtrack.class);
+        if (backtrack != null && backtrack.isActive()) {
+            AABB box = backtrack.getBacktrackedBox(target);
+            Vec3 aimPos = new Vec3(
+                (box.minX + box.maxX) * 0.5,
+                box.minY + (box.maxY - box.minY) * 0.5,
+                (box.minZ + box.maxZ) * 0.5
+            );
+            Rotations.rotate(Rotations.getYaw(aimPos), Rotations.getPitch(aimPos));
+        } else {
+            Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target, Target.Body));
+        }
+    }
+
     private void attack(Entity target) {
         if (rotation.get() == RotationMode.OnHit)
-            Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target, Target.Body));
+            rotateToTarget(target);
+
+        boolean didSilentAxeSwap = false;
+        if (target instanceof Player player && shouldAutoBreakShield(player)) {
+            if (!mc.player.getMainHandItem().is(ItemTags.AXES)) {
+                FindItemResult axe = InvUtils.findInHotbar(stack -> stack.is(ItemTags.AXES));
+                if (axe.found()) {
+                    InvUtils.swap(axe.slot(), true);
+                    didSilentAxeSwap = true;
+                }
+            }
+        }
 
         mc.gameMode.attack(mc.player, target);
         PlayerUtils.punch(true);
+
+        if (didSilentAxeSwap) {
+            InvUtils.swapBack();
+        }
 
         hitTimer = 0;
     }
 
     private boolean acceptableWeapon(ItemStack stack) {
-        if (shouldShieldBreak()) return stack.is(net.minecraft.tags.ItemTags.AXES);
+        if (shouldShieldBreak() && autoSwitch.get() && InvUtils.findInHotbar(s -> s.is(ItemTags.AXES)).found()) {
+            return stack.is(ItemTags.AXES);
+        }
         if (attackWhenHolding.get() == AttackItems.All) return true;
 
         if (weapons.get().contains(Items.DIAMOND_SWORD) && stack.is(ItemTags.SWORDS)) return true;

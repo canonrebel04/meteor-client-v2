@@ -24,6 +24,8 @@ import baritone.api.utils.Rotation;
 public class LookPriorityBridge {
 
     private static ILookRequest request;
+    private static volatile boolean silentMovementCorrectionActive;
+    private static volatile float activeCombatYaw;
 
     private LookPriorityBridge() {
     }
@@ -34,6 +36,8 @@ public class LookPriorityBridge {
      * via {@link #release()} once Meteor stops rotating.
      */
     public static void sync(double yaw, double pitch) {
+        activeCombatYaw = (float) yaw;
+        silentMovementCorrectionActive = true;
         if (request == null) {
             request = BaritoneAPI.getLookPriorityHub().requestRotation(
                     ILookPriorityHub.COMBAT_PRIORITY,
@@ -50,9 +54,36 @@ public class LookPriorityBridge {
      * Safe to call when no request is active.
      */
     public static void release() {
+        silentMovementCorrectionActive = false;
         if (request != null) {
             request.release();
             request = null;
         }
+    }
+
+    /**
+     * Enhancement #44: Returns true when Meteor holds combat rotation priority so movement
+     * inputs can be strafe-corrected relative to {@link #getActiveCombatYaw()}.
+     */
+    public static boolean isSilentMovementCorrectionActive() {
+        return silentMovementCorrectionActive;
+    }
+
+    /**
+     * Returns the combat yaw currently submitted to Baritone's look priority hub.
+     */
+    public static float getActiveCombatYaw() {
+        return activeCombatYaw;
+    }
+
+    /**
+     * Computes strafe-corrected (forward, strafe) unit inputs in [-1, 1] so moving along
+     * {@code desiredMoveYaw} remains accurate while the player's server yaw is {@code viewYaw}.
+     */
+    public static float[] computeStrafeCorrectedInputs(float viewYaw, float desiredMoveYaw) {
+        double diffRad = Math.toRadians(desiredMoveYaw - viewYaw);
+        float forward = (float) Math.cos(diffRad);
+        float strafe = (float) -Math.sin(diffRad);
+        return new float[]{forward, strafe};
     }
 }

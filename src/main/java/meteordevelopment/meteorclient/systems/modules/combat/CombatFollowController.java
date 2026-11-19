@@ -56,10 +56,15 @@ public class CombatFollowController {
     }
 
     private boolean isDirectWalkable(Entity target) {
-        if (mc.player == null || mc.level == null || target == null) return false;
-        double dx = target.getX() - mc.player.getX();
-        double dy = target.getY() - mc.player.getY();
-        double dz = target.getZ() - mc.player.getZ();
+        if (target == null) return false;
+        return isDirectWalkable(target.getX(), target.getY(), target.getZ());
+    }
+
+    private boolean isDirectWalkable(double targetX, double targetY, double targetZ) {
+        if (mc.player == null || mc.level == null) return false;
+        double dx = targetX - mc.player.getX();
+        double dy = targetY - mc.player.getY();
+        double dz = targetZ - mc.player.getZ();
         double distSq = dx * dx + dz * dz;
 
         // If height difference is too steep (> 1.8 blocks), require Baritone parkour/pillar/stair pathing
@@ -178,22 +183,44 @@ public class CombatFollowController {
                     directPursuitActive = true;
                 }
 
-                Vec3 targetVel = currentTarget.getDeltaMovement();
+                Vec3 targetVel = getEffectiveVelocity(currentTarget);
                 double dist = currentTarget.distanceTo(mc.player);
 
-                // Lead intercept vector: only lead at medium/long distance (> 6m) to prevent overshooting close targets
-                double lead = dist > 6.0 ? Math.min(2.0, dist * 0.2) : 0.0;
-                double targetX = currentTarget.getX() + targetVel.x * lead;
-                double targetZ = currentTarget.getZ() + targetVel.z * lead;
+                // Lead intercept vector using Baritone followLeadTicks, tapered cleanly at close range
+                Integer leadSetting = BaritoneAPI.getSettings().followLeadTicks.value;
+                int configuredLead = leadSetting != null ? Math.max(0, leadSetting) : 8;
+
+                double closeRange = Math.max(3.0, followDistance + 0.5);
+                double lead = 0.0;
+                if (configuredLead > 0 && dist > closeRange) {
+                    double taper = Mth.clamp((dist - closeRange) / 7.0, 0.0, 1.0);
+                    lead = configuredLead * taper;
+                    double horizSpeed = Math.hypot(targetVel.x, targetVel.z);
+                    if (horizSpeed > 1.0E-4 && horizSpeed * lead > dist * 0.6) {
+                        lead = (dist * 0.6) / horizSpeed;
+                    }
+                }
+                double targetX = currentTarget.getX();
+                double targetZ = currentTarget.getZ();
+                if (lead > 0.0) {
+                    double predX = targetX + targetVel.x * lead;
+                    double predZ = targetZ + targetVel.z * lead;
+                    if (isDirectWalkable(predX, currentTarget.getY(), predZ)) {
+                        targetX = predX;
+                        targetZ = predZ;
+                    }
+                }
 
                 double dx = targetX - mc.player.getX();
                 double dz = targetZ - mc.player.getZ();
-                float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
+                if (dx * dx + dz * dz > 1.0E-6) {
+                    float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
 
-                // Smoothly steer player movement yaw straight towards the target
-                float currentYaw = mc.player.getYRot();
-                float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
-                mc.player.setYRot(gcdQuantize(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f), false));
+                    // Smoothly steer player movement yaw straight towards the target
+                    float currentYaw = mc.player.getYRot();
+                    float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
+                    mc.player.setYRot(gcdQuantize(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f), false));
+                }
 
                 // Optimal combat spacing: stop running forward at followDistance (2.2m) to prevent overshooting
                 if (dist > followDistance) {
@@ -231,6 +258,7 @@ public class CombatFollowController {
                 directPursuitActive = false;
                 if (mc.options != null) {
                     mc.options.keyUp.setDown(false);
+                    mc.options.keyDown.setDown(false);
                     releaseSprint();
                 }
             }
@@ -300,10 +328,12 @@ public class CombatFollowController {
         }
 
         // Face the target so backward movement is directly away from it
-        float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
-        float currentYaw = mc.player.getYRot();
-        float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
-        mc.player.setYRot(gcdQuantize(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f), false));
+        if (dx * dx + dz * dz > 1.0E-6) {
+            float targetYaw = (float) Math.toDegrees(Math.atan2(dz, dx)) - 90.0f;
+            float currentYaw = mc.player.getYRot();
+            float deltaYaw = Mth.wrapDegrees(targetYaw - currentYaw);
+            mc.player.setYRot(gcdQuantize(currentYaw + Mth.clamp(deltaYaw * 0.5f, -35.0f, 35.0f), false));
+        }
 
         if (dist < minDist - 0.2) {
             // Too close: back away (facing the target = moving directly away)
@@ -399,7 +429,7 @@ public class CombatFollowController {
             return;
         }
 
-        net.minecraft.world.phys.Vec3 targetVel = target.getDeltaMovement();
+        net.minecraft.world.phys.Vec3 targetVel = getEffectiveVelocity(target);
         double decay = 6.784265354243251; // ⚡ Bolt: Pre-calculated constant (1.0 - Math.pow(0.91, 10)) / (1.0 - 0.91)
         double predX = target.getX() + targetVel.x * decay;
         double predZ = target.getZ() + targetVel.z * decay;
@@ -412,6 +442,21 @@ public class CombatFollowController {
         GoalRunAway runAwayGoal = new GoalRunAway(distance, predictedBlock);
         goalProcess.setGoalAndPath(runAwayGoal);
         goalProcess.path();
+    }
+
+    private static Vec3 getEffectiveVelocity(Entity entity) {
+        if (entity == null) return Vec3.ZERO;
+        Vec3 vel = entity.getDeltaMovement();
+        double speedSq = vel.x * vel.x + vel.z * vel.z;
+        if (speedSq <= 1.0E-4 || !Double.isFinite(vel.x) || !Double.isFinite(vel.z)) {
+            Vec3 known = entity.getKnownSpeed();
+            double knownSq = known.x * known.x + known.z * known.z;
+            if (knownSq > 1.0E-4 && knownSq <= 6.25 && Double.isFinite(known.x) && Double.isFinite(known.z)) {
+                return known;
+            }
+            return Vec3.ZERO;
+        }
+        return speedSq <= 6.25 ? vel : Vec3.ZERO;
     }
 
     public void stop() {

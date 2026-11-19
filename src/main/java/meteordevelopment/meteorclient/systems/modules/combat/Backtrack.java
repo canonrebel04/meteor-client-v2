@@ -10,6 +10,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.events.entity.EntityRemovedEvent;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.BoolSetting;
@@ -21,13 +22,22 @@ import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
 import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
+import net.minecraft.network.protocol.game.VecDeltaCodec;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.PositionMoveRotation;
+import net.minecraft.world.entity.PositionPath;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 public class Backtrack extends Module {
     private static final int MAX_HELD = 300;
@@ -68,15 +78,34 @@ public class Backtrack extends Module {
 
     private static class HeldPacket {
         final Object packet; // ClientboundMoveEntityPacket | ClientboundTeleportEntityPacket
+        final int entityId;
         final long expireMs;
 
-        HeldPacket(Object packet, long expireMs) {
+        HeldPacket(Object packet, int entityId, long expireMs) {
             this.packet = packet;
+            this.entityId = entityId;
             this.expireMs = expireMs;
         }
     }
 
-    private final Deque<HeldPacket> held = new ArrayDeque<>();
+    private record PositionSample(Vec3 pos, long timeMs) {}
+
+    private static class EntityTrack {
+        final VecDeltaCodec serverCodec = new VecDeltaCodec();
+        volatile Vec3 serverPos;
+        volatile Vec3 heldPos;
+        final Deque<PositionSample> samples = new ConcurrentLinkedDeque<>();
+
+        EntityTrack(Vec3 codecBase, Vec3 visualPos) {
+            this.serverCodec.setBase(codecBase);
+            this.serverPos = codecBase;
+            this.heldPos = visualPos;
+            this.samples.addLast(new PositionSample(codecBase, System.currentTimeMillis()));
+        }
+    }
+
+    private final Deque<HeldPacket> held = new ConcurrentLinkedDeque<>();
+    private final Map<Integer, EntityTrack> tracks = new ConcurrentHashMap<>();
 
     public Backtrack() {
         super(Categories.Combat, "backtrack", "Delays incoming entity movement packets so you can hit players at their previous positions. Grim 2.0 has no backtrack checks.");
@@ -85,26 +114,78 @@ public class Backtrack extends Module {
     @Override
     public void onActivate() {
         held.clear();
+        tracks.clear();
     }
 
     @Override
     public void onDeactivate() {
         flushAll();
+        tracks.clear();
+    }
+
+    @EventHandler
+    private void onEntityRemoved(EntityRemovedEvent event) {
+        if (event.entity != null) {
+            tracks.remove(event.entity.getId());
+        }
     }
 
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
+        if (mc.level == null) return;
+
         if (event.packet instanceof ClientboundMoveEntityPacket move) {
-            if (shouldDelay(move.getEntity(mc.level))) {
-                event.cancel();
-                held.addLast(new HeldPacket(move, System.currentTimeMillis() + delay.get()));
+            Entity entity = move.getEntity(mc.level);
+            if (entity == null || entity == mc.player) return;
+
+            EntityTrack track = getOrCreateTrack(entity);
+            if (move.hasPosition()) {
+                PositionPath path = move.getPositionDelta().decode(track.serverCodec);
+                Vec3 nextPos = path.endPosition();
+                track.serverCodec.setBase(nextPos);
+                track.serverPos = nextPos;
+                recordSample(track, nextPos);
             }
-        } else if (teleports.get() && event.packet instanceof ClientboundTeleportEntityPacket teleport) {
-            Entity entity = mc.level.getEntity(teleport.id());
+
             if (shouldDelay(entity)) {
                 event.cancel();
-                held.addLast(new HeldPacket(teleport, System.currentTimeMillis() + delay.get()));
+                held.addLast(new HeldPacket(move, entity.getId(), System.currentTimeMillis() + delay.get()));
+            } else {
+                track.heldPos = entity.position();
             }
+        } else if (event.packet instanceof ClientboundTeleportEntityPacket teleport) {
+            Entity entity = mc.level.getEntity(teleport.id());
+            if (entity == null || entity == mc.player) return;
+
+            EntityTrack track = getOrCreateTrack(entity);
+            PositionMoveRotation abs = PositionMoveRotation.calculateAbsolute(
+                new PositionMoveRotation(track.serverPos, Vec3.ZERO, entity.getYRot(), entity.getXRot()),
+                teleport.change(),
+                teleport.relatives()
+            );
+            Vec3 nextPos = abs.position();
+            track.serverCodec.setBase(nextPos);
+            track.serverPos = nextPos;
+            recordSample(track, nextPos);
+
+            if (teleports.get() && shouldDelay(entity)) {
+                event.cancel();
+                held.addLast(new HeldPacket(teleport, entity.getId(), System.currentTimeMillis() + delay.get()));
+            } else {
+                dropHeldMovePackets(entity.getId());
+                track.heldPos = nextPos;
+            }
+        } else if (event.packet instanceof ClientboundEntityPositionSyncPacket sync) {
+            Entity entity = mc.level.getEntity(sync.id());
+            if (entity == null || entity == mc.player) return;
+
+            dropHeldMovePackets(entity.getId());
+            EntityTrack track = getOrCreateTrack(entity);
+            Vec3 nextPos = sync.position().endPosition();
+            track.serverCodec.setBase(nextPos);
+            track.serverPos = nextPos;
+            track.heldPos = nextPos;
+            recordSample(track, nextPos);
         }
     }
 
@@ -123,6 +204,100 @@ public class Backtrack extends Module {
         while (held.size() > MAX_HELD) {
             dispatch(held.pollFirst());
         }
+
+        long cutoff = now - Math.max(50L, delay.get()) - 100L;
+        Iterator<Map.Entry<Integer, EntityTrack>> it = tracks.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Integer, EntityTrack> entry = it.next();
+            Entity entity = mc.level.getEntity(entry.getKey());
+            if (entity == null || !entity.isAlive()) {
+                it.remove();
+                continue;
+            }
+            EntityTrack track = entry.getValue();
+            while (track.samples.size() > 1 && track.samples.peekFirst().timeMs() < cutoff) {
+                track.samples.pollFirst();
+            }
+        }
+    }
+
+    public Vec3 getServerPos(Entity entity) {
+        if (entity == null) return Vec3.ZERO;
+        EntityTrack track = tracks.get(entity.getId());
+        return track != null ? track.serverPos : entity.position();
+    }
+
+    public Vec3 getHeldPos(Entity entity) {
+        if (entity == null) return Vec3.ZERO;
+        EntityTrack track = tracks.get(entity.getId());
+        return track != null ? track.heldPos : entity.position();
+    }
+
+    public Vec3 getBacktrackedPos(Entity entity) {
+        if (entity == null) return Vec3.ZERO;
+        Vec3 currentPos = entity.position();
+        if (!isActive() || mc.player == null) return currentPos;
+
+        EntityTrack track = tracks.get(entity.getId());
+        if (track == null) return currentPos;
+
+        Vec3 playerPos = mc.player.position();
+        Vec3 bestPos = currentPos;
+        double bestDistSq = currentPos.distanceToSqr(playerPos);
+
+        double heldDistSq = track.heldPos.distanceToSqr(playerPos);
+        if (heldDistSq < bestDistSq) {
+            bestDistSq = heldDistSq;
+            bestPos = track.heldPos;
+        }
+
+        double serverDistSq = track.serverPos.distanceToSqr(playerPos);
+        if (serverDistSq < bestDistSq) {
+            bestDistSq = serverDistSq;
+            bestPos = track.serverPos;
+        }
+
+        long cutoff = System.currentTimeMillis() - Math.max(50L, delay.get()) - 50L;
+        for (PositionSample sample : track.samples) {
+            if (sample.timeMs() < cutoff) continue;
+            double dSq = sample.pos().distanceToSqr(playerPos);
+            if (dSq < bestDistSq) {
+                bestDistSq = dSq;
+                bestPos = sample.pos();
+            }
+        }
+
+        return bestPos;
+    }
+
+    public AABB getBacktrackedBox(Entity entity) {
+        if (entity == null) return new AABB(0, 0, 0, 0, 0, 0);
+        if (!isActive()) return entity.getBoundingBox();
+        Vec3 pos = getBacktrackedPos(entity);
+        return entity.getDimensions(entity.getPose()).makeBoundingBox(pos);
+    }
+
+    private EntityTrack getOrCreateTrack(Entity entity) {
+        return tracks.computeIfAbsent(entity.getId(), id -> {
+            Vec3 base = entity.getPositionCodec().getBase();
+            Vec3 visual = entity.position();
+            if (base.lengthSqr() < 1.0E-8 && visual.lengthSqr() > 1.0E-4) {
+                base = visual;
+            }
+            return new EntityTrack(base, visual);
+        });
+    }
+
+    private void dropHeldMovePackets(int entityId) {
+        held.removeIf(hp -> hp.entityId == entityId);
+    }
+
+    private void recordSample(EntityTrack track, Vec3 pos) {
+        long now = System.currentTimeMillis();
+        track.samples.addLast(new PositionSample(pos, now));
+        while (track.samples.size() > 64) {
+            track.samples.pollFirst();
+        }
     }
 
     private boolean shouldDelay(Entity entity) {
@@ -133,11 +308,18 @@ public class Backtrack extends Module {
     }
 
     private void dispatch(HeldPacket heldPacket) {
-        if (mc.getConnection() == null) return;
+        if (heldPacket == null || mc.getConnection() == null) return;
         if (heldPacket.packet instanceof ClientboundMoveEntityPacket move) {
             mc.getConnection().handleMoveEntity(move);
         } else if (heldPacket.packet instanceof ClientboundTeleportEntityPacket teleport) {
             mc.getConnection().handleTeleportEntity(teleport);
+        }
+        if (mc.level != null) {
+            Entity entity = mc.level.getEntity(heldPacket.entityId);
+            EntityTrack track = tracks.get(heldPacket.entityId);
+            if (entity != null && track != null) {
+                track.heldPos = entity.position();
+            }
         }
     }
 

@@ -18,6 +18,7 @@ import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.friends.Friends;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
@@ -27,10 +28,13 @@ import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.AttackRange;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 public class SpearKill extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -102,8 +106,11 @@ public class SpearKill extends Module {
         boolean holdingSpear = isSpear(mc.player.getMainHandItem());
         if (onlyWhenHolding.get() && !holdingSpear) return;
 
-        Player target = TargetUtils.getPlayerTarget(range.get(), SortPriority.LowestHealth);
-        if (target == null || !Friends.get().shouldAttack(target)) return;
+        Backtrack backtrack = Modules.get().get(Backtrack.class);
+        boolean useBacktrack = backtrack != null && backtrack.isActive();
+
+        Player target = findTarget(backtrack, useBacktrack);
+        if (target == null) return;
 
         if (!holdingSpear) {
             if (!autoSwitch.get()) return;
@@ -113,17 +120,56 @@ public class SpearKill extends Module {
             return;
         }
 
-        double distance = mc.player.distanceTo(target);
+        double distance = getTargetDistance(target, backtrack, useBacktrack);
         if (distance < minRange.get() || distance > range.get()) return;
 
         if (attackTimer > 0) return;
 
         if (rotate.get()) {
-            Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target), 50, () -> attack(target));
+            if (useBacktrack) {
+                Vec3 backPos = backtrack.getBacktrackedPos(target);
+                Vec3 aimPos = new Vec3(backPos.x, backPos.y + target.getBbHeight() * 0.5, backPos.z);
+                Rotations.rotate(Rotations.getYaw(aimPos), Rotations.getPitch(aimPos), 50, () -> attack(target));
+            } else {
+                Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target), 50, () -> attack(target));
+            }
         } else {
             attack(target);
         }
         attackTimer = delay.get();
+    }
+
+    private Player findTarget(Backtrack backtrack, boolean useBacktrack) {
+        if (!useBacktrack || mc.level == null) {
+            Player candidate = TargetUtils.getPlayerTarget(range.get(), SortPriority.LowestHealth);
+            return candidate != null && Friends.get().shouldAttack(candidate) ? candidate : null;
+        }
+        Player best = null;
+        float lowestHealth = Float.MAX_VALUE;
+        for (Player player : mc.level.players()) {
+            if (player == mc.player || player.isDeadOrDying() || !player.isAlive() || player.isCreative()) continue;
+            if (!Friends.get().shouldAttack(player)) continue;
+            double dist = getTargetDistance(player, backtrack, true);
+            if (dist < minRange.get() || dist > range.get()) continue;
+            float hp = player.getHealth() + player.getAbsorptionAmount();
+            if (hp < lowestHealth) {
+                lowestHealth = hp;
+                best = player;
+            }
+        }
+        return best;
+    }
+
+    private double getTargetDistance(Player target, Backtrack backtrack, boolean useBacktrack) {
+        if (!useBacktrack) {
+            return mc.player.distanceTo(target);
+        }
+        AABB box = backtrack.getBacktrackedBox(target);
+        Vec3 eyes = mc.player.getEyePosition();
+        double cx = Mth.clamp(eyes.x, box.minX, box.maxX);
+        double cy = Mth.clamp(eyes.y, box.minY, box.maxY);
+        double cz = Mth.clamp(eyes.z, box.minZ, box.maxZ);
+        return Math.sqrt(eyes.distanceToSqr(cx, cy, cz));
     }
 
     private void attack(Player target) {

@@ -124,6 +124,13 @@ public class Offhand extends Module {
         .build()
     );
 
+    private final Setting<Boolean> chainCrystalPredict = sgTotem.add(new BoolSetting.Builder()
+        .name("chain-crystal-predict")
+        .description("Locks a totem when combined top crystal damage plus enemy-placeable crystal threat is lethal.")
+        .defaultValue(true)
+        .build()
+    );
+
 
     private boolean isClicking;
     private boolean sentMessage;
@@ -151,22 +158,23 @@ public class Offhand extends Module {
         totems = result.count();
 
         if (totems <= 0) locked = false;
-        else if (ticks > delayTicks.get()) {
-            boolean low = mc.player.getHealth() + mc.player.getAbsorptionAmount() - PlayerUtils.possibleHealthReductions(explosion.get(), falling.get()) <= minHealth.get();
+        else if (ticks >= delayTicks.get()) {
+            float totalHp = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+            boolean low = totalHp - PlayerUtils.possibleHealthReductions(explosion.get(), falling.get()) <= minHealth.get();
+            boolean chainLethal = chainCrystalPredict.get() && (totalHp - AutoTotem.predictChainCrystalDamage() <= minHealth.get());
             boolean ely = elytra.get() && mc.player.getItemBySlot(EquipmentSlot.CHEST).getItem() == Items.ELYTRA && mc.player.isFallFlying();
-            FindItemResult item = InvUtils.find(itemStack -> itemStack.getItem() == currentItem.item, 0, 35);
 
-            // Calculates Damage from Falling, Explosions + Elyta
-            locked = (low || ely);
+            // Calculates Damage from Falling, Explosions, Chain Crystal Threat + Elytra
+            locked = (low || chainLethal || ely);
 
-            if (locked && mc.player.getMainHandItem().getItem() != Items.TOTEM_OF_UNDYING) {
+            if (locked
+                && mc.player.getOffhandItem().getItem() != Items.TOTEM_OF_UNDYING
+                && mc.player.getMainHandItem().getItem() != Items.TOTEM_OF_UNDYING) {
                 InvUtils.move().from(result.slot()).toOffhand();
+                ticks = 0;
+                return;
             }
-
-            ticks = 0;
-            return;
         }
-        ticks++;
 
         AutoTotem autoTotem = Modules.get().get(AutoTotem.class);
 
@@ -226,22 +234,23 @@ public class Offhand extends Module {
                     }
 
                     // Swap to offhand
-                    else if ((isClicking || !autoTotem.isLocked() && !item.isOffhand())) {
+                    else if (isClicking || ((autoTotem == null || !autoTotem.isLocked()) && !item.isOffhand())) {
                         InvUtils.move().from(item.slot()).toOffhand();
                         sentMessage = false;
+                        ticks = 0;
+                        return;
                     }
-                    ticks = 0;
-                    return;
                 }
-                ticks++;
             }
         }
+        if (ticks < delayTicks.get()) ticks++;
     }
 
     @EventHandler
     private void onMouseClick(MouseClickEvent event) {
         // Detects if the User is right-clicking
-        isClicking = mc.gui.screen() == null && !Modules.get().get(AutoTotem.class).isLocked() && !usableItem() && !mc.player.isUsingItem() && event.action == KeyAction.Press && event.button() == MOUSE_BUTTON_RIGHT;
+        AutoTotem autoTotem = Modules.get().get(AutoTotem.class);
+        isClicking = mc.gui.screen() == null && (autoTotem == null || !autoTotem.isLocked()) && !usableItem() && !mc.player.isUsingItem() && event.action == KeyAction.Press && event.button() == MOUSE_BUTTON_RIGHT;
     }
 
     private boolean usableItem() {

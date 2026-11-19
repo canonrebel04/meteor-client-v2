@@ -226,6 +226,10 @@ public class NewChunks extends Module {
         return false;
     }
 
+    public Set<ChunkPos> getNewChunks() {
+        return java.util.Collections.unmodifiableSet(newChunks);
+    }
+
     @Override
     public String getInfoString() {
         return Integer.toString(newChunks.size());

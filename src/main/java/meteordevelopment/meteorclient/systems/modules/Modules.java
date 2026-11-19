@@ -403,6 +403,7 @@ public class Modules extends System<Modules> {
         add(new AnchorAura());
         add(new AntiAnvil());
         add(new AntiBed());
+        add(new AntiSurround());
         add(new ArrowDodge());
         add(new AttributeSwap());
         add(new AutoAnvil());
@@ -416,9 +417,11 @@ public class Modules extends System<Modules> {
         add(new AutoWeb());
         add(new Backtrack());
         add(new BedAura());
+        add(new Blocker());
         add(new BowAimbot());
         add(new BowSpam());
         add(new Burrow());
+        add(new ChorusControl());
         add(new Criticals());
         add(new CrystalAura());
         add(new Hitboxes());
@@ -426,10 +429,13 @@ public class Modules extends System<Modules> {
         add(new KillAura());
         add(new MaceKill());
         add(new Offhand());
+        add(new PearlPredict());
+        add(new PistonPush());
         add(new PopCounter());
         add(new Quiver());
         add(new SpearKill());
         add(new SelfAnvil());
+        add(new SelfProtect());
         add(new SelfTrap());
         add(new SelfWeb());
         add(new Surround());
@@ -451,6 +457,7 @@ public class Modules extends System<Modules> {
         add(new AutoEat());
         add(new AutoClicker());
         add(new AutoFish());
+        add(new AutoFood());
         add(new AutoGap());
         add(new AutoMend());
         add(new AutoReplenish());
@@ -502,6 +509,7 @@ public class Modules extends System<Modules> {
         add(new NoSlow());
         add(new Parkour());
         add(new PearlPhase());
+        add(new PortalEscape());
         add(new ReverseStep());
         add(new SafeWalk());
         add(new Scaffold());
@@ -581,6 +589,7 @@ public class Modules extends System<Modules> {
         add(new StashFinder());
         add(new SpawnProofer());
         add(new Timer());
+        add(new TrailFollower());
         add(new VeinMiner());
 
         if (BaritoneUtils.IS_AVAILABLE) {

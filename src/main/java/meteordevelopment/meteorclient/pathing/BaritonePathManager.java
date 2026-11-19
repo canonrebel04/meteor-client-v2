@@ -15,6 +15,7 @@ import baritone.api.process.PathingCommandType;
 import baritone.api.utils.SettingsUtil;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.systems.friends.Friends;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.orbit.EventPriority;
 import net.minecraft.core.BlockPos;
@@ -42,6 +43,11 @@ public class BaritonePathManager implements IPathManager {
 
         // Baritone pathing control
         BaritoneAPI.getProvider().getPrimaryBaritone().getPathingControlManager().registerProcess(new BaritoneProcess());
+
+        // Wire Meteor Friends into Baritone player avoidance
+        BaritoneAPI.setFriendFilter(uuid -> mc.level != null
+            && mc.level.getPlayerByUUID(uuid) instanceof net.minecraft.world.entity.player.Player p
+            && Friends.get().isFriend(p));
     }
 
     @Override

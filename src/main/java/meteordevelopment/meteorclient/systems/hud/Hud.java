@@ -123,6 +123,7 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         register(CompassHud.INFO);
         register(ArmorHud.INFO);
         register(HoleHud.INFO);
+        register(BaritoneHud.INFO);
         register(PlayerModelHud.INFO);
         register(ActiveModulesHud.INFO);
         register(LagNotifierHud.INFO);

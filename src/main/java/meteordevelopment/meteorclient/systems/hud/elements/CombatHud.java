@@ -18,6 +18,7 @@ import meteordevelopment.meteorclient.systems.hud.Hud;
 import meteordevelopment.meteorclient.systems.hud.HudElement;
 import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
 import meteordevelopment.meteorclient.systems.hud.HudRenderer;
+import meteordevelopment.meteorclient.systems.modules.combat.CombatTargetAnalyzer;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.entity.EntityUtils;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
@@ -59,6 +60,7 @@ public class CombatHud extends HudElement {
     private final SettingGroup sgHealth = settings.createGroup("Health");
     private final SettingGroup sgDistance = settings.createGroup("Distance");
     private final SettingGroup sgPing = settings.createGroup("Ping");
+    private final SettingGroup sgArmor = settings.createGroup("Armor");
     private final SettingGroup sgScale = settings.createGroup("Scale");
     private final SettingGroup sgBackground = settings.createGroup("Background");
 
@@ -190,6 +192,16 @@ public class CombatHud extends HudElement {
         .build()
     );
 
+    // Armor
+
+    private final Setting<Boolean> displayArmorDurability = sgArmor.add(new BoolSetting.Builder()
+        .name("armor-durability")
+        .description("Shows the target's lowest armor piece durability percentage.")
+        .defaultValue(true)
+        .onChanged(_ -> calculateSize())
+        .build()
+    );
+
     // Scale
 
     public final Setting<Boolean> customScale = sgScale.add(new BoolSetting.Builder()
@@ -237,7 +249,12 @@ public class CombatHud extends HudElement {
     }
 
     private void calculateSize() {
-        setSize(175 * getScale(), 95 * getScale());
+        setSize(175 * getScale(), (displayArmorDurability.get() ? 106 : 95) * getScale());
+    }
+
+    @Override
+    public void tick(HudRenderer renderer) {
+        calculateSize();
     }
 
     @Override
@@ -462,6 +479,29 @@ public class CombatHud extends HudElement {
             Renderer2D.COLOR.render();
 
             matrices.popMatrix();
+
+            if (displayArmorDurability.get()) {
+                String armorText;
+                Color armorColor;
+                boolean hasArmor = CombatTargetAnalyzer.hasDamageableArmor(playerEntity);
+                if (hasArmor || isInEditor()) {
+                    double ratio = hasArmor ? CombatTargetAnalyzer.getLowestArmorDurabilityRatio(playerEntity) : 1.0;
+                    int pct = (int) Math.round(ratio * 100.0);
+                    armorText = ratio < 0.18 ? "Min Armor: " + pct + "% (LOW)" : "Min Armor: " + pct + "%";
+                    if (ratio < 0.18) armorColor = RED;
+                    else if (ratio < 0.50) armorColor = healthColor2.get();
+                    else armorColor = GREEN;
+                } else {
+                    armorText = "Min Armor: None";
+                    armorColor = secondaryColor;
+                }
+
+                double armorTextX = this.x + 5.0 * getScale();
+                double armorTextY = this.y + 93.0 * getScale();
+                TextRenderer.get().begin(renderer.graphics, 0.42 * getScale(), false, true);
+                TextRenderer.get().render(armorText, armorTextX, armorTextY, armorColor);
+                TextRenderer.get().end();
+            }
         });
     }
 

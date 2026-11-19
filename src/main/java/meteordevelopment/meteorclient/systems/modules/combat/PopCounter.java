@@ -23,9 +23,9 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
 import net.minecraft.world.entity.player.Player;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PopCounter extends Module {
     // Vanilla entity-event id for totem activation (stable since 1.8)
@@ -54,8 +54,9 @@ public class PopCounter extends Module {
         .build()
     );
 
-    private final Map<UUID, Integer> pops = new HashMap<>();
-    private final Map<UUID, String> names = new HashMap<>();
+    private final Map<UUID, Integer> pops = new ConcurrentHashMap<>();
+    private final Map<UUID, String> names = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> lastPopTimeMs = new ConcurrentHashMap<>();
 
     public PopCounter() {
         super(Categories.Combat, "pop-counter", "Counts totem pops of nearby players and renders the tallies.");
@@ -65,18 +66,42 @@ public class PopCounter extends Module {
     public void onDeactivate() {
         pops.clear();
         names.clear();
+        lastPopTimeMs.clear();
+    }
+
+    public int getPops(UUID uuid) {
+        if (uuid == null) return 0;
+        return pops.getOrDefault(uuid, 0);
+    }
+
+    public long getLastPopTimeMs(UUID uuid) {
+        if (uuid == null) return 0L;
+        return lastPopTimeMs.getOrDefault(uuid, 0L);
+    }
+
+    public boolean poppedRecently(UUID uuid, long windowMs) {
+        if (uuid == null || windowMs <= 0L) return false;
+        Long last = lastPopTimeMs.get(uuid);
+        return last != null && (System.currentTimeMillis() - last) <= windowMs;
+    }
+
+    public void recordPop(Player player) {
+        if (player == null || player == mc.player) return;
+        UUID uuid = player.getUUID();
+        pops.merge(uuid, 1, Integer::sum);
+        names.put(uuid, player.getName().getString());
+        lastPopTimeMs.put(uuid, System.currentTimeMillis());
     }
 
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
-        if (!(event.packet instanceof ClientboundEntityEventPacket packet)) return;
+        if (mc.level == null || !(event.packet instanceof ClientboundEntityEventPacket packet)) return;
         if (packet.getEventId() != TOTEM_POP_EVENT) return;
 
         var entity = packet.getEntity(mc.level);
         if (!(entity instanceof Player player) || player == mc.player) return;
 
-        pops.merge(player.getUUID(), 1, Integer::sum);
-        names.put(player.getUUID(), player.getName().getString());
+        recordPop(player);
     }
 
     @EventHandler
