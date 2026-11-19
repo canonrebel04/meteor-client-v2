@@ -69,4 +69,20 @@ class GetItemSpecTest {
     void stepKeyKeepsPauseReason() {
         assertEquals("step 2 [fleeing", GetItemSpec.stepKey("getting x 0/1, step 2 [fleeing: 2 hostiles within 5m]"));
     }
+
+    @Test
+    void huntOnlyHitsChargedOnCrosshairInReach() {
+        assertEquals(GetItemSpec.Hunt.NONE, GetItemSpec.hunt(false, 5, 2, 3.5, 1f, true));
+        assertEquals(GetItemSpec.Hunt.NONE, GetItemSpec.hunt(true, -1, 2, 3.5, 1f, true));
+        assertEquals(GetItemSpec.Hunt.NONE, GetItemSpec.hunt(true, 5, 9, 3.5, 1f, true));
+        assertEquals(GetItemSpec.Hunt.AIM, GetItemSpec.hunt(true, 5, 5, 3.5, 1f, true));
+        assertEquals(GetItemSpec.Hunt.AIM, GetItemSpec.hunt(true, 5, 2, 3.5, 0.5f, true));
+        assertEquals(GetItemSpec.Hunt.AIM, GetItemSpec.hunt(true, 5, 2, 3.5, 1f, false));
+        assertEquals(GetItemSpec.Hunt.ATTACK, GetItemSpec.hunt(true, 5, 2, 3.5, 1f, true));
+    }
+
+    @Test
+    void animalAutomationsPausedDuringRuns() {
+        assertTrue(GetItemSpec.CONFLICTING.containsAll(java.util.List.of("auto-breed", "auto-shearer", "auto-fish")));
+    }
 }

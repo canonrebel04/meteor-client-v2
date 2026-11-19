@@ -16,7 +16,14 @@ import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.CombatBrainModule;
 import meteordevelopment.meteorclient.systems.modules.player.AutoEat;
 import meteordevelopment.orbit.EventHandler;
+import meteordevelopment.meteorclient.utils.player.CameraArbiter;
+import meteordevelopment.meteorclient.utils.player.PlayerUtils;
+import meteordevelopment.meteorclient.utils.player.Rotations;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
@@ -34,6 +41,7 @@ public class GetItem extends Module {
     private final SettingGroup sgSafety = settings.createGroup("Safety");
     private final SettingGroup sgLimits = settings.createGroup("Limits");
     private final SettingGroup sgInterop = settings.createGroup("Interop");
+    private final SettingGroup sgSources = settings.createGroup("Sources");
 
     public enum HostileAction { Flee, Pause, Ignore }
 
@@ -257,6 +265,72 @@ public class GetItem extends Module {
         .build()
     );
 
+    // sources (M3)
+
+    private final Setting<Boolean> useTrades = sgSources.add(new BoolSetting.Builder()
+        .name("use-trades")
+        .description("Buy items from villagers you have seen (their offers are remembered).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> useFarms = sgSources.add(new BoolSetting.Builder()
+        .name("use-farms")
+        .description("Harvest ripe crops from farms you have seen (replanting them).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> useFishing = sgSources.add(new BoolSetting.Builder()
+        .name("use-fishing")
+        .description("Fish for cod / salmon / pufferfish when water is nearby.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> useHunting = sgSources.add(new BoolSetting.Builder()
+        .name("use-hunting")
+        .description("Hunt mobs for drops; Baritone walks to the mob and this module makes the (legit, cooldown-charged) hit.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> huntHostiles = sgSources.add(new BoolSetting.Builder()
+        .name("hunt-hostiles")
+        .description("Also hunt hostile mobs (zombies, skeletons, spiders...) for their drops.")
+        .defaultValue(true)
+        .visible(useHunting::get)
+        .build()
+    );
+
+    private final Setting<Boolean> useAnimals = sgSources.add(new BoolSetting.Builder()
+        .name("use-animals")
+        .description("Shear sheep for wool and milk cows.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> useTrees = sgSources.add(new BoolSetting.Builder()
+        .name("use-trees")
+        .description("Plant a sapling and grow a tree (with bone meal when you have it) for logs.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> storeHarvest = sgSources.add(new BoolSetting.Builder()
+        .name("store-harvest")
+        .description("Put harvest by-products you didn't ask for (seeds, extra crops, mob drops) in a nearby chest.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<List<String>> mobFarms = sgSources.add(new StringListSetting.Builder()
+        .name("mob-farms")
+        .description("Your mob farms' collection spots as \"x,y,z=item|item@seconds-per-item\", e.g. \"10,64,-20=minecraft:gunpowder@6\".")
+        .defaultValue(List.of())
+        .build()
+    );
+
     // interop
 
     private final Setting<Boolean> combatHandoff = sgInterop.add(new BoolSetting.Builder()
@@ -268,12 +342,13 @@ public class GetItem extends Module {
 
     private final Setting<Boolean> pauseConflicting = sgInterop.add(new BoolSetting.Builder()
         .name("pause-conflicting")
-        .description("Turn off Infinity Miner, Vein Miner, Nuker, Auto Smelter and EChest Farmer while running, and back on afterwards.")
+        .description("Turn off Infinity Miner, Vein Miner, Nuker, Auto Smelter, EChest Farmer, Auto Breed, Auto Shearer and Auto Fish while running, and back on afterwards.")
         .defaultValue(true)
         .build()
     );
 
     private IGetItemProcess process;
+    private IBaritone baritoneRef;
     private String lastStep = "";
     private final List<Module> pausedModules = new ArrayList<>();
     private boolean weEnabledCombat;
@@ -315,6 +390,17 @@ public class GetItem extends Module {
         s.getItemMaxMinutes.value = maxMinutes.get();
         s.getItemMaxDistance.value = maxDistance.get();
         s.getItemMinY.value = minY.get();
+        s.getItemUseTrades.value = useTrades.get();
+        s.getItemUseFarms.value = useFarms.get();
+        s.getItemUseFishing.value = useFishing.get();
+        s.getItemUseHunting.value = useHunting.get();
+        s.getItemHuntHostiles.value = huntHostiles.get();
+        s.getItemUseAnimals.value = useAnimals.get();
+        s.getItemUseTrees.value = useTrees.get();
+        s.getItemStoreHarvest.value = storeHarvest.get();
+        s.getItemMobFarms.value = new ArrayList<>(mobFarms.get());
+        process.setKillHandler(useHunting.get());
+        baritoneRef = baritone;
         lastStep = "";
         weEnabledCombat = false;
         calmTicks = 0;
@@ -350,6 +436,7 @@ public class GetItem extends Module {
 
     @Override
     public void onDeactivate() {
+        if (process != null) process.setKillHandler(false);
         if (process != null && process.isActive()) process.cancel();
         process = null;
         for (Module m : pausedModules) if (!m.isActive()) m.toggle();
@@ -370,12 +457,36 @@ public class GetItem extends Module {
             return;
         }
         handoffCombat();
+        hunt();
         if (announceSteps.get()) {
             String status = process.status();
             String key = GetItemSpec.stepKey(status);
             if (!key.equals(lastStep)) {
                 lastStep = key;
                 info("%s", status);
+            }
+        }
+    }
+
+    /** A30: Baritone never attacks; it walks to the hunt target and we make the hit, legit (charged, on crosshair). */
+    private void hunt() {
+        if (mc.player == null || mc.level == null || mc.gameMode == null) return;
+        int id = process.huntTargetId();
+        Entity e = id < 0 ? null : mc.level.getEntity(id);
+        if (!(e instanceof LivingEntity target) || !target.isAlive()) return;
+        double reach = Math.min(3.5, mc.player.entityInteractionRange());
+        double dist = Math.sqrt(mc.player.distanceToSqr(target.getX(), Mth.clamp(mc.player.getEyeY(), target.getY(), target.getY() + target.getBbHeight()), target.getZ()));
+        boolean onCrosshair = mc.crosshairPickEntity == target;
+        switch (GetItemSpec.hunt(useHunting.get(), id, dist, reach, mc.player.getAttackStrengthScale(0.5f), onCrosshair)) {
+            case ATTACK -> {
+                mc.gameMode.attack(mc.player, target);
+                PlayerUtils.punch(true);
+            }
+            case AIM -> {
+                Vec3 aim = target.position().add(0, target.getBbHeight() * 0.6, 0);
+                CameraArbiter.claim(this, CameraArbiter.PRIORITY_COMBAT_AIM, (float) Rotations.getYaw(aim), (float) Rotations.getPitch(aim), true);
+            }
+            default -> {
             }
         }
     }

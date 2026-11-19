@@ -81,5 +81,19 @@ public final class GetItemSpec {
     }
 
     /** Meteor modules that drive mining/inventory on their own and conflict with a Get Item run. */
-    public static final List<String> CONFLICTING = List.of("infinity-miner", "vein-miner", "nuker", "auto-smelter", "echest-farmer");
+    public static final List<String> CONFLICTING = List.of("infinity-miner", "vein-miner", "nuker", "auto-smelter", "echest-farmer",
+        "auto-breed", "auto-shearer", "auto-fish"); // A42: these grab the same animals / rod / hotbar as M3 gather steps
+
+    /** A30 hunting: what to do with Baritone's hunt target this tick. */
+    public enum Hunt { NONE, AIM, ATTACK }
+
+    /**
+     * Legit hunting: aim at the target once it is near, attack only when it is under the crosshair, within reach and
+     * the attack cooldown is charged (no multi-hit spam, no through-wall hits).
+     */
+    public static Hunt hunt(boolean enabled, int targetId, double distance, double reach, float cooldown, boolean onCrosshair) {
+        if (!enabled || targetId < 0 || distance > reach + 3) return Hunt.NONE;
+        if (distance <= reach && onCrosshair && cooldown >= 0.92f) return Hunt.ATTACK;
+        return Hunt.AIM;
+    }
 }
