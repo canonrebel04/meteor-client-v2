@@ -606,6 +606,7 @@ public class Modules extends System<Modules> {
 
         if (BaritoneUtils.IS_AVAILABLE) {
             add(new Excavator());
+            add(new GetItem());
             add(new InfinityMiner());
         }
     }
