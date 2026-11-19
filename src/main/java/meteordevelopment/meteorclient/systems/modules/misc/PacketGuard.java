@@ -124,11 +124,11 @@ public class PacketGuard extends Module {
                 }
             }
         } else if (p instanceof ServerboundMoveVehiclePacket v) {
-            Vec3 pos = v.position();
+            Vec3 pos = v.movingTo().position();
             if (positions.get() && !PacketSanity.validPosition(pos.x, pos.y, pos.z)) return "invalid vehicle position";
-            if (rotations.get() && !PacketSanity.validRotationValues(v.yRot(), v.xRot())) return "non-finite vehicle rotation";
+            if (rotations.get() && !PacketSanity.validRotationValues(v.movingTo().yRot(), v.movingTo().xRot())) return "non-finite vehicle rotation";
         } else if (p instanceof ServerboundUseItemOnPacket u) {
-            Vec3 l = u.getHitResult().getLocation();
+            Vec3 l = u.hitResult().getLocation();
             if (positions.get() && !PacketSanity.validPosition(l.x, l.y, l.z)) return "invalid block-hit location";
         } else if (p instanceof ServerboundSetCarriedItemPacket s) {
             if (hotbar.get() && !PacketSanity.validHotbarSlot(s.getSlot())) return "hotbar slot " + s.getSlot() + " out of range";
@@ -136,7 +136,7 @@ public class PacketGuard extends Module {
             if (p instanceof ServerboundChatPacket c && !PacketSanity.validLength(c.message(), PacketSanity.MAX_CHAT_LENGTH)) return "chat message too long";
             if (p instanceof ServerboundChatCommandPacket c && !PacketSanity.validLength(c.command(), PacketSanity.MAX_COMMAND_LENGTH)) return "command too long";
             if (p instanceof ServerboundSignUpdatePacket s) {
-                for (String line : s.getLines()) if (!PacketSanity.validLength(line, PacketSanity.MAX_SIGN_LINE_LENGTH)) return "sign line too long";
+                for (String line : s.lines()) if (!PacketSanity.validLength(line, PacketSanity.MAX_SIGN_LINE_LENGTH)) return "sign line too long";
             }
         }
         return null;

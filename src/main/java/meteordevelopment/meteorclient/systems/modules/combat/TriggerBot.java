@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.friends.Friends;
@@ -89,7 +90,7 @@ public class TriggerBot extends Module {
 
         if (shouldAttack(mc.player.getAttackStrengthScale(0.5f), cooldown.get(), onTargetTicks, requiredTicks)) {
             mc.gameMode.attack(mc.player, target);
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            PlayerUtils.swingHand(InteractionHand.MAIN_HAND);
         }
     }
 

@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.player;
 
+import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
@@ -109,11 +110,11 @@ public class AutoPot extends Module {
     private void use(FindItemResult item) {
         if (item.isOffhand()) {
             mc.gameMode.useItem(mc.player, InteractionHand.OFF_HAND);
-            mc.player.swing(InteractionHand.OFF_HAND);
+            PlayerUtils.swingHand(InteractionHand.OFF_HAND, true);
         } else {
             InvUtils.swap(item.slot(), true);
             mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
-            mc.player.swing(InteractionHand.MAIN_HAND);
+            PlayerUtils.swingHand(InteractionHand.MAIN_HAND, true);
             InvUtils.swapBack();
         }
     }
