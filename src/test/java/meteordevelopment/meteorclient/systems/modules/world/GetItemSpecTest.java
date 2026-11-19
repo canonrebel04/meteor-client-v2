@@ -27,6 +27,32 @@ class GetItemSpecTest {
     }
 
     @Test
+    void advancedGoalWinsOverTagAndItem() {
+        assertEquals("potion:swiftness", GetItemSpec.target(" potion:swiftness ", "logs", "minecraft:stone"));
+        assertEquals("diamond_pickaxe@fortune:3", GetItemSpec.target("diamond_pickaxe@fortune:3", "", "minecraft:stone"));
+        assertEquals("#minecraft:logs", GetItemSpec.target("", "logs", "minecraft:stone"));
+        assertEquals("minecraft:stone", GetItemSpec.target(null, null, "minecraft:stone"));
+    }
+
+    @Test
+    void advancedGoalDetection() {
+        assertTrue(GetItemSpec.isAdvanced("potion:swiftness"));
+        assertTrue(GetItemSpec.isAdvanced("minecraft:splash_potion:strong_healing"));
+        assertTrue(GetItemSpec.isAdvanced("diamond_sword@sharpness:5@name:Excalibur"));
+        assertFalse(GetItemSpec.isAdvanced("minecraft:potion"));
+        assertFalse(GetItemSpec.isAdvanced("minecraft:oak_log"));
+        assertFalse(GetItemSpec.isAdvanced("#logs"));
+        assertFalse(GetItemSpec.isAdvanced(""));
+    }
+
+    @Test
+    void hotbarLayoutIsNormalised() {
+        assertEquals(List.of("pickaxe", "axe", "-", "food", "blocks"), GetItemSpec.hotbarLayout(Arrays.asList("Pickaxes", " axe", "torch", "FOOD", "block")));
+        assertEquals(9, GetItemSpec.hotbarLayout(Arrays.asList("a", "b", "c", "d", "e", "f", "g", "h", "i", "j")).size());
+        assertTrue(GetItemSpec.hotbarLayout(null).isEmpty());
+    }
+
+    @Test
     void stepKeyIgnoresProgress() {
         String a = "getting minecraft:iron_pickaxe 0/1, step 3: mining stone 2/8";
         String b = "getting minecraft:iron_pickaxe 0/1, step 3: mining stone 5/8";

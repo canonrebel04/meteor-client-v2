@@ -42,6 +42,7 @@ public class GetItem extends Module {
     private final SettingGroup sgLimits = settings.createGroup("Limits");
     private final SettingGroup sgInterop = settings.createGroup("Interop");
     private final SettingGroup sgSources = settings.createGroup("Sources");
+    private final SettingGroup sgStations = settings.createGroup("Stations & Enchanting");
 
     public enum HostileAction { Flee, Pause, Ignore }
 
@@ -56,6 +57,13 @@ public class GetItem extends Module {
     private final Setting<String> tag = sgGeneral.add(new StringSetting.Builder()
         .name("tag")
         .description("Get any item of this tag instead (e.g. logs, planks, wool). Leave empty to use the item.")
+        .defaultValue("")
+        .build()
+    );
+
+    private final Setting<String> advanced = sgGeneral.add(new StringSetting.Builder()
+        .name("advanced")
+        .description("Potion or enchanted/renamed item instead of item/tag, e.g. potion:swiftness, splash_potion:strong_healing, diamond_pickaxe@fortune:3,unbreaking:3, diamond_sword@name:Excalibur. Leave empty to use item/tag.")
         .defaultValue("")
         .build()
     );
@@ -331,6 +339,103 @@ public class GetItem extends Module {
         .build()
     );
 
+    // stations & enchanting (M4)
+
+    private final Setting<Boolean> useStonecutter = sgStations.add(new BoolSetting.Builder()
+        .name("use-stonecutter")
+        .description("Plans may cut slabs, stairs and walls on a stonecutter.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> useSmithing = sgStations.add(new BoolSetting.Builder()
+        .name("use-smithing")
+        .description("Plans may upgrade gear to netherite on a smithing table.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> useCampfire = sgStations.add(new BoolSetting.Builder()
+        .name("use-campfire")
+        .description("Plans may cook food on a lit campfire (no fuel).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> brewing = sgStations.add(new BoolSetting.Builder()
+        .name("brewing")
+        .description("Potion goals are brewed in a brewing stand (water bottles, ingredients, blaze powder).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> useAnvil = sgStations.add(new BoolSetting.Builder()
+        .name("use-anvil")
+        .description("Enchant goals may put enchanted books on the item with an anvil.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Integer> maxAnvilCost = sgStations.add(new IntSetting.Builder()
+        .name("max-anvil-cost")
+        .description("Refuse anvil operations costing this many levels or more.")
+        .defaultValue(39)
+        .range(1, 39)
+        .sliderRange(1, 39)
+        .build()
+    );
+
+    private final Setting<Boolean> useEnchantingTable = sgStations.add(new BoolSetting.Builder()
+        .name("use-enchanting-table")
+        .description("Enchant goals may use an enchanting table when no book is available.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Integer> enchantRerolls = sgStations.add(new IntSetting.Builder()
+        .name("enchant-rerolls")
+        .description("Times a wrong enchanting result is cleaned on a grindstone and tried again.")
+        .defaultValue(3)
+        .range(0, 20)
+        .sliderRange(0, 10)
+        .build()
+    );
+
+    private final Setting<Boolean> compost = sgStations.add(new BoolSetting.Builder()
+        .name("compost")
+        .description("Make bone meal in a nearby composter from spare seeds, saplings and crops.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> collectXp = sgStations.add(new BoolSetting.Builder()
+        .name("collect-xp")
+        .description("Pick up nearby experience orbs when enchanting or an anvil needs more levels.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> collectXpAlways = sgStations.add(new BoolSetting.Builder()
+        .name("collect-xp-always")
+        .description("Also pick up nearby experience orbs between any steps.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> shulkerPack = sgStations.add(new BoolSetting.Builder()
+        .name("shulker-pack")
+        .description("When the inventory is full and there is no chest, place a carried shulker box, pack overflow into it and pick it back up.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<List<String>> hotbarLayout = sgStations.add(new StringListSetting.Builder()
+        .name("hotbar-layout")
+        .description("Tool per hotbar slot from slot 1: pickaxe, axe, shovel, hoe, sword, shears, food, blocks or - (leave alone). Empty = off.")
+        .defaultValue(List.of())
+        .build()
+    );
+
     // interop
 
     private final Setting<Boolean> combatHandoff = sgInterop.add(new BoolSetting.Builder()
@@ -359,7 +464,7 @@ public class GetItem extends Module {
     }
 
     private String target() {
-        return GetItemSpec.target(tag.get(), BuiltInRegistries.ITEM.getKey(item.get()).toString());
+        return GetItemSpec.target(advanced.get(), tag.get(), BuiltInRegistries.ITEM.getKey(item.get()).toString());
     }
 
     @Override
@@ -399,6 +504,19 @@ public class GetItem extends Module {
         s.getItemUseTrees.value = useTrees.get();
         s.getItemStoreHarvest.value = storeHarvest.get();
         s.getItemMobFarms.value = new ArrayList<>(mobFarms.get());
+        s.getItemUseStonecutter.value = useStonecutter.get();
+        s.getItemUseSmithing.value = useSmithing.get();
+        s.getItemUseCampfire.value = useCampfire.get();
+        s.getItemBrewing.value = brewing.get();
+        s.getItemUseAnvil.value = useAnvil.get();
+        s.getItemMaxAnvilCost.value = maxAnvilCost.get();
+        s.getItemUseEnchantingTable.value = useEnchantingTable.get();
+        s.getItemEnchantRerolls.value = enchantRerolls.get();
+        s.getItemCompost.value = compost.get();
+        s.getItemCollectXp.value = collectXp.get();
+        s.getItemCollectXpAlways.value = collectXpAlways.get();
+        s.getItemShulkerPack.value = shulkerPack.get();
+        s.getItemHotbarLayout.value = new ArrayList<>(GetItemSpec.hotbarLayout(hotbarLayout.get()));
         process.setKillHandler(useHunting.get());
         baritoneRef = baritone;
         lastStep = "";

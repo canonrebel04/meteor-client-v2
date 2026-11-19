@@ -26,6 +26,45 @@ public final class GetItemSpec {
         return itemId;
     }
 
+    /**
+     * M4: the advanced goal text when given (trimmed; "minecraft:" optional), else {@link #target(String, String)}.
+     * Advanced goals are potions ({@code potion:swiftness}) or items with {@code @enchant:level}/{@code @name:}.
+     */
+    public static String target(String advanced, String tag, String itemId) {
+        String a = advanced == null ? "" : advanced.trim();
+        if (!a.isEmpty()) return a;
+        return target(tag, itemId);
+    }
+
+    /** True when the text is an advanced goal Baritone will treat as a potion/enchant/rename spec. */
+    public static boolean isAdvanced(String text) {
+        if (text == null) return false;
+        String t = text.trim().toLowerCase(Locale.ROOT);
+        if (t.isEmpty() || t.startsWith("#")) return false;
+        if (t.indexOf('@') > 0) return true;
+        if (t.startsWith("minecraft:")) t = t.substring(10);
+        int c = t.indexOf(':');
+        if (c <= 0) return false;
+        String head = t.substring(0, c);
+        return head.equals("potion") || head.equals("splash_potion") || head.equals("lingering_potion");
+    }
+
+    /** Hotbar tool layout entries: lower-cased, at most 9, unknown kinds become "-" (leave the slot alone). */
+    public static List<String> hotbarLayout(List<String> entries) {
+        List<String> kinds = List.of("pickaxe", "axe", "shovel", "hoe", "sword", "shears", "food", "blocks");
+        List<String> out = new ArrayList<>();
+        if (entries == null) return out;
+        for (String e : entries) {
+            if (out.size() >= 9) break;
+            String k = e == null ? "" : e.trim().toLowerCase(Locale.ROOT);
+            if (k.endsWith("s") && !k.equals("shears") && !k.equals("blocks")) k = k.substring(0, k.length() - 1);
+            if (k.equals("pick")) k = "pickaxe";
+            if (k.equals("block")) k = "blocks";
+            out.add(kinds.contains(k) ? k : "-");
+        }
+        return out;
+    }
+
     /** The "step N" part of a Baritone Get Item status line, used to announce step changes once. */
     public static String stepKey(String status) {
         if (status == null) return "";
