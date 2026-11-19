@@ -16,12 +16,12 @@ import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.entity.EntityAgeTest;
 import meteordevelopment.meteorclient.utils.entity.EntityUtils;
 import meteordevelopment.meteorclient.utils.entity.SortPriority;
-import meteordevelopment.meteorclient.utils.entity.Target;
 import meteordevelopment.meteorclient.utils.entity.TargetUtils;
 import meteordevelopment.meteorclient.utils.entity.fakeplayer.FakePlayerEntity;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
+import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 import meteordevelopment.orbit.EventHandler;
@@ -54,6 +54,7 @@ public class KillAura extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgTargeting = settings.createGroup("Targeting");
     private final SettingGroup sgTiming = settings.createGroup("Timing");
+    private final SettingGroup sgAim = settings.createGroup("Smooth Aim");
 
     // General
 
@@ -77,6 +78,52 @@ public class KillAura extends Module {
         .name("rotate")
         .description("Determines when you should rotate towards the target.")
         .defaultValue(RotationMode.Always)
+        .build()
+    );
+
+    private final Setting<AimMode> aimMode = sgGeneral.add(new EnumSetting.Builder<AimMode>()
+        .name("aim-mode")
+        .description("Camera: turn your real camera through the smooth look profile and only hit once the crosshair is on the target (S51). Silent: server-side rotation packets, the camera doesn't move.")
+        .defaultValue(AimMode.Camera)
+        .visible(() -> rotation.get() != RotationMode.None)
+        .build()
+    );
+
+    private final Setting<Integer> reactionMin = sgAim.add(new IntSetting.Builder()
+        .name("switch-reaction-min")
+        .description("Shortest pause (ticks) before turning to a new target.")
+        .defaultValue(2)
+        .range(0, 20)
+        .sliderRange(0, 10)
+        .visible(() -> aimMode.get() == AimMode.Camera)
+        .build()
+    );
+
+    private final Setting<Integer> reactionMax = sgAim.add(new IntSetting.Builder()
+        .name("switch-reaction-max")
+        .description("Longest pause (ticks) before turning to a new target.")
+        .defaultValue(5)
+        .range(0, 20)
+        .sliderRange(0, 10)
+        .visible(() -> aimMode.get() == AimMode.Camera)
+        .build()
+    );
+
+    private final Setting<Integer> cadenceJitter = sgAim.add(new IntSetting.Builder()
+        .name("cadence-jitter")
+        .description("Up to this many extra ticks after the cooldown is full before swinging (never a partial swing).")
+        .defaultValue(2)
+        .range(0, 6)
+        .sliderRange(0, 6)
+        .visible(() -> aimMode.get() == AimMode.Camera)
+        .build()
+    );
+
+    private final Setting<Boolean> hurtHold = sgAim.add(new BoolSetting.Builder()
+        .name("knockback-hold")
+        .description("After taking a hit, hold the aim for a few ticks and then re-acquire smoothly instead of snapping back.")
+        .defaultValue(true)
+        .visible(() -> aimMode.get() == AimMode.Camera)
         .build()
     );
 
@@ -317,6 +364,9 @@ public class KillAura extends Module {
 
     public static volatile @org.jspecify.annotations.Nullable Advisor advisor;
     private int advisedSlot = -1;
+    private final meteordevelopment.meteorclient.systems.modules.combat.tactics.AuraAim aim =
+        new meteordevelopment.meteorclient.systems.modules.combat.tactics.AuraAim(System.nanoTime());
+    private int lastHurtTime;
 
     public KillAura() {
         super(Categories.Combat, "kill-aura", "Attacks specified entities around you.");
@@ -331,6 +381,7 @@ public class KillAura extends Module {
     @Override
     public void onDeactivate() {
         targets.clear();
+        aim.tick(Integer.MIN_VALUE, false);
         stopAttacking();
     }
 
@@ -429,13 +480,29 @@ public class KillAura extends Module {
         }
 
         attacking = true;
-        if (rotation.get() == RotationMode.Always)
+        boolean camera = cameraAim();
+        if (camera) {
+            aim.reactionMin = Math.min(reactionMin.get(), reactionMax.get());
+            aim.reactionMax = reactionMax.get();
+            aim.cadenceJitter = cadenceJitter.get();
+            boolean hurt = mc.player.hurtTime > lastHurtTime;
+            lastHurtTime = mc.player.hurtTime;
+            aim.tick(primary.getId(), hurt && hurtHold.get());
+            if (aim.mayAim()) rotateToTarget(primary);
+        } else if (rotation.get() == RotationMode.Always)
             rotateToTarget(primary);
         if (pauseOnCombat.get() && PathManagers.get().isPathing() && !wasPathing) {
             PathManagers.get().pause();
             wasPathing = true;
         }
 
+        if (camera) {
+            boolean charged = delayCheck() && (adv == null || !adv.holdAttack(primary));
+            if (aim.attackReady(charged, onCrosshair(primary))) {
+                for (Entity t : targets) if (t == primary || onCrosshair(t)) attack(t);
+            }
+            return;
+        }
         if (delayCheck() && (adv == null || !adv.holdAttack(primary))) targets.forEach(this::attack);
     }
 
@@ -572,29 +639,44 @@ public class KillAura extends Module {
         } else return mc.player.getAttackStrengthScale(delay) >= 1;
     }
 
-    private void rotateToTarget(Entity target) {
+    private boolean cameraAim() {
+        return aimMode.get() == AimMode.Camera && rotation.get() != RotationMode.None;
+    }
+
+    /** Where to aim on the target: the tactics advice, a backtracked box centre or the body. */
+    private Vec3 aimPoint(Entity target) {
         Advisor adv = advisor;
         Vec3 advisedAim = adv != null ? adv.aimPoint(target) : null;
-        if (advisedAim != null) {
-            Rotations.rotate(Rotations.getYaw(advisedAim), Rotations.getPitch(advisedAim));
-            return;
-        }
+        if (advisedAim != null) return advisedAim;
         Backtrack backtrack = Modules.get().get(Backtrack.class);
         if (backtrack != null && backtrack.isActive()) {
             AABB box = backtrack.getBacktrackedBox(target);
-            Vec3 aimPos = new Vec3(
-                (box.minX + box.maxX) * 0.5,
-                box.minY + (box.maxY - box.minY) * 0.5,
-                (box.minZ + box.maxZ) * 0.5
-            );
-            Rotations.rotate(Rotations.getYaw(aimPos), Rotations.getPitch(aimPos));
-        } else {
-            Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target, Target.Body));
+            return new Vec3((box.minX + box.maxX) * 0.5, box.minY + (box.maxY - box.minY) * 0.5, (box.minZ + box.maxZ) * 0.5);
         }
+        return target.position().add(0, target.getBbHeight() / 2, 0);
+    }
+
+    private void rotateToTarget(Entity target) {
+        Vec3 p = aimPoint(target);
+        if (cameraAim()) {
+            // S51: the real camera turns through the smoothing layer (CameraArbiter -> Baritone look profile)
+            CameraArbiter.claim(this, CameraArbiter.PRIORITY_COMBAT_AIM, (float) Rotations.getYaw(p), (float) Rotations.getPitch(p), true);
+            return;
+        }
+        Rotations.rotate(Rotations.getYaw(p), Rotations.getPitch(p));
+    }
+
+    /** S51: the crosshair is on the target's box (within its angular radius), or vanilla picks it. */
+    private boolean onCrosshair(Entity target) {
+        if (mc.crosshairPickEntity == target) return true;
+        Vec3 p = aimPoint(target);
+        double err = meteordevelopment.meteorclient.systems.modules.combat.tactics.AuraAim.error(mc.player.getYRot(), mc.player.getXRot(),
+            Rotations.getYaw(p), Rotations.getPitch(p));
+        return err <= aim.tolerance(target.getBbWidth() / 2.0, mc.player.getEyePosition().distanceTo(p));
     }
 
     private void attack(Entity target) {
-        if (rotation.get() == RotationMode.OnHit)
+        if (rotation.get() == RotationMode.OnHit && !cameraAim())
             rotateToTarget(target);
 
         boolean didSilentAxeSwap = false;
@@ -648,6 +730,11 @@ public class KillAura extends Module {
     public enum AttackItems {
         Weapons,
         All
+    }
+
+    public enum AimMode {
+        Camera,
+        Silent
     }
 
     public enum RotationMode {
