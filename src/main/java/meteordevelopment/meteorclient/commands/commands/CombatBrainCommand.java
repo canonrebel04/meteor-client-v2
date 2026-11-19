@@ -30,6 +30,38 @@ public class CombatBrainCommand extends Command {
                 return SINGLE_SUCCESS;
             })
 
+            // .combat-brain why - last matchup verdict and reasons (P1)
+            .then(literal("why")
+                .executes(context -> {
+                    CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+                    if (cb == null) { error("CombatBrain module not found."); return SINGLE_SUCCESS; }
+                    info(cb.explainVerdict());
+                    return SINGLE_SUCCESS;
+                })
+            )
+
+            // .combat-brain stash - set the regear stash to the container under the crosshair (C60)
+            .then(literal("stash")
+                .executes(context -> {
+                    CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+                    if (cb == null) { error("CombatBrain module not found."); return SINGLE_SUCCESS; }
+                    if (cb.setStashHere()) info("Regear stash set.");
+                    else error("Look at a chest, barrel or shulker box first.");
+                    return SINGLE_SUCCESS;
+                })
+            )
+
+            // .combat-brain regear - regear from the stash now
+            .then(literal("regear")
+                .executes(context -> {
+                    CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+                    if (cb == null) { error("CombatBrain module not found."); return SINGLE_SUCCESS; }
+                    if (cb.regearNow()) info("Regearing from the stash.");
+                    else error("No stash set: look at it and run .combat-brain stash.");
+                    return SINGLE_SUCCESS;
+                })
+            )
+
             // .combat-brain mode [name|follow|flee|both|none]
             .then(literal("mode")
                 .executes(context -> {

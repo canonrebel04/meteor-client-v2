@@ -5,6 +5,8 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.systems.modules.combat.model.StatusResponse;
+
 import baritone.api.BaritoneAPI;
 import baritone.api.process.IRestockProcess;
 import meteordevelopment.meteorclient.mixin.LevelAccessor;
@@ -463,7 +465,16 @@ public class ModuleAutomator {
 
     private void evalWitherMilkRule() {
         if (!brain.witherMilk.get() || mc.player == null) return;
-        if (mc.player.hasEffect(MobEffects.WITHER)) {
+        // C57: milk for wither, high levitation or poison at low HP; keep our buffs otherwise
+        java.util.EnumSet<StatusResponse.Effect> effects = java.util.EnumSet.noneOf(StatusResponse.Effect.class);
+        if (mc.player.hasEffect(MobEffects.WITHER)) effects.add(StatusResponse.Effect.WITHER);
+        if (mc.player.hasEffect(MobEffects.POISON)) effects.add(StatusResponse.Effect.POISON);
+        if (mc.player.hasEffect(MobEffects.LEVITATION)) effects.add(StatusResponse.Effect.LEVITATION);
+        boolean goodBuffs = mc.player.hasEffect(MobEffects.STRENGTH) || mc.player.hasEffect(MobEffects.RESISTANCE) || mc.player.hasEffect(MobEffects.SPEED);
+        double hp = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+        double height = mc.player.onGround() ? 0 : Math.min(64, mc.player.fallDistance + 4);
+        boolean drink = StatusResponse.respond(effects, hp, true, goodBuffs, height).contains(StatusResponse.Response.DRINK_MILK);
+        if (drink) {
             FindItemResult milk = InvUtils.find(Items.MILK_BUCKET);
             if (milk.found()) {
                 activeRuleNames.add("WitherMilk");
@@ -475,7 +486,7 @@ public class ModuleAutomator {
                 return;
             }
         }
-        if (mc.player.getOffhandItem().is(Items.MILK_BUCKET) && !mc.player.hasEffect(MobEffects.WITHER)) {
+        if (mc.player.getOffhandItem().is(Items.MILK_BUCKET) && !drink) {
             mc.options.keyUse.setDown(false);
         }
     }

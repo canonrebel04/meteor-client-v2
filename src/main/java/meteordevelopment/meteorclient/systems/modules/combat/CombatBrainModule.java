@@ -6,6 +6,18 @@
 package meteordevelopment.meteorclient.systems.modules.combat;
 
 import meteordevelopment.meteorclient.utils.debug.DebugLog;
+import meteordevelopment.meteorclient.systems.modules.combat.model.DisengageLadder;
+import meteordevelopment.meteorclient.systems.modules.combat.model.EscapeSelector;
+import meteordevelopment.meteorclient.systems.modules.combat.model.HungerPlanner;
+import meteordevelopment.meteorclient.systems.modules.combat.model.PingModel;
+import meteordevelopment.meteorclient.systems.modules.combat.model.PursuitTracker;
+import meteordevelopment.meteorclient.systems.modules.combat.model.MatchupAssessment;
+import meteordevelopment.meteorclient.systems.modules.combat.model.OpponentMemory;
+import meteordevelopment.meteorclient.systems.modules.combat.model.OpponentModel;
+import meteordevelopment.meteorclient.systems.modules.combat.model.RegearPlan;
+import meteordevelopment.meteorclient.systems.modules.combat.model.RespawnPolicy;
+import meteordevelopment.meteorclient.systems.modules.combat.model.VerdictGate;
+import meteordevelopment.meteorclient.systems.modules.combat.model.WeaponKind;
 import baritone.api.BaritoneAPI;
 import baritone.api.process.IRestockProcess;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
@@ -608,6 +620,153 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    // --- Survival (P1: verdict-driven fight-or-flight, escapes, defense, regear, learning) ---
+
+    private final SettingGroup sgSurvival = settings.createGroup("Survival");
+
+    private final Setting<MatchupAssessment.AggressionProfile> aggression = sgSurvival.add(new EnumSetting.Builder<MatchupAssessment.AggressionProfile>()
+        .name("aggression")
+        .description("How good the matchup must look before fighting. COWARD only takes clear wins, BERSERK takes risky trades.")
+        .defaultValue(MatchupAssessment.AggressionProfile.BALANCED)
+        .build()
+    );
+
+    private final Setting<Boolean> verdictFlee = sgSurvival.add(new BoolSetting.Builder()
+        .name("verdict-flee")
+        .description("Flee when the matchup verdict is LOSE/HOPELESS and only fight then if cornered. Off = legacy threat thresholds.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> announceVerdict = sgSurvival.add(new BoolSetting.Builder()
+        .name("announce-verdict")
+        .description("Print the matchup verdict and its reasons in chat when it changes (also: .combat-brain why).")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> terrainFlee = sgSurvival.add(new BoolSetting.Builder()
+        .name("terrain-flee")
+        .description("Pick flee destinations by distance gain, cover, line-of-sight breaks, hazards and dead ends instead of a straight line.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> shakePursuers = sgSurvival.add(new BoolSetting.Builder()
+        .name("shake-pursuers")
+        .description("Irregular re-plans and bearing changes while fleeing so a chaser can't pre-aim the path.")
+        .defaultValue(true)
+        .visible(terrainFlee::get)
+        .build()
+    );
+
+    private final Setting<Boolean> pearlEscape = sgSurvival.add(new BoolSetting.Builder()
+        .name("pearl-escape")
+        .description("Throw an ender pearl to escape a lost fight (validated landing). Risky on anticheat servers.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> windChargeEscape = sgSurvival.add(new BoolSetting.Builder()
+        .name("wind-charge-escape")
+        .description("Wind-charge jump to escape. Risky on anticheat servers.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> elytraEscape = sgSurvival.add(new BoolSetting.Builder()
+        .name("elytra-escape")
+        .description("Take off with elytra + fireworks to escape (needs open sky). Risky on anticheat servers.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> burrowEscape = sgSurvival.add(new BoolSetting.Builder()
+        .name("burrow-escape")
+        .description("When cornered with no safe hole, place blocks around you (Surround). Risky on anticheat servers.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> waterClutch = sgSurvival.add(new BoolSetting.Builder()
+        .name("water-clutch")
+        .description("Place a water bucket to survive a lethal fall while escaping (skipped while NoFall is on).")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> softLog = sgSurvival.add(new BoolSetting.Builder()
+        .name("soft-log")
+        .description("Last rung of the disengage ladder: disconnect when hopeless, cornered and critical after disengage/shelter/heal failed.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> shieldAxeAware = sgSurvival.add(new BoolSetting.Builder()
+        .name("shield-axe-aware")
+        .description("Don't hold the shield up against a held axe (it gets disabled); space instead.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> learnOpponents = sgSurvival.add(new BoolSetting.Builder()
+        .name("learn-opponents")
+        .description("Remember opponents' skill and fight outcomes in meteor-client/combat-learning.json and bias future verdicts (clamped).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> autoRegear = sgSurvival.add(new BoolSetting.Builder()
+        .name("auto-regear")
+        .description("After death or with a short kit, avoid player fights and restock from the stash container.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<BlockPos> stashPos = sgSurvival.add(new BlockPosSetting.Builder()
+        .name("stash-pos")
+        .description("Stash container (chest/barrel/shulker) used by auto-regear. Set it with .combat-brain stash while looking at it.")
+        .defaultValue(BlockPos.ZERO)
+        .visible(autoRegear::get)
+        .build()
+    );
+
+    private final Setting<Boolean> stashSet = sgSurvival.add(new BoolSetting.Builder()
+        .name("stash-set")
+        .description("Whether stash-pos has been configured.")
+        .defaultValue(false)
+        .visible(autoRegear::get)
+        .build()
+    );
+
+    private final Setting<List<net.minecraft.world.item.Item>> regearExtras = sgSurvival.add(new ItemListSetting.Builder()
+        .name("regear-extras")
+        .description("Extra items to take one stack of when regearing (armor, weapon, totems, gaps and food are automatic).")
+        .defaultValue(List.of())
+        .visible(autoRegear::get)
+        .build()
+    );
+
+    private final Setting<Integer> regearTotems = sgSurvival.add(new IntSetting.Builder()
+        .name("regear-totems")
+        .description("Totems to carry after a regear.")
+        .defaultValue(4)
+        .range(0, 36)
+        .sliderRange(0, 12)
+        .visible(autoRegear::get)
+        .build()
+    );
+
+    private final Setting<Integer> regearClickDelay = sgSurvival.add(new IntSetting.Builder()
+        .name("regear-click-delay")
+        .description("Ticks between stash shift-clicks (human pacing).")
+        .defaultValue(4)
+        .range(1, 20)
+        .sliderRange(1, 20)
+        .visible(autoRegear::get)
+        .build()
+    );
+
     // State
 
     private BrainState state = BrainState.IDLE;
@@ -681,6 +840,19 @@ public class CombatBrainModule extends Module {
     private int killsInARow = 0;
     private int lastKillTick = -999;
 
+    // P1 survival state
+    private final OpponentTracker opponentTracker = new OpponentTracker();
+    private final EscapeController escapeController = new EscapeController();
+    private final RegearController regearController = new RegearController();
+    private final VerdictGate verdictGate = new VerdictGate(2, 10);
+    private final DisengageLadder disengageLadder = new DisengageLadder();
+    private MatchupAssessment.Result lastMatchup = null;
+    private MatchupAssessment.Verdict lastAnnouncedVerdict = null;
+    private OpponentModel fightOpponent = null;
+    private boolean wasDead = false;
+    private long respawnTick = -100000;
+    private boolean corneredFight = false;
+
     private boolean isReentryCooldownActive(BrainState stateCheck) {
         int lastExit = lastStateExitPass.getOrDefault(stateCheck, -9999);
         return (passCounter - lastExit) < stateReentryDelay.get();
@@ -729,6 +901,15 @@ public class CombatBrainModule extends Module {
         stuckHealTicks = 0;
         emergencyHoleTarget = null;
         emergencyHoleTimer = 0;
+        opponentTracker.clear();
+        if (learnOpponents.get()) opponentTracker.load();
+        escapeController.reset();
+        verdictGate.reset();
+        lastMatchup = null;
+        lastAnnouncedVerdict = null;
+        fightOpponent = null;
+        corneredFight = false;
+        regearController.resetAttempts();
 
         // Save and apply AllowBreak based on tool availability
         savedAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
@@ -748,6 +929,8 @@ public class CombatBrainModule extends Module {
 
     @Override
     public void onDeactivate() {
+        regearController.cancel();
+        if (learnOpponents.get()) opponentTracker.save();
         if (combatPathManager != null) combatPathManager.stop();
         if (followController != null) followController.stop();
         if (tacticalPositioner != null) tacticalPositioner.stop();
@@ -951,6 +1134,17 @@ public class CombatBrainModule extends Module {
         boolean isTakingDamage = mc.player.hurtTime > 0;
         boolean isTargetAttacking = currentTarget.isSwinging();
 
+        // C51: never block a held axe in melee range - the shield gets disabled for 5 s; space instead
+        if (shieldAxeAware.get() && WeaponKind.fromItemId(net.minecraft.core.registries.BuiltInRegistries.ITEM
+            .getKey(currentTarget.getMainHandItem().getItem()).toString()) == WeaponKind.AXE) {
+            if (shieldRaisedForMelee) {
+                mc.options.keyUse.setDown(false);
+                shieldRaisedForMelee = false;
+                shieldDwellTicks = 0;
+            }
+            return;
+        }
+
         if (shieldRaisedForMelee) {
             shieldDwellTicks++;
             // Lower shield when attack is charged (>= 0.85) or no longer taking damage
@@ -1061,6 +1255,7 @@ public class CombatBrainModule extends Module {
 
         Entity entity = packet.getEntity(mc.level);
         if (!(entity instanceof Player player) || player == mc.player) return;
+        opponentTracker.onPop(player, tickCounter);
 
         PopCounter popCounter = Modules.get().get(PopCounter.class);
         if (popCounter != null && !popCounter.isActive()) {
@@ -1098,6 +1293,7 @@ public class CombatBrainModule extends Module {
         }
 
         if (followController != null) followController.tick();
+        escapeController.tick();
 
         handleCreeperDefense();
         handleSmoothCameraAim();
@@ -1326,6 +1522,16 @@ public class CombatBrainModule extends Module {
         if (mc.player == null || mc.level == null) return;
 
         tickCounter++;
+        trackDeathAndRespawn();
+        if (regearController.active()) {
+            regearController.tick(regearClickDelay.get(), regearExtras.get(), new RegearPlan.Targets(regearTotems.get(), 8, 32));
+            if (regearController.phase() == RegearController.Phase.DONE) {
+                info("Regear complete.");
+                if (autoArmor.get()) enableModule(AutoArmor.class);
+            } else if (regearController.phase() == RegearController.Phase.FAILED) {
+                warning("Regear failed: " + regearController.failure());
+            }
+        }
 
         // Run state machine every 2 ticks to reduce CPU
         if (tickCounter % 2 != 0) return;
@@ -1395,11 +1601,22 @@ public class CombatBrainModule extends Module {
 
         // Target kill tracking
         if (currentTarget != null && !currentTarget.isAlive()) {
+            if (fightOpponent != null && learnOpponents.get()) opponentTracker.recordOutcome(fightOpponent, OpponentMemory.Outcome.WIN, true);
+            fightOpponent = null;
             killedInCombat++;
             killsInARow++;
             lastKillTick = tickCounter;
             currentTarget = null;
         }
+
+        // P1 opponent models + pursuit sampling (C11-C20, C42)
+        if (currentTarget != null && currentTarget.isAlive()) {
+            OpponentModel model = opponentTracker.track(currentTarget, tickCounter);
+            if (state == BrainState.ENGAGING) fightOpponent = model;
+            escapeController.samplePursuit(currentTarget, tickCounter);
+        }
+        opponentTracker.endTick(tickCounter);
+        maybeStartRegear();
 
         // Track combat interactions for targetFriendly
         if (mc.player.hurtTime > 0) {
@@ -1437,10 +1654,23 @@ public class CombatBrainModule extends Module {
                 // Analyze target with real analyzer
                 lastAnalysis = CombatTargetAnalyzer.analyze(currentTarget);
 
+                if (verdictFlee.get() && viabilityCheck.get() && !isInvincible()) {
+                    // P1: the verdict decides (decision 1: flee on LOSE/HOPELESS, fight only if cornered). A fresh
+                    // target starts a fresh hysteresis window; a re-entry cooldown never forces an engage.
+                    verdictGate.reset();
+                    escapeController.reset();
+                    MatchupAssessment.Result r = evaluateMatchup(currentTarget);
+                    if (r.shouldEngage() && mayEngage(currentTarget, r)) {
+                        corneredFight = r.mustFightBecauseCornered();
+                        transitionTo(BrainState.ENGAGING);
+                    } else {
+                        enterFlee(r.verdict());
+                    }
+                    break;
+                }
                 boolean isUndergeared = viabilityCheck.get() && CombatTargetAnalyzer.undergeared(currentTarget, undergearRatio.get());
                 boolean canWin = isInvincible() || !viabilityCheck.get() || (assessViability(currentTarget) && !isUndergeared);
-                // Dwell gate / reentry check: if recently left RETREATING, do NOT immediately re-enter RETREATING
-                // (prevents RETREATING->HEALING->SCANNING->ANALYZING->RETREATING stateLoop spam). Engage instead.
+                // Legacy (verdict-flee off): dwell gate / reentry check engages instead of re-entering RETREATING
                 if (canWin || isReentryCooldownActive(BrainState.RETREATING)) {
                     transitionTo(BrainState.ENGAGING);
                 } else {
@@ -1471,13 +1701,29 @@ public class CombatBrainModule extends Module {
                     threatHighTicks = 0;
                 }
 
+                // P1: re-check the verdict while fighting (hysteresis in VerdictGate); worse -> disengage
+                if (verdictFlee.get() && viabilityCheck.get() && !isInvincible() && passCounter % 2 == 0) {
+                    // a cornered fight keeps looking for an opening to run
+                    if (corneredFight && passCounter % 10 == 0) {
+                        escapeController.plan(currentTarget, lastGroupSnapshot != null ? lastGroupSnapshot.targets() : List.of(),
+                            tickCounter, shakePursuers.get(), true);
+                    }
+                    MatchupAssessment.Result r = evaluateMatchup(currentTarget);
+                    corneredFight = r.mustFightBecauseCornered();
+                    if (!r.shouldEngage() || !mayEngage(currentTarget, r)) {
+                        enterFlee(r.verdict());
+                        break;
+                    }
+                }
+
                 // Maintain modules
                 if (autoModules.get()) enableCombatModules();
                 doEngageTick();
                 break;
 
             case RETREATING:
-                if (isInvincible() || threat < engageThreshold.get()) {
+                if (verdictFlee.get() && !isInvincible() && fleeExitCheck()) break;
+                if (!verdictFlee.get() && (isInvincible() || threat < engageThreshold.get())) {
                     if (isInvincible()) {
                         threatLowTicks = 0;
                         transitionTo(BrainState.SCANNING);
@@ -1520,7 +1766,10 @@ public class CombatBrainModule extends Module {
                 break;
 
             case HEALING:
-                if (health >= 14.0f || threat < engageThreshold.get()) {
+                // P1: while still being chased keep running/healing (no exit on a momentary threat dip)
+                boolean stillChased = verdictFlee.get() && health < 14.0f && !isInvincible() && currentTarget != null
+                    && isTargetValid(currentTarget) && !escapeController.pursuit().complete(verdictGate.current(), safeFleeDistance());
+                if (!stillChased && (health >= 14.0f || threat < engageThreshold.get() || verdictFlee.get())) {
                     stuckHealTicks = 0;
                     transitionTo(BrainState.SCANNING);
                     break;
@@ -1544,7 +1793,9 @@ public class CombatBrainModule extends Module {
                 break;
 
             case FLEEING:
-                if (threat < fleeThreshold.get() && health >= 10.0f) {
+                if (verdictFlee.get() && !isInvincible()) {
+                    if (fleeExitCheck()) break;
+                } else if (threat < fleeThreshold.get() && health >= 10.0f) {
                     transitionTo(BrainState.SCANNING);
                     break;
                 }
@@ -1581,7 +1832,9 @@ public class CombatBrainModule extends Module {
         }
 
         // Stuck detection: if same state > 200 ticks with no progress, reset
-        if (stateTimer > 200) {
+        boolean activelyFleeing = verdictFlee.get() && (state == BrainState.RETREATING || state == BrainState.FLEEING || state == BrainState.HEALING)
+            && currentTarget != null && isTargetValid(currentTarget);
+        if (stateTimer > 200 && !activelyFleeing) {
             stateTimer = 0;
             transitionTo(BrainState.IDLE);
         }
@@ -1595,6 +1848,244 @@ public class CombatBrainModule extends Module {
         }
 
         stateTimer++;
+    }
+
+    // --- P1 survival helpers ---
+
+    /** Matchup with the opponent-model corrections and learned bias (C11-C20, decision 4). */
+    private MatchupAssessment.Result evaluateMatchup(LivingEntity target) {
+        OpponentModel model = opponentTracker.get(target);
+        OpponentModel.Corrections corr = model == null ? null
+            : model.corrections(tickCounter, learnOpponents.get() ? opponentTracker.learnedBias(model) : 1.0);
+        boolean los = mc.player != null && mc.player.hasLineOfSight(target);
+        MatchupAssessment.Result r = CombatTargetAnalyzer.assessMatchup(target, aggression.get(), escapeController.cornered(), los, corr, model);
+        MatchupAssessment.Verdict gated = verdictGate.offer(r.verdict());
+        if (gated != null && gated != r.verdict() && !r.mustFightBecauseCornered()) {
+            // hysteresis holds the previous verdict for now
+            r = new MatchupAssessment.Result(gated, r.confidence(), r.myDps(), r.theirDps(), r.myTtk(), r.theirTtk(),
+                r.killRatio(), r.matchupThreat(), r.mustFightBecauseCornered(), r.reason() + " (held: hysteresis)");
+        }
+        lastMatchup = r;
+        if (announceVerdict.get() && r.verdict() != lastAnnouncedVerdict) {
+            info(target.getName().getString() + ": " + r.explain());
+        }
+        lastAnnouncedVerdict = r.verdict();
+        return r;
+    }
+
+    /** Respawn grace / ungeared kit blocks player fights unless cornered (C60). */
+    private boolean mayEngage(LivingEntity target, MatchupAssessment.Result r) {
+        if (!(target instanceof Player)) return true;
+        return RespawnPolicy.mayEngagePlayer(respawnMode(), r.mustFightBecauseCornered());
+    }
+
+    /** Minimum kit to take player fights / not trigger a regear: some armor and a weapon (C60). */
+    private static final RespawnPolicy.Requirement KIT_MIN = new RespawnPolicy.Requirement(2, true, 0, 0, 0);
+
+    private RespawnPolicy.Mode respawnMode() {
+        if (mc.player == null) return RespawnPolicy.Mode.NORMAL;
+        return RespawnPolicy.mode(tickCounter - respawnTick, currentKit(), KIT_MIN,
+            stashSet.get(), autoRegear.get());
+    }
+
+    private RespawnPolicy.Kit currentKit() {
+        if (mc.player == null) return new RespawnPolicy.Kit(0, false, 0, 0, 0);
+        int armor = 0;
+        for (net.minecraft.world.entity.EquipmentSlot slot : new net.minecraft.world.entity.EquipmentSlot[]{
+            net.minecraft.world.entity.EquipmentSlot.HEAD, net.minecraft.world.entity.EquipmentSlot.CHEST,
+            net.minecraft.world.entity.EquipmentSlot.LEGS, net.minecraft.world.entity.EquipmentSlot.FEET}) {
+            if (!mc.player.getItemBySlot(slot).isEmpty()) armor++;
+        }
+        boolean weapon = InvUtils.find(st -> {
+            if (st.isEmpty()) return false;
+            WeaponKind k = WeaponKind.fromItemId(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(st.getItem()).toString());
+            return k == WeaponKind.SWORD || k == WeaponKind.AXE || k == WeaponKind.MACE;
+        }).found();
+        int food = InvUtils.find(st -> !st.isEmpty() && st.has(net.minecraft.core.component.DataComponents.FOOD)).count();
+        return new RespawnPolicy.Kit(armor, weapon, countTotems(), InvUtils.find(Items.GOLDEN_APPLE, Items.ENCHANTED_GOLDEN_APPLE).count(), food);
+    }
+
+    private void enterFlee(MatchupAssessment.Verdict verdict) {
+        BrainState want = verdict == MatchupAssessment.Verdict.HOPELESS ? BrainState.FLEEING : BrainState.RETREATING;
+        if (isReentryCooldownActive(want)) {
+            want = want == BrainState.FLEEING ? BrainState.RETREATING : BrainState.FLEEING;
+        }
+        if (state != BrainState.RETREATING && state != BrainState.FLEEING && state != BrainState.HEALING) {
+            escapeController.reset();
+            if (fightOpponent != null && learnOpponents.get() && state == BrainState.ENGAGING) {
+                opponentTracker.recordOutcome(fightOpponent, OpponentMemory.Outcome.ESCAPED, true);
+            }
+        }
+        transitionTo(want);
+    }
+
+    private double safeFleeDistance() {
+        double range = 3.0;
+        double speed = 0.28;
+        if (currentTarget != null) {
+            OpponentModel m = opponentTracker.get(currentTarget);
+            if (m != null) {
+                range = m.player ? (m.gear != null && m.gear.mainHand().ranged() ? 16 : 3) : m.mob.threatRange();
+                if (!m.player) range = Math.max(range, m.mob.safeDistance() - 6.0);
+                speed = Math.max(speed, m.motion.horizontalSpeed());
+                return PursuitTracker.safeDistance(fleeDistance.get(), range,
+                    PingModel.reachMargin(opponentTracker.myPing(), m.ping, speed));
+            }
+        }
+        return PursuitTracker.safeDistance(fleeDistance.get(), range, 0);
+    }
+
+    /**
+     * Verdict-driven exit from RETREATING/FLEEING (C42): back to the fight when the verdict improved (or cornered),
+     * done when safe distance + broken LOS + pursuer not gaining. Returns true when it transitioned.
+     */
+    private boolean fleeExitCheck() {
+        if (currentTarget == null || !isTargetValid(currentTarget)) {
+            transitionTo(BrainState.IDLE);
+            return true;
+        }
+        MatchupAssessment.Result r = passCounter % 2 == 0 || lastMatchup == null ? evaluateMatchup(currentTarget) : lastMatchup;
+        // don't bounce back into a fight we just left for low health (unless cornered)
+        boolean healthy = mc.player != null && mc.player.getHealth() + mc.player.getAbsorptionAmount() >= (hasUsableShield() ? 7.0f : 10.0f);
+        if (r.shouldEngage() && mayEngage(currentTarget, r) && (healthy || r.mustFightBecauseCornered())) {
+            corneredFight = r.mustFightBecauseCornered();
+            if (corneredFight) info("Cornered: fighting back.");
+            transitionTo(BrainState.ENGAGING);
+            return true;
+        }
+        if (escapeController.pursuit().complete(r.verdict(), safeFleeDistance())) {
+            transitionTo(BrainState.IDLE);
+            return true;
+        }
+        return false;
+    }
+
+    private EscapeSelector.Flags escapeFlags() {
+        return new EscapeSelector.Flags(pearlEscape.get(), windChargeEscape.get(), elytraEscape.get(), burrowEscape.get(), softLog.get());
+    }
+
+    /** One flee step: optional escape methods (opt-in), else terrain-scored running (C41-C50). */
+    private void fleeStep(double distance) {
+        if (currentTarget == null || mc.player == null) return;
+        MatchupAssessment.Verdict verdict = lastMatchup != null ? lastMatchup.verdict() : MatchupAssessment.Verdict.LOSE;
+        if (verdictFlee.get()) {
+            float hp = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+            boolean holeKnown = (escapeController.cornered() || hp < 10) && pollSafeHole(SAFE_HOLE_RADIUS) && safeHoleResult() != null;
+            boolean clutchOk = waterClutch.get() && !Modules.get().isActive(meteordevelopment.meteorclient.systems.modules.movement.NoFall.class);
+            EscapeSelector.Choice choice = EscapeSelector.choose(verdict, escapeController.situation(currentTarget, holeKnown, clutchOk), escapeFlags());
+            DisengageLadder.Rung rung = disengageLadder.update(tickCounter, verdict, false, holeKnown && escapeController.cornered(), hp, softLog.get());
+            switch (choice.method()) {
+                case CLUTCH -> {
+                    escapeController.clutch();
+                    return;
+                }
+                case PEARL -> {
+                    if (escapeController.pearl(currentTarget)) info("Escape: pearl.");
+                }
+                case ELYTRA -> {
+                    if (escapeController.elytra(currentTarget)) return;
+                }
+                case WIND_CHARGE -> escapeController.windCharge();
+                case HOLE -> {
+                    BlockPos hole = safeHoleResult();
+                    if (hole != null && !isReentryCooldownActive(BrainState.EMERGENCY_HOLE)) {
+                        emergencyHoleTarget = hole;
+                        emergencyHoleTimer = 0;
+                        transitionTo(BrainState.EMERGENCY_HOLE);
+                        return;
+                    }
+                }
+                case BURROW -> {
+                    if (hasPlaceableBlocksInHotbar(4)) enableModule(Surround.class);
+                }
+                case LOG -> {
+                    if (rung == DisengageLadder.Rung.LOG && softLog.get() && mc.getConnection() != null) {
+                        mc.getConnection().getConnection().disconnect(Component.literal("CombatBrain: soft-log (hopeless, cornered)."));
+                        return;
+                    }
+                }
+                case FIGHT_CORNERED -> {
+                    corneredFight = true;
+                    transitionTo(BrainState.ENGAGING);
+                    return;
+                }
+                default -> {
+                }
+            }
+            if (terrainFlee.get() && combatPathManager != null) {
+                List<LivingEntity> threats = lastGroupSnapshot != null ? lastGroupSnapshot.targets() : List.of();
+                BlockPos dest = escapeController.plan(currentTarget, threats, tickCounter, shakePursuers.get(), true);
+                if (dest != null) {
+                    combatPathManager.startFleeTo(currentTarget, dest);
+                    if (HungerPlanner.canSprint(mc.player.getFoodData().getFoodLevel()) && mc.options != null) {
+                        mc.options.keySprint.setDown(true);
+                    }
+                    return;
+                }
+            }
+        }
+        if (combatPathManager != null) {
+            combatPathManager.startFlee(currentTarget, distance, lastGroupSnapshot);
+        } else if (followController != null) {
+            followController.flee(currentTarget, distance);
+        }
+    }
+
+    /** Death -> loss outcome; respawn -> grace + regear eligibility (C60). */
+    private void trackDeathAndRespawn() {
+        if (mc.player == null) return;
+        boolean dead = mc.player.isDeadOrDying();
+        if (dead && !wasDead) {
+            if (fightOpponent != null && learnOpponents.get()) opponentTracker.recordOutcome(fightOpponent, OpponentMemory.Outcome.LOSS, true);
+            fightOpponent = null;
+            regearController.cancel();
+        }
+        if (!dead && wasDead) {
+            respawnTick = tickCounter;
+            regearController.resetAttempts();
+            escapeController.reset();
+            verdictGate.reset();
+        }
+        wasDead = dead;
+    }
+
+    private void maybeStartRegear() {
+        if (!autoRegear.get() || !stashSet.get() || regearController.active() || passCounter % 10 != 0) return;
+        if (regearController.attempts() >= 3) return;
+        if (state != BrainState.IDLE && state != BrainState.SCANNING) return;
+        if (respawnMode() != RespawnPolicy.Mode.REGEAR) return;
+        info("Kit is short: regearing from the stash at " + stashPos.get().toShortString() + ".");
+        regearController.start(stashPos.get());
+    }
+
+    /** {@code .combat-brain why}: last verdict and its reasons. */
+    public String explainVerdict() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("State ").append(state);
+        if (lastMatchup != null) sb.append(" | ").append(lastMatchup.explain());
+        else sb.append(" | no matchup evaluated yet");
+        if (escapeController.lastWhy() != null) sb.append(" | flee: ").append(escapeController.lastWhy());
+        if (escapeController.cornered()) sb.append(" | CORNERED");
+        sb.append(" | kit: ").append(respawnMode());
+        if (regearController.phase() != RegearController.Phase.IDLE) sb.append(" | regear: ").append(regearController.phase());
+        return sb.toString();
+    }
+
+    /** {@code .combat-brain stash}: use the block under the crosshair as the regear stash. */
+    public boolean setStashHere() {
+        if (!(mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult bhr) || mc.level == null) return false;
+        if (mc.level.getBlockEntity(bhr.getBlockPos()) == null) return false;
+        stashPos.set(bhr.getBlockPos());
+        stashSet.set(true);
+        return true;
+    }
+
+    /** {@code .combat-brain regear}: start a regear run now. */
+    public boolean regearNow() {
+        if (!stashSet.get()) return false;
+        regearController.resetAttempts();
+        regearController.start(stashPos.get());
+        return true;
     }
 
     // --- State transitions ---
@@ -2403,11 +2894,7 @@ public class CombatBrainModule extends Module {
         refreshGroupAwarenessAndFavoring(false);
         // Move away from threat using group-aware Baritone flee
         if (followController != null) followController.releaseDirectKeys();
-        if (combatPathManager != null && currentTarget != null) {
-            combatPathManager.startFlee(currentTarget, fleeDistance.get(), lastGroupSnapshot);
-        } else if (currentTarget != null && followController != null) {
-            followController.flee(currentTarget, fleeDistance.get());
-        }
+        fleeStep(fleeDistance.get());
     }
 
     private void doHealTick() {
@@ -2419,11 +2906,7 @@ public class CombatBrainModule extends Module {
         refreshGroupAwarenessAndFavoring(false);
         // Sprint away from threats along largest gap bearing while healing
         if (followController != null) followController.releaseDirectKeys();
-        if (combatPathManager != null && currentTarget != null) {
-            combatPathManager.startFlee(currentTarget, fleeDistance.get() * 1.5, lastGroupSnapshot);
-        } else if (followController != null && currentTarget != null) {
-            followController.flee(currentTarget, fleeDistance.get() * 1.5);
-        }
+        fleeStep(fleeDistance.get() * 1.5);
         if (mc.player != null && mc.player.getHealth() < mc.player.getMaxHealth() && mc.options != null) {
             mc.options.keySprint.setDown(true);
         }
@@ -2441,11 +2924,7 @@ public class CombatBrainModule extends Module {
             mc.options.keySprint.setDown(true);
         }
         if (followController != null) followController.releaseDirectKeys();
-        if (combatPathManager != null && currentTarget != null) {
-            combatPathManager.startFlee(currentTarget, fleeDistance.get(), lastGroupSnapshot);
-        } else if (followController != null && currentTarget != null) {
-            followController.flee(currentTarget, fleeDistance.get());
-        }
+        fleeStep(fleeDistance.get());
     }
 
     private void doEmergencyLog() {
