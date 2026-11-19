@@ -38,6 +38,9 @@ public class CombatPathManager {
     private LivingEntity activeTarget = null;
     private BlockPos activeHole = null;
     private volatile Long2DoubleOpenHashMap activeThreatMap = null;
+    /** C96: notices failed/stalled combat paths so the brain can fall back to direct movement. */
+    private final meteordevelopment.meteorclient.systems.modules.combat.model.PathWatchdog watchdog =
+        new meteordevelopment.meteorclient.systems.modules.combat.model.PathWatchdog();
 
     public CombatPathManager() {
         this.baritone = BaritoneAPI.getProvider().getPrimaryBaritone();
@@ -54,6 +57,7 @@ public class CombatPathManager {
         }
         this.activeTarget = enemy;
         this.activeHole = hole;
+        if (goalChanged) watchdog.reset(now());
         this.activeGoal = new GoalGetToBlock(hole);
         this.activeCommandType = PathingCommandType.SET_GOAL_AND_PATH;
         this.active = true;
@@ -115,6 +119,7 @@ public class CombatPathManager {
                 baritone.getPathingBehavior().cancelEverything();
             }
             this.activeHole = null;
+            watchdog.reset(now());
             this.activeGoal = new GoalXZ(fleeTarget.getX(), fleeTarget.getZ());
             this.activeCommandType = PathingCommandType.SET_GOAL_AND_PATH;
         }
@@ -137,6 +142,7 @@ public class CombatPathManager {
                 baritone.getPathingBehavior().cancelEverything();
             }
             this.activeHole = null;
+            watchdog.reset(now());
             this.activeGoal = new GoalXZ(dest.getX(), dest.getZ());
             this.activeCommandType = PathingCommandType.SET_GOAL_AND_PATH;
         }
@@ -179,6 +185,22 @@ public class CombatPathManager {
 
     public boolean isActive() {
         return active;
+    }
+
+    private static long now() {
+        return mc.player != null ? mc.player.tickCount : 0;
+    }
+
+    /** C96: Baritone could not path to (or stopped progressing towards) the combat goal; use direct movement. */
+    public boolean pathFailed() {
+        return watchdog.failed(now());
+    }
+
+    private double distanceToGoal() {
+        if (mc.player == null) return 0;
+        if (activeHole != null) return Math.sqrt(mc.player.distanceToSqr(activeHole.getX() + 0.5, activeHole.getY(), activeHole.getZ() + 0.5));
+        if (activeGoal instanceof GoalXZ g) return Math.hypot(g.getX() + 0.5 - mc.player.getX(), g.getZ() + 0.5 - mc.player.getZ());
+        return 0;
     }
 
     public boolean isCombatModeActive() {
@@ -346,13 +368,19 @@ public class CombatPathManager {
     private class CombatProcess implements IBaritoneProcess {
         @Override
         public boolean isActive() {
-            return active;
+            // C96: yield while a failed path is in its fallback window (the brain moves directly meanwhile)
+            return active && !(activeCommandType == PathingCommandType.SET_GOAL_AND_PATH && watchdog.failed(now()));
         }
 
         @Override
-        public PathingCommand onTick(boolean b, boolean b1) {
+        public PathingCommand onTick(boolean calcFailed, boolean safeToCancel) {
             if (activeCommandType == PathingCommandType.REQUEST_PAUSE) {
                 baritone.getInputOverrideHandler().clearAllKeys();
+            } else if (activeCommandType == PathingCommandType.SET_GOAL_AND_PATH && activeGoal != null
+                && watchdog.tick(calcFailed, distanceToGoal(), now()) == meteordevelopment.meteorclient.systems.modules.combat.model.PathWatchdog.Status.FAILED) {
+                DebugLog.debug("CombatPath", "combat path failed or stalled; direct movement for {} ticks",
+                    meteordevelopment.meteorclient.systems.modules.combat.model.PathWatchdog.COOLDOWN_TICKS);
+                return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
             }
             return new PathingCommand(activeGoal, activeCommandType);
         }

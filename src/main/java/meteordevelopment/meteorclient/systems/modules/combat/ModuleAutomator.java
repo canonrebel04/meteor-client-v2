@@ -5,7 +5,11 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.systems.modules.combat.model.DefenseDirector;
+import meteordevelopment.meteorclient.systems.modules.combat.model.PotionPlanner;
 import meteordevelopment.meteorclient.systems.modules.combat.model.StatusResponse;
+import meteordevelopment.meteorclient.systems.modules.player.AutoPot;
+import meteordevelopment.meteorclient.utils.misc.Overrides;
 
 import baritone.api.BaritoneAPI;
 import baritone.api.process.IRestockProcess;
@@ -73,6 +77,8 @@ public class ModuleAutomator {
     private int automatorTickCounter = 0;
     private int lastRestockTriggerTick = -200;
     private static final int DEFAULT_RULE_COOLDOWN = 20;
+    /** C98: helper-module settings we changed for combat, restored on shutdown. */
+    private final Overrides overrides = new Overrides();
 
     public ModuleAutomator(CombatBrainModule brain) {
         this.brain = brain;
@@ -85,7 +91,8 @@ public class ModuleAutomator {
         activeRuleNames.clear();
 
         // Priority order evaluation
-        evalNoTotemRule();
+        if (brain.defenseDirector.get()) evalDefenseRule(target);
+        else evalNoTotemRule();
         evalWitherMilkRule();
         evalFireResistanceRule(target);
         evalWardenRule(target);
@@ -93,7 +100,7 @@ public class ModuleAutomator {
         evalCrystalRule();
         evalBowRule(target);
         evalBedRule(target);
-        evalLowHealthRule();
+        if (!brain.defenseDirector.get()) evalLowHealthRule();
         evalWaterRule(target);
         evalSurroundRule();
         evalShulkerRestockRule(target);
@@ -113,6 +120,8 @@ public class ModuleAutomator {
             setModuleState(klass, false);
         }
         enabledByAutomator.clear();
+        overrides.restoreAll();
+        brain.setDefensePlan(null);
         activeRuleNames.clear();
         waterRuleTimer = 0;
         lastRuleToggleTick.clear();
@@ -244,6 +253,189 @@ public class ModuleAutomator {
         setModuleState(AutoEat.class, allowAutoEat);
         setModuleState(AutoGap.class, allowAutoGap);
         if (allowAutoEat || allowAutoGap) activeRuleNames.add("AutoHeal");
+    }
+
+    /**
+     * C51-C59: one defense plan from all P1 policies drives the helper modules. They are only enabled/disabled by
+     * us when we enabled them (a module the user turned on stays on), and settings we change on them are restored
+     * when combat ends.
+     */
+    private void evalDefenseRule(LivingEntity target) {
+        if (mc.player == null || mc.level == null) return;
+        DefenseDirector.Plan plan = DefenseDirector.decide(defenseInput(target));
+        brain.setDefensePlan(plan);
+
+        boolean heal = brain.autoHeal.get();
+        if (heal && (plan.runAutoGap() || plan.runAutoEat())) {
+            AutoEat autoEat = Modules.get().get(AutoEat.class);
+            if (autoEat != null) {
+                overrideBool(autoEat, "pause-baritone", false);
+                overrideBool(autoEat, "pause-auras", false);
+            }
+            AutoGap autoGap = Modules.get().get(AutoGap.class);
+            if (autoGap != null) {
+                overrideBool(autoGap, "pause-baritone", false);
+                overrideBool(autoGap, "pause-auras", false);
+            }
+        }
+        setModuleState(AutoGap.class, heal && plan.runAutoGap());
+        setModuleState(AutoEat.class, heal && plan.runAutoEat());
+        if (heal && (plan.runAutoGap() || plan.runAutoEat())) activeRuleNames.add("AutoHeal");
+
+        // potions: AutoPot heals at our heal threshold while the plan wants an instant-health potion
+        AutoPot autoPot = Modules.get().get(AutoPot.class);
+        if (autoPot != null && heal && plan.runAutoPot()) {
+            overrideDouble(autoPot, "health", brain.autoHealThreshold.get());
+        } else if (autoPot != null) {
+            restoreSetting(autoPot, "health");
+        }
+        setModuleState(AutoPot.class, heal && plan.runAutoPot());
+        if (heal && plan.runAutoPot()) activeRuleNames.add("AutoPot");
+
+        // totems: Offhand (if the user runs it) or AutoTotem keeps the totem; strict while the plan says hold
+        if (brain.autoTotemSetting.get()) {
+            Offhand offhand = Modules.get().get(Offhand.class);
+            boolean userOffhand = offhand != null && offhand.isActive() && !enabledByAutomator.contains(Offhand.class);
+            AutoTotem autoTotem = Modules.get().get(AutoTotem.class);
+            if (userOffhand) {
+                // never run two offhand managers at once: Offhand keeps the totem by raising its min-health
+                setModuleState(AutoTotem.class, false);
+                if (plan.holdTotem()) overrideDouble(offhand, "min-health", 36.0);
+                else restoreSetting(offhand, "min-health");
+            } else {
+                boolean haveTotem = countTotems() > 0;
+                setModuleState(AutoTotem.class, haveTotem);
+                if (autoTotem != null) {
+                    if (plan.holdTotem()) overrideEnum(autoTotem, "mode", AutoTotem.Mode.Strict);
+                    else restoreSetting(autoTotem, "mode");
+                }
+            }
+            if (plan.holdTotem()) activeRuleNames.add("HoldTotem");
+        }
+
+        // armor: replace near-broken pieces out of melee, chestplate over elytra in a ground fight
+        AutoArmor autoArmor = Modules.get().get(AutoArmor.class);
+        if (autoArmor != null) {
+            switch (plan.chest()) {
+                case CHESTPLATE -> overrideBool(autoArmor, "ignore-elytra", false);
+                case ELYTRA -> overrideBool(autoArmor, "ignore-elytra", true);
+                default -> restoreSetting(autoArmor, "ignore-elytra");
+            }
+        }
+        if (plan.runAutoArmor()) {
+            setModuleState(AutoArmor.class, true);
+            activeRuleNames.add("Armor");
+        }
+    }
+
+    private DefenseDirector.Input defenseInput(LivingEntity target) {
+        double hp = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+        double dist = target != null ? mc.player.distanceTo(target) : 99;
+        double dps = brain.incomingDps();
+        double burst = dps + (isCrystalNearby(6) ? 8 : 0) + (mc.player.fallDistance > 4 ? mc.player.fallDistance - 3 : 0);
+        int totemsInv = countTotems() - (mc.player.getOffhandItem().is(Items.TOTEM_OF_UNDYING) ? 1 : 0);
+        boolean wearingElytra = mc.player.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST).is(Items.ELYTRA);
+        double worst = 1;
+        for (net.minecraft.world.entity.EquipmentSlot slot : ARMOR_SLOTS) {
+            ItemStack st = mc.player.getItemBySlot(slot);
+            if (!st.isEmpty() && st.isDamageableItem() && st.getMaxDamage() > 0) {
+                worst = Math.min(worst, 1.0 - (double) st.getDamageValue() / st.getMaxDamage());
+            }
+        }
+        int netherite = 0;
+        for (net.minecraft.world.entity.EquipmentSlot slot : ARMOR_SLOTS) {
+            String id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(mc.player.getItemBySlot(slot).getItem()).getPath();
+            if (id.startsWith("netherite_")) netherite++;
+        }
+        boolean fightOn = target != null && brain.getState() == CombatBrainModule.BrainState.ENGAGING;
+        boolean fleeing = brain.getState() == CombatBrainModule.BrainState.FLEEING || brain.getState() == CombatBrainModule.BrainState.RETREATING
+            || brain.getState() == CombatBrainModule.BrainState.HEALING;
+        boolean enemySprint = target != null && target.isSprinting();
+        int enemyKb = target != null ? meteordevelopment.meteorclient.utils.Utils.getEnchantmentLevel(target.getMainHandItem(),
+            net.minecraft.world.item.enchantment.Enchantments.KNOCKBACK) : 0;
+        return new DefenseDirector.Input(
+            hp, mc.player.getMaxHealth() + mc.player.getAbsorptionAmount(), dps, burst, dist, 3.0,
+            target != null && !mc.player.hasLineOfSight(target),
+            InvUtils.find(Items.GOLDEN_APPLE).found(), InvUtils.find(Items.ENCHANTED_GOLDEN_APPLE).found(),
+            findPotion(MobEffects.INSTANT_HEALTH, false).found(), findPotion(MobEffects.INSTANT_HEALTH, true).found(),
+            mc.player.hasEffect(MobEffects.REGENERATION),
+            mc.player.getFoodData().getFoodLevel(), mc.player.getFoodData().getSaturationLevel(),
+            totemsInv, mc.player.getOffhandItem().is(Items.TOTEM_OF_UNDYING), brain.justPopped(),
+            brain.damageByType(), InvUtils.find(Items.SHIELD).found() || mc.player.getOffhandItem().is(Items.SHIELD),
+            wearingElytra, false, fightOn, mc.player.onGround(),
+            InvUtils.find(st -> st.getItem() != Items.ELYTRA && st.is(net.minecraft.tags.ItemTags.CHEST_ARMOR)).found(),
+            InvUtils.find(Items.ELYTRA).found(), worst, false,
+            new PotionPlanner.Have(findPotionWithEffect(MobEffects.STRENGTH).found(), findPotionWithEffect(MobEffects.SPEED).found(),
+                findPotionWithEffect(MobEffects.RESISTANCE).found(), findPotionWithEffect(MobEffects.FIRE_RESISTANCE).found(),
+                findPotionWithEffect(MobEffects.REGENERATION).found(), findPotionWithEffect(MobEffects.INSTANT_HEALTH).found()),
+            new PotionPlanner.Active(mc.player.hasEffect(MobEffects.STRENGTH), mc.player.hasEffect(MobEffects.SPEED),
+                mc.player.hasEffect(MobEffects.RESISTANCE), mc.player.hasEffect(MobEffects.FIRE_RESISTANCE), mc.player.hasEffect(MobEffects.REGENERATION)),
+            mc.player.isOnFire(), fleeing, netherite, enemySprint, enemyKb, fightOn ? edgeDistance() : 99,
+            brain.autoHealThreshold.get());
+    }
+
+    private static final net.minecraft.world.entity.EquipmentSlot[] ARMOR_SLOTS = {
+        net.minecraft.world.entity.EquipmentSlot.HEAD, net.minecraft.world.entity.EquipmentSlot.CHEST,
+        net.minecraft.world.entity.EquipmentSlot.LEGS, net.minecraft.world.entity.EquipmentSlot.FEET};
+
+    /** Distance to the nearest drop of 4+ blocks or lava in 8 directions (up to 5 blocks; 99 if none). */
+    private double edgeDistance() {
+        BlockPos feet = mc.player.blockPosition();
+        double best = 99;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                for (int r = 1; r <= 5; r++) {
+                    BlockPos p = feet.offset(dx * r, 0, dz * r);
+                    if (!mc.level.getBlockState(p).getCollisionShape(mc.level, p).isEmpty()) break; // wall: no edge this way
+                    boolean lava = mc.level.getFluidState(p.below()).is(net.minecraft.tags.FluidTags.LAVA)
+                        || mc.level.getFluidState(p).is(net.minecraft.tags.FluidTags.LAVA);
+                    boolean drop = true;
+                    for (int d = 1; d <= 4 && drop; d++) {
+                        BlockPos q = p.below(d);
+                        drop = mc.level.getBlockState(q).getCollisionShape(mc.level, q).isEmpty() && !mc.level.getFluidState(q).is(net.minecraft.tags.FluidTags.WATER);
+                    }
+                    if (lava || drop) {
+                        best = Math.min(best, r * (dx != 0 && dz != 0 ? 1.414 : 1.0));
+                        break;
+                    }
+                }
+            }
+        }
+        return best;
+    }
+
+    private FindItemResult findPotion(Holder<MobEffect> effect, boolean splash) {
+        return InvUtils.find(stack -> {
+            if (!(splash ? stack.is(Items.SPLASH_POTION) : stack.is(Items.POTION))) return false;
+            PotionContents contents = stack.get(DataComponents.POTION_CONTENTS);
+            if (contents == null) return false;
+            for (MobEffectInstance inst : contents.getAllEffects()) if (inst.getEffect().is(effect)) return true;
+            return false;
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> void overrideSetting(Module m, String name, T value) {
+        Setting<T> s = (Setting<T>) m.settings.get(name);
+        if (s == null) return;
+        overrides.apply(m.name + "." + name, s::get, s::set, value);
+    }
+
+    private void overrideBool(Module m, String name, boolean v) {
+        overrideSetting(m, name, v);
+    }
+
+    private void overrideDouble(Module m, String name, double v) {
+        overrideSetting(m, name, v);
+    }
+
+    private <E extends Enum<E>> void overrideEnum(Module m, String name, E v) {
+        overrideSetting(m, name, v);
+    }
+
+    private void restoreSetting(Module m, String name) {
+        overrides.restore(m.name + "." + name);
     }
 
     private boolean hasGoldenApples() {
@@ -480,7 +672,7 @@ public class ModuleAutomator {
                 activeRuleNames.add("WitherMilk");
                 if (mc.player.getOffhandItem().is(Items.MILK_BUCKET)) {
                     mc.options.keyUse.setDown(true);
-                } else {
+                } else if (!brain.offhandLocked()) {
                     InvUtils.move().from(milk.slot()).toOffhand();
                 }
                 return;
@@ -495,7 +687,9 @@ public class ModuleAutomator {
         if (!brain.fireResPotion.get() || mc.player == null || mc.level == null) return;
         if (mc.player.hasEffect(MobEffects.FIRE_RESISTANCE)) return;
 
-        boolean isFireThreat = (mc.level.dimension() == Level.NETHER)
+        DefenseDirector.Plan plan = brain.defensePlan();
+        boolean isFireThreat = (plan != null && plan.potions().contains(PotionPlanner.Buff.FIRE_RESISTANCE))
+            || (mc.level.dimension() == Level.NETHER)
             || (target != null && (target.getType() == EntityTypes.BLAZE
                 || target.getType() == EntityTypes.GHAST
                 || target.getType() == EntityTypes.MAGMA_CUBE
@@ -507,7 +701,7 @@ public class ModuleAutomator {
                 activeRuleNames.add("FireResPotion");
                 if (mc.player.getOffhandItem().is(Items.POTION)) {
                     mc.options.keyUse.setDown(true);
-                } else {
+                } else if (!brain.offhandLocked()) {
                     InvUtils.move().from(potionSlot.slot()).toOffhand();
                 }
             }
@@ -524,7 +718,7 @@ public class ModuleAutomator {
                 activeRuleNames.add("WardenResistance");
                 if (mc.player.getOffhandItem().is(Items.POTION)) {
                     mc.options.keyUse.setDown(true);
-                } else {
+                } else if (!brain.offhandLocked()) {
                     InvUtils.move().from(potionSlot.slot()).toOffhand();
                 }
             }

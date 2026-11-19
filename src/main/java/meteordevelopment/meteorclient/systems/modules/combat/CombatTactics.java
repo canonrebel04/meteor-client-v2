@@ -230,8 +230,12 @@ public final class CombatTactics implements KillAura.Advisor {
 
     // ------------------------------------------------------------------ KillAura advisor
 
+    /** Set by the brain (C92 stealth: hold the swing until behind the target). */
+    public volatile boolean externalHold;
+
     @Override
     public boolean holdAttack(Entity primary) {
+        if (externalHold) return true;
         if (!cfg.crits()) return false;
         MeleeTiming.State s = selfState();
         if (s.critEligible()) return false;

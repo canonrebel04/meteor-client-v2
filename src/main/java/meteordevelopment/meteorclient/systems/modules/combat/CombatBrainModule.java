@@ -6,7 +6,13 @@
 package meteordevelopment.meteorclient.systems.modules.combat;
 
 import meteordevelopment.meteorclient.utils.debug.DebugLog;
+import meteordevelopment.meteorclient.systems.modules.combat.model.CombatTelemetry;
+import meteordevelopment.meteorclient.systems.modules.combat.model.DamageTypeAdvisor;
+import meteordevelopment.meteorclient.systems.modules.combat.model.DefenseDirector;
 import meteordevelopment.meteorclient.systems.modules.combat.model.DisengageLadder;
+import meteordevelopment.meteorclient.systems.modules.combat.model.SafetyNet;
+import meteordevelopment.meteorclient.systems.modules.combat.model.StealthPlanner;
+import meteordevelopment.meteorclient.utils.misc.Keybind;
 import meteordevelopment.meteorclient.systems.modules.combat.model.EscapeSelector;
 import meteordevelopment.meteorclient.systems.modules.combat.model.HungerPlanner;
 import meteordevelopment.meteorclient.systems.modules.combat.model.PingModel;
@@ -768,6 +774,70 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    // --- P3: defense director, stealth, telemetry/learning, safety (C51-C59, C91-C100) ---
+    private final SettingGroup sgDefense = settings.createGroup("Defense & Stealth");
+
+    final Setting<Boolean> defenseDirector = sgDefense.add(new BoolSetting.Builder()
+        .name("defense-director")
+        .description("One plan from the heal/potion/totem/armor/damage-type/hunger/knockback policies drives AutoGap, AutoEat, AutoPot, AutoTotem/Offhand and AutoArmor (only modules it enabled are turned off; changed settings are restored).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> defenseDisengage = sgDefense.add(new BoolSetting.Builder()
+        .name("disengage-to-heal")
+        .description("Break off to heal when the heal plan says eating in melee range is unsafe (not while cornered).")
+        .defaultValue(true)
+        .visible(defenseDirector::get)
+        .build()
+    );
+
+    private final Setting<Boolean> edgeAware = sgDefense.add(new BoolSetting.Builder()
+        .name("knockback-edge-aware")
+        .description("Do not dart into melee when the opponent's knockback could push us off a drop or into lava.")
+        .defaultValue(true)
+        .visible(defenseDirector::get)
+        .build()
+    );
+
+    private final Setting<Boolean> stealthUpgrade = sgDefense.add(new BoolSetting.Builder()
+        .name("stealth-approach")
+        .description("STEALTH mode: sneak in from outside the target's view, flank behind it, hold the swing until behind, no sprint or jumps while unseen.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final SettingGroup sgTelemetry = settings.createGroup("Telemetry & Safety");
+
+    private final Setting<Boolean> telemetryOn = sgTelemetry.add(new BoolSetting.Builder()
+        .name("fight-log")
+        .description("Record a per-fight timeline (verdicts, states, damage, defense) and keep the last fights in meteor-client/combat-telemetry.jsonl. See .combat-brain log.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> learnWeapons = sgTelemetry.add(new BoolSetting.Builder()
+        .name("learn-weapons")
+        .description("Also learn how each of our weapon kinds fares (per opponent and overall) and nudge verdicts by it (clamped, in combat-learning.json).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> failSafe = sgTelemetry.add(new BoolSetting.Builder()
+        .name("fail-safe")
+        .description("If the brain keeps throwing errors, release every key and disable instead of looping.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Keybind> killSwitch = sgTelemetry.add(new KeybindSetting.Builder()
+        .name("kill-switch")
+        .description("Instantly stop: release keys, stop pathing, disable the modules the brain enabled and turn Combat Brain off.")
+        .defaultValue(Keybind.none())
+        .action(this::killSwitch)
+        .build()
+    );
+
     // --- P2 tactics (C21-C40, C48, C61-C90) ---
     private final SettingGroup sgMeleeTactics = settings.createGroup("Melee Tactics");
     private final SettingGroup sgRangedTactics = settings.createGroup("Ranged & Special");
@@ -1100,6 +1170,20 @@ public class CombatBrainModule extends Module {
     private MatchupAssessment.Result lastMatchup = null;
     private MatchupAssessment.Verdict lastAnnouncedVerdict = null;
     private OpponentModel fightOpponent = null;
+
+    // P3 state
+    private DefenseDirector.@org.jspecify.annotations.Nullable Plan defensePlan;
+    private boolean stealthHoldAttack;
+    private String lastDefenseSummary = "";
+    private long lastSelfPopTick = -1000;
+    private final double[] damageByType = new double[DamageTypeAdvisor.Type.values().length];
+    private final CombatTelemetry telemetry = new CombatTelemetry();
+    private final SafetyNet safetyNet = new SafetyNet();
+    private float telemetryLastHp = -1;
+    private float telemetryTargetHp = -1;
+    private @org.jspecify.annotations.Nullable Entity telemetryTarget;
+    private static final java.io.File TELEMETRY_FILE = new java.io.File(meteordevelopment.meteorclient.MeteorClient.FOLDER, "combat-telemetry.jsonl");
+    private static final int TELEMETRY_FILE_FIGHTS = 50;
     private boolean wasDead = false;
     private long respawnTick = -100000;
     private boolean corneredFight = false;
@@ -1184,6 +1268,11 @@ public class CombatBrainModule extends Module {
     @Override
     public void onDeactivate() {
         if (KillAura.advisor == tactics) KillAura.advisor = null;
+        tactics.externalHold = false;
+        if (telemetryOn.get() && telemetry.current() != null) persistFight(telemetry.end("STOPPED", tickCounter));
+        telemetryTarget = null;
+        defensePlan = null;
+        safetyNet.reset();
         tactics.reset();
         regearController.cancel();
         if (learnOpponents.get()) opponentTracker.save();
@@ -1273,7 +1362,7 @@ public class CombatBrainModule extends Module {
         if (!hasShieldEquipped) {
             FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD
                 && itemStack.getMaxDamage() - itemStack.getDamageValue() > 0);
-            if (shield.found()) {
+            if (shield.found() && !offhandLocked()) {
                 InvUtils.move().from(shield.slot()).toOffhand();
                 hasShieldEquipped = true;
             }
@@ -1371,7 +1460,7 @@ public class CombatBrainModule extends Module {
         if (!hasShieldInOffhand) {
             FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD
                 && itemStack.getMaxDamage() - itemStack.getDamageValue() > 0);
-            if (shield.found()) {
+            if (shield.found() && !offhandLocked()) {
                 InvUtils.move().from(shield.slot()).toOffhand();
                 hasShieldInOffhand = true;
             }
@@ -1507,10 +1596,25 @@ public class CombatBrainModule extends Module {
 
     @EventHandler
     private void onPacketReceive(PacketEvent.Receive event) {
-        if (mc.level == null || !(event.packet instanceof ClientboundEntityEventPacket packet)) return;
+        if (mc.level == null) return;
+        if (event.packet instanceof net.minecraft.network.protocol.game.ClientboundDamageEventPacket dmg) {
+            // C56: what kind of damage are we taking
+            if (mc.player != null && dmg.entityId() == mc.player.getId()) {
+                DamageTypeAdvisor.Type t = classifyDamage(dmg.sourceType());
+                damageByType[t.ordinal()] += 1.0;
+                if (telemetryOn.get()) telemetry.event(tickCounter, CombatTelemetry.Kind.NOTE, "hit by " + t.name().toLowerCase(), 0);
+            }
+            return;
+        }
+        if (!(event.packet instanceof ClientboundEntityEventPacket packet)) return;
         if (packet.getEventId() != 35) return;
 
         Entity entity = packet.getEntity(mc.level);
+        if (entity == mc.player && mc.player != null) {
+            lastSelfPopTick = tickCounter;
+            if (telemetryOn.get()) telemetry.event(tickCounter, CombatTelemetry.Kind.NOTE, "popped a totem", 0);
+            return;
+        }
         if (!(entity instanceof Player player) || player == mc.player) return;
         opponentTracker.onPop(player, tickCounter);
 
@@ -1779,7 +1883,23 @@ public class CombatBrainModule extends Module {
     @EventHandler
     private void onTick(TickEvent.Pre event) {
         if (mc.player == null || mc.level == null) return;
+        if (!failSafe.get()) {
+            tickBrain();
+            return;
+        }
+        try {
+            tickBrain();
+        } catch (RuntimeException ex) {
+            // C100: fail open. One bad tick is logged and skipped; a burst trips the net.
+            DebugLog.warn("CombatBrain", "tick failed in state {}", state, ex);
+            if (safetyNet.fail(ex, tickCounter)) {
+                error("Combat Brain stopped after repeated errors (" + ex + "). See the log.");
+                killSwitch();
+            }
+        }
+    }
 
+    private void tickBrain() {
         tickCounter++;
         trackDeathAndRespawn();
         if (regearController.active()) {
@@ -1796,6 +1916,8 @@ public class CombatBrainModule extends Module {
         if (tickCounter % 2 != 0) return;
 
         passCounter++;
+        for (int i = 0; i < damageByType.length; i++) damageByType[i] *= 0.93; // ~3 s memory at 2-tick passes
+        if (telemetryOn.get()) sampleTelemetry();
 
         // Check health / threat
         float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
@@ -1860,7 +1982,7 @@ public class CombatBrainModule extends Module {
 
         // Target kill tracking
         if (currentTarget != null && !currentTarget.isAlive()) {
-            if (fightOpponent != null && learnOpponents.get()) opponentTracker.recordOutcome(fightOpponent, OpponentMemory.Outcome.WIN, true);
+            fightOutcome(OpponentMemory.Outcome.WIN);
             fightOpponent = null;
             killedInCombat++;
             killsInARow++;
@@ -1974,6 +2096,14 @@ public class CombatBrainModule extends Module {
                         enterFlee(r.verdict());
                         break;
                     }
+                }
+
+                // C51/C53: the heal plan says eating here is unsafe -> break off and heal first
+                if (defenseDirector.get() && defenseDisengage.get() && defensePlan != null && defensePlan.disengageToHeal()
+                    && !corneredFight && !isInvincible() && !isReentryCooldownActive(BrainState.HEALING)) {
+                    if (telemetryOn.get()) telemetry.event(tickCounter, CombatTelemetry.Kind.DEFENSE, "disengage to heal", health);
+                    transitionTo(BrainState.HEALING);
+                    break;
                 }
 
                 // Maintain modules
@@ -2116,7 +2246,7 @@ public class CombatBrainModule extends Module {
     private MatchupAssessment.Result evaluateMatchup(LivingEntity target) {
         OpponentModel model = opponentTracker.get(target);
         OpponentModel.Corrections corr = model == null ? null
-            : model.corrections(tickCounter, learnOpponents.get() ? opponentTracker.learnedBias(model) : 1.0);
+            : model.corrections(tickCounter, learnOpponents.get() ? opponentTracker.learnedBias(model, learnWeapons.get() ? myWeaponKind() : null) : 1.0);
         boolean los = mc.player != null && mc.player.hasLineOfSight(target);
         MatchupAssessment.Result r = CombatTargetAnalyzer.assessMatchup(target, aggression.get(), escapeController.cornered(), los, corr, model);
         MatchupAssessment.Verdict gated = verdictGate.offer(r.verdict());
@@ -2126,6 +2256,7 @@ public class CombatBrainModule extends Module {
                 r.killRatio(), r.matchupThreat(), r.mustFightBecauseCornered(), r.reason() + " (held: hysteresis)");
         }
         lastMatchup = r;
+        if (telemetryOn.get()) telemetry.event(tickCounter, CombatTelemetry.Kind.VERDICT, r.verdict().name(), r.killRatio());
         if (announceVerdict.get() && r.verdict() != lastAnnouncedVerdict) {
             info(target.getName().getString() + ": " + r.explain());
         }
@@ -2172,9 +2303,7 @@ public class CombatBrainModule extends Module {
         }
         if (state != BrainState.RETREATING && state != BrainState.FLEEING && state != BrainState.HEALING) {
             escapeController.reset();
-            if (fightOpponent != null && learnOpponents.get() && state == BrainState.ENGAGING) {
-                opponentTracker.recordOutcome(fightOpponent, OpponentMemory.Outcome.ESCAPED, true);
-            }
+            if (state == BrainState.ENGAGING) fightOutcome(OpponentMemory.Outcome.ESCAPED);
         }
         transitionTo(want);
     }
@@ -2276,7 +2405,7 @@ public class CombatBrainModule extends Module {
             if (terrainFlee.get() && combatPathManager != null) {
                 List<LivingEntity> threats = lastGroupSnapshot != null ? lastGroupSnapshot.targets() : List.of();
                 BlockPos dest = escapeController.plan(currentTarget, threats, tickCounter, shakePursuers.get(), true);
-                if (dest != null) {
+                if (dest != null && !combatPathManager.pathFailed()) {
                     combatPathManager.startFleeTo(currentTarget, dest);
                     if (HungerPlanner.canSprint(mc.player.getFoodData().getFoodLevel()) && mc.options != null) {
                         mc.options.keySprint.setDown(true);
@@ -2285,7 +2414,10 @@ public class CombatBrainModule extends Module {
                 }
             }
         }
-        if (combatPathManager != null) {
+        if (combatPathManager != null && combatPathManager.pathFailed() && followController != null) {
+            // C96: Baritone couldn't path (or stalled): run directly until the watchdog lets it retry
+            followController.flee(currentTarget, distance);
+        } else if (combatPathManager != null) {
             combatPathManager.startFlee(currentTarget, distance, lastGroupSnapshot);
         } else if (followController != null) {
             followController.flee(currentTarget, distance);
@@ -2297,7 +2429,7 @@ public class CombatBrainModule extends Module {
         if (mc.player == null) return;
         boolean dead = mc.player.isDeadOrDying();
         if (dead && !wasDead) {
-            if (fightOpponent != null && learnOpponents.get()) opponentTracker.recordOutcome(fightOpponent, OpponentMemory.Outcome.LOSS, true);
+            fightOutcome(OpponentMemory.Outcome.LOSS);
             fightOpponent = null;
             regearController.cancel();
         }
@@ -2320,6 +2452,151 @@ public class CombatBrainModule extends Module {
     }
 
     /** {@code .combat-brain why}: last verdict and its reasons. */
+    // ------------------------------------------------------------------ P3 helpers
+
+    /** Fight over: learning (C94, with our weapon kind) and the fight log (C93). */
+    private void fightOutcome(OpponentMemory.Outcome o) {
+        if (fightOpponent != null && learnOpponents.get()) {
+            opponentTracker.recordOutcome(fightOpponent, o, learnWeapons.get() ? myWeaponKind() : null, true);
+        }
+        if (telemetryOn.get()) persistFight(telemetry.end(o.name(), tickCounter));
+        telemetryTarget = null;
+    }
+
+    /** Our main-hand weapon kind as a learning key ("SWORD", "AXE", ...). */
+    private String myWeaponKind() {
+        if (mc.player == null) return WeaponKind.NONE.name();
+        ItemStack main = mc.player.getMainHandItem();
+        if (main.isEmpty()) return WeaponKind.NONE.name();
+        return WeaponKind.fromItemId(net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(main.getItem()).toString()).name();
+    }
+
+    /** Damage taken/dealt from health deltas each pass, and the defense summary when it changes. */
+    private void sampleTelemetry() {
+        if (mc.player == null) return;
+        float hp = mc.player.getHealth() + mc.player.getAbsorptionAmount();
+        if (telemetryLastHp >= 0 && hp < telemetryLastHp - 0.01f) {
+            telemetry.event(tickCounter, CombatTelemetry.Kind.TAKEN, "hp " + Math.round(hp), telemetryLastHp - hp);
+        }
+        telemetryLastHp = hp;
+        if (telemetryTarget instanceof LivingEntity le && le.isAlive()) {
+            float th = le.getHealth();
+            if (telemetryTargetHp >= 0 && th < telemetryTargetHp - 0.01f) {
+                telemetry.event(tickCounter, CombatTelemetry.Kind.DEALT, "target hp " + Math.round(th), telemetryTargetHp - th);
+            }
+            telemetryTargetHp = th;
+        }
+        DefenseDirector.Plan plan = defensePlan;
+        if (plan != null && !plan.summary().equals(lastDefenseSummary)) {
+            lastDefenseSummary = plan.summary();
+            telemetry.event(tickCounter, CombatTelemetry.Kind.DEFENSE, plan.summary(), 0);
+        }
+    }
+
+    /** Append a finished fight to meteor-client/combat-telemetry.jsonl, keeping the newest fights. */
+    private static void persistFight(CombatTelemetry.@org.jspecify.annotations.Nullable Fight f) {
+        if (f == null) return;
+        String line = CombatTelemetry.toJsonLine(f);
+        meteordevelopment.meteorclient.utils.network.MeteorExecutor.execute(() -> {
+            synchronized (TELEMETRY_FILE) {
+            try {
+                java.nio.file.Path path = TELEMETRY_FILE.toPath();
+                java.util.List<String> lines = new java.util.ArrayList<>();
+                if (java.nio.file.Files.exists(path)) lines.addAll(java.nio.file.Files.readAllLines(path, java.nio.charset.StandardCharsets.UTF_8));
+                lines.add(line);
+                java.nio.file.Files.createDirectories(path.getParent());
+                java.nio.file.Files.write(path, CombatTelemetry.trim(lines, TELEMETRY_FILE_FIGHTS), java.nio.charset.StandardCharsets.UTF_8);
+            } catch (java.io.IOException | RuntimeException ex) {
+                DebugLog.warn("CombatBrain", "could not write {}", TELEMETRY_FILE, ex);
+            }
+            }
+        });
+    }
+
+    /** C100 kill switch: release every input, stop pathing, disable what we enabled, turn off. */
+    private void killSwitch() {
+        if (mc.options != null) {
+            mc.options.keyUse.setDown(false);
+            mc.options.keyShift.setDown(false);
+            mc.options.keySprint.setDown(false);
+            mc.options.keyJump.setDown(false);
+        }
+        if (isActive()) toggle();
+        info("Kill switch: Combat Brain stopped.");
+    }
+
+    private static DamageTypeAdvisor.Type classifyDamage(net.minecraft.core.Holder<net.minecraft.world.damagesource.DamageType> type) {
+        if (type.is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION)) return DamageTypeAdvisor.Type.BLAST;
+        if (type.is(net.minecraft.tags.DamageTypeTags.IS_PROJECTILE)) return DamageTypeAdvisor.Type.PROJECTILE;
+        if (type.is(net.minecraft.tags.DamageTypeTags.IS_FIRE)) return DamageTypeAdvisor.Type.FIRE;
+        if (type.is(net.minecraft.tags.DamageTypeTags.IS_FALL)) return DamageTypeAdvisor.Type.FALL;
+        if (type.is(net.minecraft.world.damagesource.DamageTypes.MAGIC) || type.is(net.minecraft.world.damagesource.DamageTypes.INDIRECT_MAGIC)
+            || type.is(net.minecraft.world.damagesource.DamageTypes.WITHER)) return DamageTypeAdvisor.Type.MAGIC;
+        return DamageTypeAdvisor.Type.MELEE;
+    }
+
+    // accessors for ModuleAutomator / HUD / commands
+    double incomingDps() {
+        return lastMatchup != null && currentTarget != null ? lastMatchup.theirDps() : 0;
+    }
+
+    boolean justPopped() {
+        return tickCounter - lastSelfPopTick <= 4;
+    }
+
+    double[] damageByType() {
+        return damageByType.clone();
+    }
+
+    void setDefensePlan(DefenseDirector.@org.jspecify.annotations.Nullable Plan plan) {
+        defensePlan = plan;
+    }
+
+    public DefenseDirector.@org.jspecify.annotations.Nullable Plan defensePlan() {
+        return defensePlan;
+    }
+
+    /** The defense plan needs the totem to stay in the offhand: no shield/potion/milk swaps into it. */
+    public boolean offhandLocked() {
+        DefenseDirector.Plan p = defensePlan;
+        return defenseDirector.get() && p != null && p.holdTotem() && mc.player != null && mc.player.getOffhandItem().is(Items.TOTEM_OF_UNDYING);
+    }
+
+    public MatchupAssessment.@org.jspecify.annotations.Nullable Result lastMatchup() {
+        return currentTarget != null ? lastMatchup : null;
+    }
+
+    public CombatTelemetry telemetry() {
+        return telemetry;
+    }
+
+    /** ".combat-brain log": last fight summary and timeline. */
+    public java.util.List<String> fightLog(int lines) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        CombatTelemetry.Fight f = telemetry.last();
+        if (f == null) {
+            out.add("No fights recorded yet" + (telemetryOn.get() ? "." : " (fight-log is off)."));
+            return out;
+        }
+        out.add(f.summary());
+        out.addAll(f.timeline(lines));
+        return out;
+    }
+
+    /** ".combat-brain learning": what the learning model says right now. */
+    public String learningSummary() {
+        OpponentMemory mem = opponentTracker.memory();
+        String w = myWeaponKind();
+        StringBuilder sb = new StringBuilder();
+        sb.append(mem.size()).append(" opponents remembered; ").append(w.toLowerCase()).append(" bias ")
+            .append(String.format(java.util.Locale.ROOT, "%.2f", mem.weaponBias(w, null)));
+        if (currentTarget instanceof Player p) {
+            String name = p.getName().getString();
+            sb.append("; vs ").append(name).append(String.format(java.util.Locale.ROOT, " %.2f", mem.combinedBias(name, w)));
+        }
+        return sb.toString();
+    }
+
     public String explainVerdict() {
         StringBuilder sb = new StringBuilder();
         sb.append("State ").append(state);
@@ -2366,6 +2643,14 @@ public class CombatBrainModule extends Module {
         // re-entry guard is a silent no-op.)
         lastStateExitPass.put(oldState, passCounter);
         onEnterState(state);
+        if (telemetryOn.get()) {
+            if (newState == BrainState.ENGAGING && currentTarget != null && (telemetry.current() == null || telemetryTarget != currentTarget)) {
+                telemetry.start(currentTarget.getName().getString(), tickCounter, System.currentTimeMillis());
+                telemetryTarget = currentTarget;
+                telemetryTargetHp = currentTarget.getHealth();
+            }
+            telemetry.event(tickCounter, CombatTelemetry.Kind.STATE, newState.name(), 0);
+        }
         onStateChange(oldState, newState);
     }
 
@@ -2935,6 +3220,8 @@ public class CombatBrainModule extends Module {
         // Without a shield the bot must NOT bum-rush — it hit-and-runs from the bubble.
         boolean canTakeRisk = isInvincible()
             || (hasUsableShield() && (totems > 0 || health >= 14.0f || (combatMode == CombatMode.AGGRESSIVE && health >= 10.0f)));
+        // C59: knockback near a drop/lava -> no trading hits, hold the bubble
+        if (edgeAware.get() && defenseDirector.get() && defensePlan != null && defensePlan.avoidEdges()) canTakeRisk = false;
 
         // --- Gather the full threat group every 4 ticks ---
         refreshGroupAwarenessAndFavoring(true);
@@ -2999,7 +3286,8 @@ public class CombatBrainModule extends Module {
                 }
                 double yaw = Rotations.getYaw(currentTarget);
                 double pitch = Rotations.getPitch(currentTarget, Target.Head);
-                Rotations.rotate(yaw, pitch, 100, true, null);
+                // C97: one combat aim authority (smoothed by the look profile)
+                CameraArbiter.claim(this, CameraArbiter.PRIORITY_COMBAT_AIM, (float) yaw, (float) pitch, true);
 
                 if (mc.player.getTicksUsingItem() >= 20) {
                     mc.options.keyUse.setDown(false);
@@ -3017,6 +3305,26 @@ public class CombatBrainModule extends Module {
             terrainGrid.update(currentTarget);
         }
         double dist = mc.player.distanceTo(currentTarget);
+
+        // C92: STEALTH approach
+        if (combatMode == CombatMode.STEALTH && stealthUpgrade.get() && followController != null && mc.options != null) {
+            StealthPlanner.Advice adv = StealthPlanner.advise(mc.player.getX(), mc.player.getZ(), currentTarget.getX(), currentTarget.getZ(),
+                currentTarget.getYHeadRot(), 3.0, currentTarget.hasLineOfSight(mc.player));
+            stealthHoldAttack = adv.holdAttack();
+            tactics.externalHold = stealthHoldAttack;
+            if (!adv.seen()) {
+                mc.options.keyShift.setDown(adv.sneak());
+                mc.options.keySprint.setDown(adv.sprint());
+                mc.options.keyJump.setDown(false);
+                if (adv.flank() && followController.steerTo(currentTarget, adv.flankX(), adv.flankZ())) return;
+                followController.follow(currentTarget, Math.min(2.4, effectiveStrikeDist));
+                return;
+            }
+            mc.options.keyShift.setDown(false);
+        } else {
+            stealthHoldAttack = false;
+            tactics.externalHold = false;
+        }
 
         // Post-pop finish push: keep AGGRESSIVE_STRIKE active without bouncing to bubble
         if (tacticalMode == CombatTacticalPositioner.TacticalMode.AGGRESSIVE_STRIKE

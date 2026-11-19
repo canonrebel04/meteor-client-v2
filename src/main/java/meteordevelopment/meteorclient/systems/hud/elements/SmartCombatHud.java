@@ -104,6 +104,10 @@ public class SmartCombatHud extends HudElement {
         0.15, meteordevelopment.meteorclient.utils.render.anim.Anim.MIN_DISPLAY);
     private final meteordevelopment.meteorclient.utils.render.anim.Debouncer<String> modeText = new meteordevelopment.meteorclient.utils.render.anim.Debouncer<>(
         0.15, meteordevelopment.meteorclient.utils.render.anim.Anim.MIN_DISPLAY);
+    private final meteordevelopment.meteorclient.utils.render.anim.Debouncer<String> verdictText = new meteordevelopment.meteorclient.utils.render.anim.Debouncer<>(
+        0.15, meteordevelopment.meteorclient.utils.render.anim.Anim.MIN_DISPLAY);
+    private final meteordevelopment.meteorclient.utils.render.anim.Debouncer<String> defenseText = new meteordevelopment.meteorclient.utils.render.anim.Debouncer<>(
+        0.15, meteordevelopment.meteorclient.utils.render.anim.Anim.MIN_DISPLAY);
     private long lastFrame;
     private final Color gaugeBack = new Color(0, 0, 0, 90);
 
@@ -159,8 +163,10 @@ public class SmartCombatHud extends HudElement {
         width = Math.max(width, renderer.textWidth(targetLine, false, getScale()));
         width = Math.max(width, renderer.textWidth(armorLine, false, getScale()));
         width = Math.max(width, renderer.textWidth(stateLine, false, getScale()));
+        width = Math.max(width, renderer.textWidth(verdictLine(cb), false, getScale()));
+        width = Math.max(width, renderer.textWidth(defenseLine(cb), false, getScale()));
 
-        double height = 6 * lineHeight;
+        double height = 8 * lineHeight;
 
         setSize(width, height);
     }
@@ -253,6 +259,30 @@ public class SmartCombatHud extends HudElement {
             stateLine = "State: IDLE";
         }
         renderer.text(stateLine, x, y, secondaryColor.get(), false, getScale());
+        y += lineHeight;
+
+        // C99: verdict / TTK and the defense plan
+        String verdict = verdictLine(cb);
+        Color vc = verdict.contains("WIN") ? GREEN : verdict.contains("EVEN") ? AMBER : verdict.contains("LOSE") || verdict.contains("HOPELESS") ? RED : secondaryColor.get();
+        renderer.text(verdict, x, y, vc, false, getScale());
+        y += lineHeight;
+        renderer.text(defenseLine(cb), x, y, secondaryColor.get(), false, getScale());
+    }
+
+    private String verdictLine(CombatBrainModule cb) {
+        if (isInEditor()) return "Verdict: WIN 1.4x (TTK 3.1s vs 5.4s)";
+        if (cb == null || !cb.isActive()) return "Verdict: -";
+        var r = cb.lastMatchup();
+        if (r == null) return "Verdict: -";
+        return verdictText.update(String.format(java.util.Locale.ROOT, "Verdict: %s %.1fx (TTK %.1fs vs %.1fs)",
+            r.verdict().name(), r.killRatio(), r.myTtk(), r.theirTtk()), now());
+    }
+
+    private String defenseLine(CombatBrainModule cb) {
+        if (isInEditor()) return "Defense: totem hold, heal eat_gap";
+        if (cb == null || !cb.isActive()) return "Defense: -";
+        var p = cb.defensePlan();
+        return "Defense: " + (p == null ? "-" : defenseText.update(p.summary(), now()));
     }
 
     /** "Min Armor: 42%" -> 0.42; -1 without a percentage. */

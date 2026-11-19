@@ -41,6 +41,24 @@ public class CombatBrainCommand extends Command {
             )
 
             // .combat-brain stash - set the regear stash to the container under the crosshair (C60)
+            .then(literal("log")
+                .executes(context -> {
+                    CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+                    if (cb == null) { error("CombatBrain module not found."); return SINGLE_SUCCESS; }
+                    for (String line : cb.fightLog(15)) info(line);
+                    return SINGLE_SUCCESS;
+                })
+            )
+
+            .then(literal("learning")
+                .executes(context -> {
+                    CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
+                    if (cb == null) { error("CombatBrain module not found."); return SINGLE_SUCCESS; }
+                    info(cb.learningSummary());
+                    return SINGLE_SUCCESS;
+                })
+            )
+
             .then(literal("stash")
                 .executes(context -> {
                     CombatBrainModule cb = Modules.get().get(CombatBrainModule.class);
