@@ -591,6 +591,21 @@ public class CombatTargetAnalyzer {
         boolean cornered,
         boolean hasLineOfSight
     ) {
+        return assessMatchup(target, profile, cornered, hasLineOfSight, null, null);
+    }
+
+    /**
+     * P1: as above, with opponent-model corrections (skill, intent, swaps, durability, trades, learned bias) and
+     * what the model saw them consume (golden apples, pops) folded into their kit.
+     */
+    public static MatchupAssessment.Result assessMatchup(
+        LivingEntity target,
+        MatchupAssessment.AggressionProfile profile,
+        boolean cornered,
+        boolean hasLineOfSight,
+        meteordevelopment.meteorclient.systems.modules.combat.model.OpponentModel.@org.jspecify.annotations.Nullable Corrections corrections,
+        meteordevelopment.meteorclient.systems.modules.combat.model.@org.jspecify.annotations.Nullable OpponentModel model
+    ) {
         if (mc.player == null || target == null) {
             return MatchupAssessment.evaluate(null, null, null, profile);
         }
@@ -650,8 +665,9 @@ public class CombatTargetAnalyzer {
             hasAnyMeleeWeapon(target) || !(target instanceof Player),
             target.getOffhandItem().is(Items.SHIELD) || target.getMainHandItem().is(Items.SHIELD),
             target.isBlocking(),
-            theirTotem ? 1 : 0,
-            false,
+            // a player who already popped probably carries more totems; one who ate gaps carries gaps
+            (theirTotem ? 1 : 0) + (model != null && model.consumables.pops() > 0 && target instanceof Player ? 1 : 0),
+            model != null && model.consumables.gapsEaten() > 0,
             effectLevel(target, MobEffects.RESISTANCE),
             effectLevel(target, MobEffects.STRENGTH),
             effectLevel(target, MobEffects.WEAKNESS),
@@ -662,7 +678,7 @@ public class CombatTargetAnalyzer {
             hasPearl, hasWindCharge, hasElytra, hasSpeed, cornered,
             mc.player.distanceTo(target), hasLineOfSight
         );
-        return MatchupAssessment.evaluate(me, them, esc, profile);
+        return MatchupAssessment.evaluate(me, them, esc, profile, corrections);
     }
 
     // --- Target Analysis POJO ---
