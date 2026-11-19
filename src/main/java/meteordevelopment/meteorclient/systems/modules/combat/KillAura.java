@@ -127,6 +127,38 @@ public class KillAura extends Module {
         .build()
     );
 
+    // C91: anticheat-safe action budget
+    private final SettingGroup sgBudget = settings.createGroup("Anticheat Budget");
+
+    private final Setting<Integer> maxCps = sgBudget.add(new IntSetting.Builder()
+        .name("max-cps")
+        .description("Never click more than this many times in any one second (0 = no cap).")
+        .defaultValue(10)
+        .range(0, 20)
+        .sliderRange(0, 20)
+        .build()
+    );
+
+    private final Setting<Boolean> limitReach = sgBudget.add(new BoolSetting.Builder()
+        .name("limit-reach")
+        .description("Only swing when the target's hitbox is within max-reach of the eyes (targeting range stays as set).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Double> maxReach = sgBudget.add(new DoubleSetting.Builder()
+        .name("max-reach")
+        .description("Reach limit for swings, measured from the eyes to the nearest point of the hitbox.")
+        .defaultValue(3.0)
+        .range(1.0, 6.0)
+        .sliderRange(2.5, 4.5)
+        .visible(limitReach::get)
+        .build()
+    );
+
+    private final meteordevelopment.meteorclient.systems.modules.combat.model.ActionBudget budget =
+        new meteordevelopment.meteorclient.systems.modules.combat.model.ActionBudget();
+
     private final Setting<Boolean> autoSwitch = sgGeneral.add(new BoolSetting.Builder()
         .name("auto-switch")
         .description("Switches to an acceptable weapon when attacking the target.")
@@ -676,6 +708,14 @@ public class KillAura extends Module {
     }
 
     private void attack(Entity target) {
+        // C91: CPS cap and reach limit (skipped swings keep the charge for the next tick)
+        long nowMs = System.currentTimeMillis();
+        budget.maxCps = maxCps.get();
+        budget.maxReach = limitReach.get() ? maxReach.get() : 0;
+        if (!budget.mayClick(nowMs)) return;
+        if (!budget.inReach(eyeDistanceToBox(target))) return;
+        budget.recordClick(nowMs);
+
         if (rotation.get() == RotationMode.OnHit && !cameraAim())
             rotateToTarget(target);
 
@@ -698,6 +738,15 @@ public class KillAura extends Module {
         }
 
         hitTimer = 0;
+    }
+
+    private double eyeDistanceToBox(Entity target) {
+        net.minecraft.world.phys.Vec3 eye = mc.player.getEyePosition();
+        net.minecraft.world.phys.AABB b = target.getBoundingBox();
+        double dx = Math.max(Math.max(b.minX - eye.x, 0), eye.x - b.maxX);
+        double dy = Math.max(Math.max(b.minY - eye.y, 0), eye.y - b.maxY);
+        double dz = Math.max(Math.max(b.minZ - eye.z, 0), eye.z - b.maxZ);
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     private boolean acceptableWeapon(ItemStack stack) {

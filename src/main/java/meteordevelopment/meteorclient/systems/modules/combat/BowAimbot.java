@@ -78,6 +78,13 @@ public class BowAimbot extends Module {
         .build()
     );
 
+    private final Setting<Boolean> cameraAim = sgGeneral.add(new BoolSetting.Builder()
+        .name("camera-aim")
+        .description("Turn the camera smoothly through the shared camera arbiter (one combat aim authority, C97) instead of silent packet rotations.")
+        .defaultValue(true)
+        .build()
+    );
+
     private boolean wasPathing;
     private Entity target;
 
@@ -153,10 +160,13 @@ public class BowAimbot extends Module {
         float pitch = (float) -Math.toDegrees(Math.atan((velocitySq - Math.sqrt(velocitySq * velocitySq - g * (g * hDistanceSq + 2 * relativeY * velocitySq))) / (g * hDistance)));
 
         // Set player rotation
-        if (Float.isNaN(pitch)) {
-            Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target));
+        double yaw = Float.isNaN(pitch) ? Rotations.getYaw(target) : Rotations.getYaw(new Vec3(pos.x, pos.y, pos.z));
+        double p = Float.isNaN(pitch) ? Rotations.getPitch(target) : pitch;
+        if (cameraAim.get()) {
+            meteordevelopment.meteorclient.utils.player.CameraArbiter.claim(this,
+                meteordevelopment.meteorclient.utils.player.CameraArbiter.PRIORITY_COMBAT_AIM, (float) yaw, (float) p, true);
         } else {
-            Rotations.rotate(Rotations.getYaw(new Vec3(pos.x, pos.y, pos.z)), pitch);
+            Rotations.rotate(yaw, p);
         }
     }
 
