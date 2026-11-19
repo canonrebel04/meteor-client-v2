@@ -111,4 +111,16 @@ class GetItemSpecTest {
     void animalAutomationsPausedDuringRuns() {
         assertTrue(GetItemSpec.CONFLICTING.containsAll(java.util.List.of("auto-breed", "auto-shearer", "auto-fish")));
     }
+
+    @Test
+    void progressLineParsing() {
+        String line = "iron_ingot 3/8 · step 2/5 · smelt · ETA 2m 10s";
+        assertEquals(130, GetItemSpec.etaSeconds(line), 1e-9);
+        assertEquals(3 / 8.0, GetItemSpec.fraction(line), 1e-9);
+        assertEquals(3723, GetItemSpec.etaSeconds("x · ETA 1h 2m 3s"), 1e-9);
+        assertEquals(-1, GetItemSpec.etaSeconds("no eta"), 1e-9);
+        assertEquals(-1, GetItemSpec.fraction("nothing"), 1e-9);
+        assertEquals("iron_ingot 3/8 · step 2/5 · smelt · ETA 2m 05s", GetItemSpec.withEta(line, "2m 05s"));
+        assertEquals("iron_ingot 3/8 · step 2/5 · smelt", GetItemSpec.withEta(line, null));
+    }
 }

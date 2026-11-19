@@ -97,8 +97,23 @@ public class SmartCombatHud extends HudElement {
         .build()
     );
 
+    // S70/S73: animated armor gauge, debounced state/mode lines
+    private final meteordevelopment.meteorclient.utils.render.anim.Tween armorGauge = new meteordevelopment.meteorclient.utils.render.anim.Tween(
+        meteordevelopment.meteorclient.utils.render.anim.Anim.NORMAL);
+    private final meteordevelopment.meteorclient.utils.render.anim.Debouncer<String> stateText = new meteordevelopment.meteorclient.utils.render.anim.Debouncer<>(
+        0.15, meteordevelopment.meteorclient.utils.render.anim.Anim.MIN_DISPLAY);
+    private final meteordevelopment.meteorclient.utils.render.anim.Debouncer<String> modeText = new meteordevelopment.meteorclient.utils.render.anim.Debouncer<>(
+        0.15, meteordevelopment.meteorclient.utils.render.anim.Anim.MIN_DISPLAY);
+    private long lastFrame;
+    private final Color gaugeBack = new Color(0, 0, 0, 90);
+
     public SmartCombatHud() {
         super(INFO);
+        armorGauge.set(0);
+    }
+
+    private static double now() {
+        return System.nanoTime() / 1e9;
     }
 
     @Override
@@ -179,7 +194,7 @@ public class SmartCombatHud extends HudElement {
         y += lineHeight;
 
         // Mode
-        String modeName = active ? modeLabel(cb) : "N/A";
+        String modeName = active ? modeText.update(modeLabel(cb), now()) : "N/A";
         renderer.text("Mode: " + modeName, x, y, secondaryColor.get(), false, getScale());
         y += lineHeight;
 
@@ -214,6 +229,18 @@ public class SmartCombatHud extends HudElement {
         y += lineHeight;
 
         renderer.text(armorLine, x, y, armorColor, false, getScale());
+        long t = System.nanoTime();
+        double dt = lastFrame == 0 ? 0 : Math.min(0.25, (t - lastFrame) / 1e9);
+        lastFrame = t;
+        double pct = parsePercent(armorLine);
+        if (pct >= 0) armorGauge.target(pct);
+        double g = armorGauge.update(dt);
+        if (pct >= 0) {
+            double gy = y + lineHeight - 2;
+            double gw = getWidth();
+            renderer.quad(x, gy, gw, 1.5, gaugeBack);
+            renderer.quad(x, gy, gw * g, 1.5, armorColor);
+        }
         y += lineHeight;
 
         // State / Phase
@@ -221,11 +248,21 @@ public class SmartCombatHud extends HudElement {
         if (isInEditor()) {
             stateLine = "State: ENGAGING (STRIKE)";
         } else if (active) {
-            stateLine = "State: " + cb.getState().name() + " (" + cb.getStrikePhase().name() + ")";
+            stateLine = "State: " + stateText.update(cb.getState().name() + " (" + cb.getStrikePhase().name() + ")", now());
         } else {
             stateLine = "State: IDLE";
         }
         renderer.text(stateLine, x, y, secondaryColor.get(), false, getScale());
+    }
+
+    /** "Min Armor: 42%" -> 0.42; -1 without a percentage. */
+    static double parsePercent(String line) {
+        int pct = line.indexOf('%');
+        if (pct < 0) return -1;
+        int i = pct;
+        while (i > 0 && Character.isDigit(line.charAt(i - 1))) i--;
+        if (i == pct) return -1;
+        return Math.min(1, Integer.parseInt(line.substring(i, pct)) / 100.0);
     }
 
     private double getScale() {

@@ -17,6 +17,8 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.util.Mth;
+import meteordevelopment.meteorclient.utils.render.anim.Anim;
+import meteordevelopment.meteorclient.utils.render.anim.Tween;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 
@@ -55,6 +57,16 @@ public class TargetESP extends Module {
         .build()
     );
 
+    private final Setting<Boolean> animate = sgRender.add(new BoolSetting.Builder()
+        .name("animate")
+        .description("Fade in on a new target and pulse while striking (off with reduce-motion or low frame rate).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Tween fadeIn = new Tween(Anim.NORMAL);
+    private Entity shownTarget;
+    private long lastFrame;
     private final Color sideColor = new Color();
     private final Color lineColor = new Color();
 
@@ -101,8 +113,21 @@ public class TargetESP extends Module {
             color = trackingColor.get();
         }
 
-        sideColor.set(color);
-        lineColor.set(color).a(255);
+        double alpha = 1;
+        if (animate.get() && Anim.quality >= 0.75) {
+            long now = java.lang.System.nanoTime();
+            double dt = lastFrame == 0 ? 0 : Math.min(0.25, (now - lastFrame) / 1e9);
+            lastFrame = now;
+            if (target != shownTarget) {
+                shownTarget = target;
+                fadeIn.set(0);
+            }
+            fadeIn.target(1);
+            alpha = fadeIn.update(dt);
+            if (attacking) alpha *= 0.65 + 0.35 * Anim.pulse(now / 1e9, 0.6);
+        }
+        sideColor.set(color).a((int) (color.a * alpha));
+        lineColor.set(color).a((int) (255 * Math.max(0.3, alpha)));
 
         double x = Mth.lerp(event.tickDelta, target.xOld, target.getX()) - target.getX();
         double y = Mth.lerp(event.tickDelta, target.yOld, target.getY()) - target.getY();

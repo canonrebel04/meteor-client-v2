@@ -65,6 +65,42 @@ public final class GetItemSpec {
         return out;
     }
 
+    /** S69: "2m 10s" / "45s" / "1h 3m" from a progress line's ETA part to seconds; -1 when absent. */
+    public static double etaSeconds(String line) {
+        if (line == null) return -1;
+        int i = line.lastIndexOf("ETA ");
+        if (i < 0) return -1;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)\\s*([hms])").matcher(line.substring(i + 4));
+        double total = 0;
+        boolean any = false;
+        while (m.find()) {
+            any = true;
+            int n = Integer.parseInt(m.group(1));
+            total += switch (m.group(2)) {
+                case "h" -> n * 3600;
+                case "m" -> n * 60;
+                default -> n;
+            };
+        }
+        return any ? total : -1;
+    }
+
+    /** S69: progress fraction from the first "have/need" in a progress line (0..1), or -1. */
+    public static double fraction(String line) {
+        if (line == null) return -1;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)/(\\d+)").matcher(line);
+        if (!m.find()) return -1;
+        double need = Double.parseDouble(m.group(2));
+        return need <= 0 ? -1 : Math.min(1, Double.parseDouble(m.group(1)) / need);
+    }
+
+    /** The progress line with its ETA part replaced (or appended). */
+    public static String withEta(String line, String eta) {
+        int i = line.lastIndexOf(" · ETA ");
+        String head = i >= 0 ? line.substring(0, i) : line;
+        return eta == null ? head : head + " · ETA " + eta;
+    }
+
     /** The "step N" part of a Baritone Get Item status line, used to announce step changes once. */
     public static String stepKey(String status) {
         if (status == null) return "";
