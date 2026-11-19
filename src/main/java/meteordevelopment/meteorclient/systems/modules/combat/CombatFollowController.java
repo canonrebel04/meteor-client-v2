@@ -353,6 +353,46 @@ public class CombatFollowController {
     }
 
     /**
+     * P2 positioning (C29/C31/C40): walk to (x, z) near {@code face} while still facing it, using forward/back/
+     * strafe keys relative to the target. Returns false (does nothing) when the spot is far or the way isn't
+     * directly walkable; the caller then falls back to its normal follow/bubble.
+     */
+    public boolean steerTo(Entity face, double x, double z) {
+        if (mc.player == null || mc.options == null || face == null) return false;
+        double mx = x - mc.player.getX(), mz = z - mc.player.getZ();
+        double d = Math.sqrt(mx * mx + mz * mz);
+        if (d > 8 || !isDirectWalkable(face)) return false;
+        if (!maintainingDistance && !directPursuitActive && baritone.getPathingBehavior().isPathing()) {
+            baritone.getPathingBehavior().cancelEverything();
+        }
+        mode = FollowMode.FOLLOW;
+        currentTarget = face;
+        maintainingDistance = true;
+        directPursuitActive = false;
+        double fx = face.getX() - mc.player.getX(), fz = face.getZ() - mc.player.getZ();
+        float yaw = (float) Math.toDegrees(Math.atan2(fz, fx)) - 90.0f;
+        CameraArbiter.claimYaw(this, CameraArbiter.PRIORITY_STEER, yaw);
+        if (d < 0.35) {
+            mc.options.keyUp.setDown(false);
+            mc.options.keyDown.setDown(false);
+            mc.options.keyLeft.setDown(false);
+            mc.options.keyRight.setDown(false);
+            return true;
+        }
+        // movement in the player's local frame (forward = facing the target)
+        double r = Math.toRadians(mc.player.getYRot());
+        double fwdX = -Math.sin(r), fwdZ = Math.cos(r);
+        double forward = (mx * fwdX + mz * fwdZ) / d;
+        double right = (mx * -fwdZ + mz * fwdX) / d;
+        mc.options.keyUp.setDown(forward > 0.35);
+        mc.options.keyDown.setDown(forward < -0.35);
+        mc.options.keyRight.setDown(right > 0.35);
+        mc.options.keyLeft.setDown(right < -0.35);
+        releaseSprint();
+        return true;
+    }
+
+    /**
      * Releases direct-pursuit keys WITHOUT touching Baritone. Safe to call while
      * Baritone is mining — unlike stop(), which cancels everything including the
      * dig. Used when the brain yields movement control to an active dig.
@@ -363,6 +403,8 @@ public class CombatFollowController {
         if (mc.options != null) {
             mc.options.keyUp.setDown(false);
             mc.options.keyDown.setDown(false);
+            mc.options.keyLeft.setDown(false);
+            mc.options.keyRight.setDown(false);
             mc.options.keyJump.setDown(false);
             releaseSprint();
         }

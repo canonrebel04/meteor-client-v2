@@ -297,6 +297,27 @@ public class KillAura extends Module {
         return desyncHoldTicks > 0;
     }
 
+    /**
+     * Hook for Combat Mode's tactics layer (P2: C21/C22 crit timing, C24/C81 kill order, C28 hit selection,
+     * C25/C26/C30/C70 weapon choice). Null = plain KillAura behaviour.
+     */
+    public interface Advisor {
+        /** Hold a charged swing this tick (e.g. rising in a jump: the crit comes on the way down). */
+        boolean holdAttack(Entity primary);
+
+        /** Where to aim on the target, or null for the default. */
+        @org.jspecify.annotations.Nullable Vec3 aimPoint(Entity target);
+
+        /** Hotbar slot to select this tick for the fight, or -1 for KillAura's own choice. */
+        int weaponSlot(Entity primary);
+
+        /** Reorder targets (first = primary). */
+        void sortTargets(List<Entity> targets);
+    }
+
+    public static volatile @org.jspecify.annotations.Nullable Advisor advisor;
+    private int advisedSlot = -1;
+
     public KillAura() {
         super(Categories.Combat, "kill-aura", "Attacks specified entities around you.");
     }
@@ -372,9 +393,18 @@ public class KillAura extends Module {
             return;
         }
 
+        Advisor adv = advisor;
+        if (adv != null) adv.sortTargets(targets);
         Entity primary = targets.getFirst();
+        advisedSlot = adv != null ? adv.weaponSlot(primary) : -1;
 
-        if (autoSwitch.get()) {
+        if (advisedSlot >= 0) {
+            if (!swapped) {
+                previousSlot = mc.player.getInventory().getSelectedSlot();
+                swapped = true;
+            }
+            if (mc.player.getInventory().getSelectedSlot() != advisedSlot) InvUtils.swap(advisedSlot, false);
+        } else if (autoSwitch.get()) {
             FindItemResult weaponResult = new FindItemResult(mc.player.getInventory().getSelectedSlot(), -1);
             if (attackWhenHolding.get() == AttackItems.Weapons)
                 weaponResult = InvUtils.find(this::acceptableWeapon, 0, 8);
@@ -392,7 +422,8 @@ public class KillAura extends Module {
             InvUtils.swap(weaponResult.slot(), false);
         }
 
-        if (!acceptableWeapon(mc.player.getMainHandItem())) {
+        boolean advised = advisedSlot >= 0 && mc.player.getInventory().getSelectedSlot() == advisedSlot;
+        if (!advised && !acceptableWeapon(mc.player.getMainHandItem())) {
             stopAttacking();
             return;
         }
@@ -405,7 +436,7 @@ public class KillAura extends Module {
             wasPathing = true;
         }
 
-        if (delayCheck()) targets.forEach(this::attack);
+        if (delayCheck() && (adv == null || !adv.holdAttack(primary))) targets.forEach(this::attack);
     }
 
     @EventHandler
@@ -542,6 +573,12 @@ public class KillAura extends Module {
     }
 
     private void rotateToTarget(Entity target) {
+        Advisor adv = advisor;
+        Vec3 advisedAim = adv != null ? adv.aimPoint(target) : null;
+        if (advisedAim != null) {
+            Rotations.rotate(Rotations.getYaw(advisedAim), Rotations.getPitch(advisedAim));
+            return;
+        }
         Backtrack backtrack = Modules.get().get(Backtrack.class);
         if (backtrack != null && backtrack.isActive()) {
             AABB box = backtrack.getBacktrackedBox(target);

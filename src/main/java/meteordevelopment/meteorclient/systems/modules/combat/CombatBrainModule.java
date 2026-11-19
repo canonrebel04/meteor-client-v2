@@ -49,6 +49,7 @@ import meteordevelopment.meteorclient.systems.modules.player.AutoTool;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.level.block.state.BlockState;
 import meteordevelopment.meteorclient.events.entity.player.AttackEntityEvent;
+import meteordevelopment.meteorclient.systems.modules.combat.tactics.MeleeTiming;
 import meteordevelopment.meteorclient.utils.misc.perf.TickBudget;
 import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.meteorclient.utils.player.Rotations;
@@ -767,6 +768,256 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    // --- P2 tactics (C21-C40, C48, C61-C90) ---
+    private final SettingGroup sgMeleeTactics = settings.createGroup("Melee Tactics");
+    private final SettingGroup sgRangedTactics = settings.createGroup("Ranged & Special");
+    private final SettingGroup sgExplosives = settings.createGroup("Explosives");
+    private final SettingGroup sgGroupTactics = settings.createGroup("Group & Environment");
+
+    private final Setting<Boolean> p2JumpCrits = sgMeleeTactics.add(new BoolSetting.Builder()
+        .name("jump-crits")
+        .description("Legit critical hits: jump just before the swing is charged and hit on the way down (no packet crits).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<MeleeTiming.Tap> p2KnockbackTap = sgMeleeTactics.add(new EnumSetting.Builder<MeleeTiming.Tap>()
+        .name("knockback-tap")
+        .description("After a sprint hit: W-tap (sprint reset), S-tap (back off) or block-hit (raise the offhand shield). Off by default for anticheat servers.")
+        .defaultValue(MeleeTiming.Tap.NONE)
+        .build()
+    );
+
+    private final Setting<Boolean> p2ReachManagement = sgMeleeTactics.add(new BoolSetting.Builder()
+        .name("reach-management")
+        .description("Hold the safety bubble just outside the target's reach while the swing charges, then step to the edge of ours.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2HitSelection = sgMeleeTactics.add(new BoolSetting.Builder()
+        .name("hit-selection")
+        .description("Aim at the point of the hitbox closest to where you already look (smallest turn).")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2WeaponArbiter = sgMeleeTactics.add(new BoolSetting.Builder()
+        .name("weapon-arbiter")
+        .description("Pick the weapon per situation: axe vs a raised shield then sword, mace when falling onto a target, spear for a sprint charge. Swaps are paced.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2KillOrder = sgMeleeTactics.add(new BoolSetting.Builder()
+        .name("kill-order")
+        .description("Kill order by threat: ranged and healers first, damage per remaining HP, sweep clusters, avoid pulling idle mobs.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2ComboPositioning = sgMeleeTactics.add(new BoolSetting.Builder()
+        .name("combo-positioning")
+        .description("Strafe to the side that knocks the target into lava, drops or cobwebs, never with our back to a drop. Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> p2BallisticAim = sgRangedTactics.add(new BoolSetting.Builder()
+        .name("ballistic-aim")
+        .description("Bow / crossbow / trident: solve gravity and drag, lead moving targets, release at the right draw.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2CrossbowPreload = sgRangedTactics.add(new BoolSetting.Builder()
+        .name("crossbow-preload")
+        .description("Load a held crossbow before the target is in range.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2UtilityThrows = sgRangedTactics.add(new BoolSetting.Builder()
+        .name("utility-throws")
+        .description("Snowball/egg pokes at edges, fishing-rod pulls, splash weakness/slowness/harming out of melee. Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> p2FireTactics = sgRangedTactics.add(new BoolSetting.Builder()
+        .name("fire-tactics")
+        .description("Flint and steel / lava bucket on a target in a tunnel, never near your flammables. Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> p2MaceLaunch = sgRangedTactics.add(new BoolSetting.Builder()
+        .name("mace-launch")
+        .description("Wind-charge yourself up for a mace smash. Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> p2CrystalDefense = sgExplosives.add(new BoolSetting.Builder()
+        .name("crystal-defense")
+        .description("Enemy crystals: totem to the offhand when one would be lethal, step out of heavy blasts.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2BreakEnemyCrystals = sgExplosives.add(new BoolSetting.Builder()
+        .name("break-enemy-crystals")
+        .description("Break enemy crystals in reach when you'd survive the blast comfortably. Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> p2TntRetreat = sgExplosives.add(new BoolSetting.Builder()
+        .name("tnt-retreat")
+        .description("Run out of the blast radius of lit TNT.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2ExplosiveOffense = sgExplosives.add(new BoolSetting.Builder()
+        .name("explosive-offense")
+        .description("Use Crystal / Anchor / Bed Aura against players with a self-damage cap and dimension rules (beds outside the Overworld, anchors outside the Nether). Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Double> p2ExplosiveMaxSelf = sgExplosives.add(new DoubleSetting.Builder()
+        .name("explosive-max-self-damage")
+        .description("Most damage your own crystal may deal you.")
+        .defaultValue(8.0)
+        .range(1, 36)
+        .sliderRange(1, 20)
+        .visible(() -> p2ExplosiveOffense.get())
+        .build()
+    );
+
+    private final Setting<Boolean> p2BreakIn = sgExplosives.add(new BoolSetting.Builder()
+        .name("break-in")
+        .description("Break into a surrounded player: pickaxe (Auto City), then piston or anvil. Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> p2CorneredBlocks = sgExplosives.add(new BoolSetting.Builder()
+        .name("cornered-blocks")
+        .description("When cornered: self-trap / self-web / self-anvil by what you carry. Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> p2CloseDoors = sgGroupTactics.add(new BoolSetting.Builder()
+        .name("close-doors")
+        .description("While fleeing, close a wooden door / gate / trapdoor behind you.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2FleeBlockWalls = sgGroupTactics.add(new BoolSetting.Builder()
+        .name("flee-block-walls")
+        .description("While fleeing, drop a cobweb (players) or obsidian/block into the gap behind you. Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> p2Formation = sgGroupTactics.add(new BoolSetting.Builder()
+        .name("formation")
+        .description("With friends or teammates nearby: flank opposite them, step in front of a low-HP ally.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2FocusFire = sgGroupTactics.add(new BoolSetting.Builder()
+        .name("focus-fire")
+        .description("Prefer the target your allies are already fighting.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2TeamCheck = sgGroupTactics.add(new BoolSetting.Builder()
+        .name("team-check")
+        .description("Never target players on your scoreboard team.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2TeamColour = sgGroupTactics.add(new BoolSetting.Builder()
+        .name("team-colour")
+        .description("Also treat players in the same dyed leather chestplate colour as teammates.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> p2EncounterRules = sgGroupTactics.add(new BoolSetting.Builder()
+        .name("encounter-rules")
+        .description("Boss/elite rules: never fight a Warden, crystals first vs the dragon, kite brutes and raid ravagers when under-geared.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2SurfaceWhenDrowning = sgGroupTactics.add(new BoolSetting.Builder()
+        .name("surface-when-drowning")
+        .description("Swim up when air runs low.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> p2TerritoryMode = sgGroupTactics.add(new BoolSetting.Builder()
+        .name("territory-mode")
+        .description("Defend a base: warn intruders inside the radius, then engage them. Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<String> p2TerritoryCenter = sgGroupTactics.add(new StringSetting.Builder()
+        .name("territory-center")
+        .description("Base centre as \"x,z\" or \"x,y,z\".")
+        .defaultValue("")
+        .visible(() -> p2TerritoryMode.get())
+        .build()
+    );
+
+    private final Setting<Integer> p2TerritoryRadius = sgGroupTactics.add(new IntSetting.Builder()
+        .name("territory-radius")
+        .description("Base radius in blocks.")
+        .defaultValue(32)
+        .range(4, 256)
+        .sliderRange(8, 128)
+        .visible(() -> p2TerritoryMode.get())
+        .build()
+    );
+
+    private final Setting<Integer> p2TerritoryWarn = sgGroupTactics.add(new IntSetting.Builder()
+        .name("territory-warn-seconds")
+        .description("Seconds a neutral player may stay inside before being engaged.")
+        .defaultValue(5)
+        .range(0, 120)
+        .sliderRange(0, 30)
+        .visible(() -> p2TerritoryMode.get())
+        .build()
+    );
+
+    private final CombatTactics tactics = new CombatTactics();
+
+    private CombatTactics.Config tacticsConfig() {
+        return new CombatTactics.Config(p2JumpCrits.get(), p2KnockbackTap.get(), p2ReachManagement.get(), p2HitSelection.get(),
+            p2WeaponArbiter.get(), p2KillOrder.get(), p2ComboPositioning.get(), p2Formation.get(), p2FocusFire.get(),
+            p2BallisticAim.get(), p2CrossbowPreload.get(), p2UtilityThrows.get(), p2FireTactics.get(), p2MaceLaunch.get(),
+            p2CrystalDefense.get(), p2BreakEnemyCrystals.get(), p2TntRetreat.get(), p2ExplosiveOffense.get(), p2ExplosiveMaxSelf.get(),
+            p2CorneredBlocks.get(), p2BreakIn.get(), p2CloseDoors.get(), p2FleeBlockWalls.get(), p2EncounterRules.get(),
+            p2TeamCheck.get(), p2TeamColour.get(), p2SurfaceWhenDrowning.get(), p2TerritoryMode.get(), p2TerritoryCenter.get(),
+            p2TerritoryRadius.get(), p2TerritoryWarn.get());
+    }
+
+    /** P2 tactics layer (for HUD / #combat why). */
+    public CombatTactics tactics() {
+        return tactics;
+    }
+
     // State
 
     private BrainState state = BrainState.IDLE;
@@ -910,6 +1161,9 @@ public class CombatBrainModule extends Module {
         fightOpponent = null;
         corneredFight = false;
         regearController.resetAttempts();
+        tactics.reset();
+        tactics.configure(tacticsConfig());
+        KillAura.advisor = tactics;
 
         // Save and apply AllowBreak based on tool availability
         savedAllowBreak = BaritoneAPI.getSettings().allowBreak.value;
@@ -929,6 +1183,8 @@ public class CombatBrainModule extends Module {
 
     @Override
     public void onDeactivate() {
+        if (KillAura.advisor == tactics) KillAura.advisor = null;
+        tactics.reset();
         regearController.cancel();
         if (learnOpponents.get()) opponentTracker.save();
         if (combatPathManager != null) combatPathManager.stop();
@@ -1242,6 +1498,7 @@ public class CombatBrainModule extends Module {
 
     @EventHandler
     private void onAttackEntity(AttackEntityEvent event) {
+        tactics.onAttack(event.entity);
         if (wTapSprintReset.get() && mc.player != null && mc.player.isSprinting() && mc.player.onGround()) {
             if (mc.options != null) mc.options.keySprint.setDown(false);
             wTapTicks = 2;
@@ -1294,6 +1551,8 @@ public class CombatBrainModule extends Module {
 
         if (followController != null) followController.tick();
         escapeController.tick();
+        tactics.configure(tacticsConfig());
+        tactics.tick(state == BrainState.ENGAGING, currentTarget);
 
         handleCreeperDefense();
         handleSmoothCameraAim();
@@ -1640,6 +1899,7 @@ public class CombatBrainModule extends Module {
 
             case SCANNING:
                 currentTarget = findBestTarget();
+                if (currentTarget == null) currentTarget = tactics.intruder(this::warning); // C90 territory mode
                 if (currentTarget != null) {
                     transitionTo(BrainState.ANALYZING);
                 }
@@ -1967,6 +2227,7 @@ public class CombatBrainModule extends Module {
     /** One flee step: optional escape methods (opt-in), else terrain-scored running (C41-C50). */
     private void fleeStep(double distance) {
         if (currentTarget == null || mc.player == null) return;
+        tactics.breakContact(currentTarget); // C48
         MatchupAssessment.Verdict verdict = lastMatchup != null ? lastMatchup.verdict() : MatchupAssessment.Verdict.LOSE;
         if (verdictFlee.get()) {
             float hp = mc.player.getHealth() + mc.player.getAbsorptionAmount();
@@ -2154,6 +2415,7 @@ public class CombatBrainModule extends Module {
         switch (s) {
             case ENGAGING:
                 if (autoModules.get()) disableCombatModules();
+                tactics.restoreModules();
                 break;
             case EMERGENCY_HOLE:
                 // Reset the hole timer and target when leaving emergency hole state
@@ -2236,6 +2498,7 @@ public class CombatBrainModule extends Module {
                 );
             }
             if (!types.contains(le.getType())) return false;
+            if (!tactics.mayTarget(le)) return false; // C85 encounter rules, C89 teams
 
             // Player targeting safety checks
             if (le instanceof Player player) {
@@ -2563,7 +2826,7 @@ public class CombatBrainModule extends Module {
 
         enableModule(KillAura.class);
         if (autoArmor.get()) enableModule(AutoArmor.class);
-        if (autoWeapon.get()) enableModule(AutoWeapon.class);
+        if (autoWeapon.get() && !p2WeaponArbiter.get()) enableModule(AutoWeapon.class); // the arbiter picks weapons (C70)
         enableModule(AutoTool.class);
 
         // Only enable ShieldAutoSwap if the player actually has a shield somewhere
@@ -2585,7 +2848,7 @@ public class CombatBrainModule extends Module {
             syncKillAura();
             enableModule(KillAura.class);
             if (autoArmor.get()) enableModule(AutoArmor.class);
-            if (autoWeapon.get()) enableModule(AutoWeapon.class);
+            if (autoWeapon.get() && !p2WeaponArbiter.get()) enableModule(AutoWeapon.class); // the arbiter picks weapons (C70)
             if (shieldSwap.get()) {
                 boolean hasShield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD).found();
                 if (hasShield) enableModule(ShieldAutoSwapModule.class);
@@ -2657,6 +2920,15 @@ public class CombatBrainModule extends Module {
             return;
         }
 
+        // C74/C77/C78: get out of a heavy crystal / lit TNT blast first
+        Entity blast = tactics.explosiveThreat();
+        if (blast != null && followController != null) {
+            followController.flee(blast, tactics.explosiveRadius());
+            return;
+        }
+        tactics.explosives(currentTarget, corneredFight); // C71-C76 (opt-in)
+        double bubble = tactics.bubble(bubbleDistance.get(), currentTarget); // C27/C32
+
         float health = mc.player.getHealth() + mc.player.getAbsorptionAmount();
         int totems = countTotems();
         // Shield-aware risk: only trade hits while a usable shield is up (or invincible).
@@ -2718,6 +2990,7 @@ public class CombatBrainModule extends Module {
                 InvUtils.swap(ranged.slot(), false);
             }
 
+            if (tactics.ranged(currentTarget, targetVisible)) return; // C61-C63 ballistic aim
             if (mc.player.getMainHandItem().is(Items.BOW)) {
                 if (!targetVisible) {
                     mc.options.keyUse.setDown(false);
@@ -2764,7 +3037,7 @@ public class CombatBrainModule extends Module {
                 }
             } else if (followController != null) {
                 // No shield: hold the safety bubble instead of standing in melee range
-                followController.maintainDistance(currentTarget, bubbleDistance.get(), bubbleDistance.get() + 1.0);
+                followController.maintainDistance(currentTarget, bubble, bubble + 1.0);
             }
             return;
         }
@@ -2774,7 +3047,7 @@ public class CombatBrainModule extends Module {
         // every few ticks → constant path recalculation. Keep a single stable
         // baritone follow at bubble distance; the fight resumes when the path opens.
         if (followController != null && !followController.isDirectPathClear(currentTarget)) {
-            followController.follow(currentTarget, bubbleDistance.get());
+            followController.follow(currentTarget, bubble);
             return;
         }
 
@@ -2807,7 +3080,7 @@ public class CombatBrainModule extends Module {
                 strikeTimer = 0;
                 bubbleTimer = 0;
                 if (followController != null) {
-                    followController.maintainDistance(currentTarget, bubbleDistance.get(), bubbleDistance.get() + 1.0);
+                    followController.maintainDistance(currentTarget, bubble, bubble + 1.0);
                 }
             } else {
                 if (followController != null) {
@@ -2824,10 +3097,11 @@ public class CombatBrainModule extends Module {
                 }
             } else {
                 // Hold the safety bubble OUTSIDE the target's reach: back off when the
-                // mob closes in, approach only when it backs off.
-                if (followController != null) {
-                    followController.maintainDistance(currentTarget, bubbleDistance.get(), bubbleDistance.get() + 1.0);
+                // mob closes in, approach only when it backs off. P2: flank / guard allies or take the combo spot.
+                if (followController != null && !tactics.position(currentTarget, followController, bubble)) {
+                    followController.maintainDistance(currentTarget, bubble, bubble + 1.0);
                 }
+                if (dist > 4) tactics.utility(currentTarget); // C64-C69 (opt-in)
                 bubbleTimer += 2;
             }
         }
