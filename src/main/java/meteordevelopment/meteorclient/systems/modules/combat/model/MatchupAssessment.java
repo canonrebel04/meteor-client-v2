@@ -119,6 +119,16 @@ public final class MatchupAssessment {
      * Evaluates the fight-or-flight matchup between {@code me} and {@code target}.
      */
     public static Result evaluate(KitSnapshot me, KitSnapshot target, EscapeProfile escape, AggressionProfile profile) {
+        return evaluate(me, target, escape, profile, null);
+    }
+
+    /**
+     * As {@link #evaluate(KitSnapshot, KitSnapshot, EscapeProfile, AggressionProfile)} with opponent-model
+     * corrections (P1: skill C12, intent C14, swaps C17, durability C18, observed trades C15).
+     */
+    public static Result evaluate(KitSnapshot me, KitSnapshot target, EscapeProfile escape, AggressionProfile profile,
+                                  OpponentModel.Corrections corrections) {
+        OpponentModel.Corrections corr = corrections != null ? corrections : OpponentModel.Corrections.NONE;
         if (me == null || target == null) {
             return new Result(Verdict.EVEN, 0.5, 1.0, 1.0, 20.0, 20.0, 1.0, 0.3, false, "missing snapshot");
         }
@@ -128,11 +138,11 @@ public final class MatchupAssessment {
         double myRaw = EffectiveDamage.rawAttackDamage(me.rawWeaponDamage(), 0, me.strengthLevel(), me.weaknessLevel(), false);
         double theirRaw = EffectiveDamage.rawAttackDamage(target.rawWeaponDamage(), 0, target.strengthLevel(), target.weaknessLevel(), false);
 
-        double myHit = EffectiveDamage.effectiveHitDamage(myRaw, target.armor(), target.toughness(), target.protectionEpf(), target.resistanceLevel());
+        double myHit = EffectiveDamage.effectiveHitDamage(myRaw, target.armor() * corr.theirArmorMult(), target.toughness(), target.protectionEpf(), target.resistanceLevel());
         double theirHit = EffectiveDamage.effectiveHitDamage(theirRaw, me.armor(), me.toughness(), me.protectionEpf(), me.resistanceLevel());
 
-        double myDps = EffectiveDamage.effectiveDps(myHit, me.attackSpeed(), target.blocking());
-        double theirDps = EffectiveDamage.effectiveDps(theirHit, target.attackSpeed(), me.blocking());
+        double myDps = EffectiveDamage.effectiveDps(myHit, me.attackSpeed(), target.blocking()) * corr.myDpsMult();
+        double theirDps = EffectiveDamage.effectiveDps(theirHit, target.attackSpeed(), me.blocking()) * corr.theirDpsMult();
 
         double myEhp = Math.max(1.0, me.effectiveHp());
         double theirEhp = Math.max(1.0, target.effectiveHp());
@@ -140,7 +150,7 @@ public final class MatchupAssessment {
         // Time for me to kill them vs time for them to kill me
         double timeToKillThem = theirEhp / myDps;
         double timeToKillMe = myEhp / theirDps;
-        double killRatio = timeToKillMe / Math.max(0.05, timeToKillThem);
+        double killRatio = timeToKillMe / Math.max(0.05, timeToKillThem) * corr.ratioMult();
 
         // Hard unarmed-vs-armored / severe gear-gap check (fixes unarmed vs full netherite bug)
         if (!me.hasWeapon() && target.isPlayer() && target.armor() >= 10.0) {
@@ -192,6 +202,7 @@ public final class MatchupAssessment {
             case HOPELESS -> 0.95;
         };
 
+        if (!corr.notes().isEmpty()) reason = reason + " [" + String.join(", ", corr.notes()) + "]";
         return new Result(
             verdict, confidence, myDps, theirDps, timeToKillThem, timeToKillMe,
             killRatio, matchupThreat, esc.cornered() && verdict.shouldFlee(), reason
