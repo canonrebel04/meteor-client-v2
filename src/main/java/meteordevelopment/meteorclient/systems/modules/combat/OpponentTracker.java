@@ -157,15 +157,24 @@ public final class OpponentTracker {
     }
 
     public double learnedBias(OpponentModel m) {
-        return m.player ? memory.ratioBias(m.id) : 1.0;
+        return learnedBias(m, null);
+    }
+
+    /** C94: opponent history and how our current weapon kind has fared, clamped. */
+    public double learnedBias(OpponentModel m, String myWeapon) {
+        return m.player ? memory.combinedBias(m.id, myWeapon) : 1.0;
     }
 
     /** Fight ended: store the outcome and the latest skill estimate. */
     public void recordOutcome(OpponentModel m, OpponentMemory.Outcome outcome, boolean persist) {
+        recordOutcome(m, outcome, null, persist);
+    }
+
+    public void recordOutcome(OpponentModel m, OpponentMemory.Outcome outcome, String myWeapon, boolean persist) {
         if (!m.player) return;
         long now = System.currentTimeMillis();
         memory.recordSkill(m.id, m.skill.skill(), now);
-        memory.recordOutcome(m.id, outcome, now);
+        memory.recordOutcome(m.id, outcome, myWeapon, now);
         if (persist) save();
     }
 

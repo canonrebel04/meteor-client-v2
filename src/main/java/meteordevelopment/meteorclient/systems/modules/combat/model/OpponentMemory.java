@@ -26,7 +26,13 @@ public final class OpponentMemory {
         public int losses;
         public int escapes;
         public long lastSeen;
+        /** C94: our weapon kind -> {wins, losses} against this opponent. Null in files written before P3. */
+        public HashMap<String, int[]> byWeapon;
     }
+
+    /** Fights per opponent (or per weapon) before old results are halved, so the model keeps adapting. */
+    public static final int DECAY_AT = 40;
+    public static final int MAX_ENTRIES = 512;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Type TYPE = new TypeToken<HashMap<String, Entry>>() {}.getType();
@@ -55,14 +61,74 @@ public final class OpponentMemory {
     public enum Outcome { WIN, LOSS, ESCAPED }
 
     public void recordOutcome(String name, Outcome outcome, long now) {
+        recordOutcome(name, outcome, null, now);
+    }
+
+    /** As {@link #recordOutcome(String, Outcome, long)} also crediting {@code myWeapon} (C94). */
+    public void recordOutcome(String name, Outcome outcome, String myWeapon, long now) {
         Entry e = getOrCreate(name);
         switch (outcome) {
             case WIN -> e.wins++;
             case LOSS -> e.losses++;
             case ESCAPED -> e.escapes++;
         }
+        if (e.wins + e.losses > DECAY_AT) {
+            e.wins /= 2;
+            e.losses /= 2;
+            e.escapes /= 2;
+        }
+        if (myWeapon != null && !myWeapon.isEmpty() && outcome != Outcome.ESCAPED) {
+            if (e.byWeapon == null) e.byWeapon = new HashMap<>();
+            int[] wl = e.byWeapon.computeIfAbsent(myWeapon, k -> new int[2]);
+            wl[outcome == Outcome.WIN ? 0 : 1]++;
+            if (wl[0] + wl[1] > DECAY_AT) {
+                wl[0] /= 2;
+                wl[1] /= 2;
+            }
+        }
         e.lastSeen = now;
+        evict();
         dirty = true;
+    }
+
+    private void evict() {
+        while (entries.size() > MAX_ENTRIES) {
+            String oldest = null;
+            long t = Long.MAX_VALUE;
+            for (Map.Entry<String, Entry> me : entries.entrySet()) {
+                if (me.getValue().lastSeen < t) {
+                    t = me.getValue().lastSeen;
+                    oldest = me.getKey();
+                }
+            }
+            if (oldest == null) return;
+            entries.remove(oldest);
+        }
+    }
+
+    /**
+     * C94: how our weapon kind has fared across all remembered fights, smoothed and clamped to [0.85, 1.15]. With
+     * an opponent name, results against that opponent count double.
+     */
+    public double weaponBias(String myWeapon, String name) {
+        if (myWeapon == null || myWeapon.isEmpty()) return 1.0;
+        double w = 0, l = 0;
+        Entry mine = name == null ? null : get(name);
+        for (Entry e : entries.values()) {
+            if (e.byWeapon == null) continue;
+            int[] wl = e.byWeapon.get(myWeapon);
+            if (wl == null) continue;
+            double k = e == mine ? 2 : 1;
+            w += k * wl[0];
+            l += k * wl[1];
+        }
+        double r = Math.sqrt((w + 2.0) / (l + 2.0));
+        return Math.max(0.85, Math.min(1.15, r));
+    }
+
+    /** Opponent history times weapon history, clamped to [0.75, 1.25] so learning can only nudge a verdict. */
+    public double combinedBias(String name, String myWeapon) {
+        return Math.max(0.75, Math.min(1.25, ratioBias(name) * weaponBias(myWeapon, name)));
     }
 
     /**
