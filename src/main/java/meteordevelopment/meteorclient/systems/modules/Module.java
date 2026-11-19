@@ -15,6 +15,7 @@ import meteordevelopment.meteorclient.systems.config.Config;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.misc.ISerializable;
 import meteordevelopment.meteorclient.utils.misc.Keybind;
+import meteordevelopment.meteorclient.utils.misc.perf.LogThrottle;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import net.minecraft.ChatFormatting;
@@ -24,9 +25,12 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.NonNull;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 public abstract class Module implements ISerializable<Module>, Comparable<Module> {
+    private static final LogThrottle CHAT_THROTTLE = new LogThrottle(Module::chatThrottleWindow, System::currentTimeMillis);
+
     protected final Minecraft mc;
 
     public final Category category;
@@ -130,18 +134,41 @@ public abstract class Module implements ISerializable<Module>, Comparable<Module
     }
 
     public void info(String message, Object... args) {
+        String m = throttled("i", message, args);
+        if (m == null) return;
         ChatUtils.forceNextPrefixClass(getClass());
-        ChatUtils.infoPrefix(title, message, args);
+        ChatUtils.infoPrefix(title, m, args);
     }
 
     public void warning(String message, Object... args) {
+        String m = throttled("w", message, args);
+        if (m == null) return;
         ChatUtils.forceNextPrefixClass(getClass());
-        ChatUtils.warningPrefix(title, message, args);
+        ChatUtils.warningPrefix(title, m, args);
     }
 
     public void error(String message, Object... args) {
+        String m = throttled("e", message, args);
+        if (m == null) return;
         ChatUtils.forceNextPrefixClass(getClass());
-        ChatUtils.errorPrefix(title, message, args);
+        ChatUtils.errorPrefix(title, m, args);
+    }
+
+    /**
+     * Plan S97: identical chat lines from the same module repeated within Config's chat-throttle window are
+     * dropped; the next one shown carries a {@code (xN)} count. Returns null when the line should be dropped.
+     */
+    private String throttled(String level, String message, Object... args) {
+        if (message == null) return null;
+        String key = name + '|' + level + '|' + message + (args.length == 0 ? "" : '|' + Arrays.deepToString(args));
+        int suppressed = CHAT_THROTTLE.check(key);
+        if (suppressed == LogThrottle.SUPPRESS) return null;
+        return message + LogThrottle.suffix(suppressed);
+    }
+
+    private static long chatThrottleWindow() {
+        Config config = Config.get();
+        return config != null ? config.chatThrottleMs.get() : 1000;
     }
 
     public boolean isActive() {

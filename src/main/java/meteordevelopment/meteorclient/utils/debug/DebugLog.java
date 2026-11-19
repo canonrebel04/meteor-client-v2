@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.utils.debug;
 
+import meteordevelopment.meteorclient.utils.misc.perf.LogThrottle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.helpers.FormattingTuple;
@@ -37,6 +38,7 @@ public final class DebugLog {
     private static final boolean PROPERTY_ENABLED = Boolean.getBoolean(PROPERTY);
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
     private static final ArrayDeque<String> BUFFER = new ArrayDeque<>(CAPACITY);
+    private static final LogThrottle DEBUG_THROTTLE = new LogThrottle(1000);
 
     private static volatile boolean enabled = PROPERTY_ENABLED;
     /** True once {@link Log4jCapture} feeds every Meteor/Baritone log event into the buffer. */
@@ -61,7 +63,14 @@ public final class DebugLog {
     /** Debug line with SLF4J-style {@code {}} placeholders; a trailing Throwable is logged with its stack trace. */
     public static void debug(String tag, String message, Object... args) {
         FormattingTuple t = MessageFormatter.arrayFormat(message, args);
-        String line = "[Meteor/" + tag + "] " + (enabled ? "[debug] " : "") + t.getMessage();
+        // Plan S97: collapse identical debug lines repeated within a second (lines with a stack trace always pass)
+        String suffix = "";
+        if (t.getThrowable() == null) {
+            int suppressed = DEBUG_THROTTLE.check(tag + '|' + t.getMessage());
+            if (suppressed == LogThrottle.SUPPRESS) return;
+            suffix = LogThrottle.suffix(suppressed);
+        }
+        String line = "[Meteor/" + tag + "] " + (enabled ? "[debug] " : "") + t.getMessage() + suffix;
 
         if (enabled) {
             LOG.info(line, t.getThrowable());
