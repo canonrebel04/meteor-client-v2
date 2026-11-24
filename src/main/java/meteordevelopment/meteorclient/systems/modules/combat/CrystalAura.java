@@ -29,6 +29,8 @@ import meteordevelopment.meteorclient.utils.misc.Keybind;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
+import meteordevelopment.meteorclient.systems.modules.combat.tactics.CombatSmooth;
+import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.meteorclient.utils.player.Rotations;
 import meteordevelopment.meteorclient.utils.render.NametagUtils;
 import meteordevelopment.meteorclient.utils.render.RenderUtils;
@@ -146,6 +148,21 @@ public class CrystalAura extends Module {
         .defaultValue(180)
         .range(1, 180)
         .visible(rotate::get)
+        .build()
+    );
+
+    private final Setting<Boolean> cameraAim = sgGeneral.add(new BoolSetting.Builder()
+        .name("camera-aim")
+        .description("Turn the real camera through CameraArbiter (Legit-Smooth) instead of silent rotation packets. Place/break waits until the look has settled.")
+        .defaultValue(true)
+        .visible(rotate::get)
+        .build()
+    );
+
+    private final Setting<Boolean> legitRhythm = sgGeneral.add(new BoolSetting.Builder()
+        .name("legit-rhythm")
+        .description("Adds a small natural gap to place/break delays so crystals are not frame-perfect.")
+        .defaultValue(true)
         .build()
     );
 
@@ -634,6 +651,7 @@ public class CrystalAura extends Module {
     private Item mainItem, offItem;
 
     private int breakTimer, placeTimer, switchTimer, ticksPassed;
+    private long rhythmN;
     private final List<LivingEntity> targets = new ArrayList<>();
 
     private final Vec3 vec3d = new Vec3(0, 0, 0);
@@ -811,7 +829,7 @@ public class CrystalAura extends Module {
     private void onPreTickLast(TickEvent.Pre event) {
         // Rotate to last rotation
         if (rotate.get() && lastRotationTimer < getLastRotationStopDelay() && !didRotateThisTick) {
-            Rotations.rotate(isLastRotationPos ? Rotations.getYaw(lastRotationPos) : lastYaw, isLastRotationPos ? Rotations.getPitch(lastRotationPos) : lastPitch, -100, null);
+            aim(isLastRotationPos ? Rotations.getYaw(lastRotationPos) : lastYaw, isLastRotationPos ? Rotations.getPitch(lastRotationPos) : lastPitch, -100, null);
         }
     }
 
@@ -975,15 +993,17 @@ public class CrystalAura extends Module {
 
             if (doYawSteps(yaw, pitch)) {
                 setRotation(true, crystal.position(), 0, 0);
-                Rotations.rotate(yaw, pitch, 50, () -> attackCrystal(crystal));
-
-                breakTimer = breakDelay.get();
+                if (aim(yaw, pitch, 50, () -> attackCrystal(crystal))) {
+                    breakTimer = rhythm(breakDelay.get());
+                } else {
+                    attacked = false;
+                }
             } else {
                 attacked = false;
             }
         } else {
             attackCrystal(crystal);
-            breakTimer = breakDelay.get();
+            breakTimer = rhythm(breakDelay.get());
         }
 
         if (attacked) {
@@ -1089,8 +1109,8 @@ public class CrystalAura extends Module {
             if (!doYawSteps(yaw, pitch)) return false; // rotation too large this tick — let normal placement try
 
             setRotation(true, vec3d, 0, 0);
+            if (!aim(yaw, pitch, 50, () -> placeCrystal(result, damage, feet))) return false;
             basePlaceCooldown = basePlaceTimeout.get();
-            Rotations.rotate(yaw, pitch, 50, () -> placeCrystal(result, damage, feet));
         } else {
             basePlaceCooldown = basePlaceTimeout.get();
             placeCrystal(result, damage, feet);
@@ -1198,13 +1218,13 @@ public class CrystalAura extends Module {
 
                 if (yawStepMode.get() == YawStepMode.Break || doYawSteps(yaw, pitch)) {
                     setRotation(true, vec3d, 0, 0);
-                    Rotations.rotate(yaw, pitch, 50, () -> placeCrystal(result, bestDamage.get(), isSupport.get() ? bestBlockPos.get() : null));
-
-                    placeTimer += placeDelay.get();
+                    if (aim(yaw, pitch, 50, () -> placeCrystal(result, bestDamage.get(), isSupport.get() ? bestBlockPos.get() : null))) {
+                        placeTimer += rhythm(placeDelay.get());
+                    }
                 }
             } else {
                 placeCrystal(result, bestDamage.get(), isSupport.get() ? bestBlockPos.get() : null);
-                placeTimer += placeDelay.get();
+                placeTimer += rhythm(placeDelay.get());
             }
         });
     }
@@ -1306,6 +1326,7 @@ public class CrystalAura extends Module {
     }
 
     public boolean doYawSteps(double targetYaw, double targetPitch) {
+        if (cameraAim.get()) return true;
         targetYaw = Mth.wrapDegrees(targetYaw) + 180;
         double serverYaw = Mth.wrapDegrees(this.serverYaw) + 180;
 
@@ -1587,6 +1608,35 @@ public class CrystalAura extends Module {
         public boolean matches(PauseMode process) {
             return this == process || this == PauseMode.Both;
         }
+    }
+
+    private int rhythm(int base) {
+        return CombatSmooth.crystalRhythmGap(base, rhythmN++, legitRhythm.get());
+    }
+
+    private boolean aimSettledOn(double yaw, double pitch) {
+        if (mc.player == null) return false;
+        float dy = Math.abs(Mth.wrapDegrees(mc.player.getYRot() - (float) yaw));
+        float dp = Math.abs(mc.player.getXRot() - (float) pitch);
+        return CombatSmooth.aimSettled(dy, dp, 8, 10);
+    }
+
+    /**
+     * @return true when the action ran (or was handed to silent {@link Rotations}), false when
+     *     camera-aim is still easing and the caller should retry next tick.
+     */
+    private boolean aim(double yaw, double pitch, int priority, Runnable action) {
+        if (cameraAim.get()) {
+            CameraArbiter.claim(this, CameraArbiter.PRIORITY_COMBAT_AIM, (float) yaw, (float) pitch, true);
+            if (action == null) return true;
+            if (aimSettledOn(yaw, pitch)) {
+                action.run();
+                return true;
+            }
+            return false;
+        }
+        Rotations.rotate(yaw, pitch, priority, action);
+        return true;
     }
 
     public enum SwingMode {

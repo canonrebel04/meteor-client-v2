@@ -2432,12 +2432,16 @@ public class CombatBrainModule extends Module {
             fightOutcome(OpponentMemory.Outcome.LOSS);
             fightOpponent = null;
             regearController.cancel();
+            if (followController != null) followController.stop();
+            CameraArbiter.forceRelease();
         }
         if (!dead && wasDead) {
             respawnTick = tickCounter;
             regearController.resetAttempts();
             escapeController.reset();
             verdictGate.reset();
+            if (followController != null) followController.stop();
+            CameraArbiter.forceRelease();
         }
         wasDead = dead;
     }

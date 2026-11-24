@@ -14,7 +14,9 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.combat.tactics.CombatSmooth;
 import meteordevelopment.meteorclient.utils.entity.EntityUtils;
+import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
@@ -145,6 +147,8 @@ public class Criticals extends Module {
         if (sendPackets) {
             if (mode.get() == Mode.Jump && waitingForPeak) {
                 double currentY = mc.player.getY();
+                float pitch = CombatSmooth.critPitch(mc.player.getXRot(), mc.player.getDeltaMovement().y, true);
+                CameraArbiter.claim(this, CameraArbiter.PRIORITY_STEER, mc.player.getYRot(), pitch, true);
                 if (currentY <= lastY) {
                     waitingForPeak = false;
                     sendTimer = 0; // Attack on next tick after reaching peak

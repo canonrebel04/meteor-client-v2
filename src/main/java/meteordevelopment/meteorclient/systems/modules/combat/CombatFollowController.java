@@ -2,6 +2,7 @@ package meteordevelopment.meteorclient.systems.modules.combat;
 
 import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
+import meteordevelopment.meteorclient.systems.modules.combat.tactics.CombatSmooth;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.pathing.goals.GoalRunAway;
@@ -32,6 +33,8 @@ public class CombatFollowController {
     private boolean directPursuitActive = false;
     private boolean maintainingDistance = false;
     private int directClearTicks = 0; // consecutive ticks with a clear direct path (debounce)
+    private int fadeTicks = 0;
+    private static final int TRAVEL_FADE_TICKS = 4;
 
     public enum FollowMode {
         FOLLOW,
@@ -154,6 +157,9 @@ public class CombatFollowController {
      * or falls back to Baritone A* when navigating around complex obstacles/walls.
      */
     public void tick() {
+        if (fadeTicks > 0 && !maintainingDistance && !directPursuitActive) {
+            fadeTravelKeys();
+        }
         if (maintainingDistance) return; // maintainDistance() drives keys directly
 
         if (ticksSinceLastRestart < MIN_RESTART_INTERVAL_TICKS) {
@@ -332,24 +338,22 @@ public class CombatFollowController {
             CameraArbiter.claimYaw(this, CameraArbiter.PRIORITY_STEER, targetYaw);
         }
 
-        if (dist < minDist - 0.2) {
-            // Too close: back away (facing the target = moving directly away)
-            mc.options.keyUp.setDown(false);
-            mc.options.keyDown.setDown(true);
-            releaseSprint();
-        } else if (dist > maxDist + 0.2) {
-            // Too far: close back in
-            mc.options.keyUp.setDown(true);
-            mc.options.keyDown.setDown(false);
-            requestSprint();
-            if (mc.player.horizontalCollision && mc.player.onGround()) {
-                mc.options.keyJump.setDown(true);
-            }
+        fadeTicks = 0;
+        double along = CombatSmooth.distanceAlong(dist, minDist, maxDist);
+        mc.options.keyUp.setDown(along > 0.2);
+        mc.options.keyDown.setDown(along < -0.2);
+        if (CombatSmooth.shouldSprint(along)) requestSprint();
+        else releaseSprint();
+        if (along > 0.2 && mc.player.horizontalCollision && mc.player.onGround()) {
+            mc.options.keyJump.setDown(true);
         } else {
-            // In the band: hold still, keep facing the target
-            mc.options.keyUp.setDown(false);
-            mc.options.keyDown.setDown(false);
+            mc.options.keyJump.setDown(false);
         }
+        // S52: sine/noise strafe while holding the band; never applied during Baritone pathing
+        int st = CombatSmooth.strafeKey(CombatSmooth.strafeCurve(System.identityHashCode(this), mc.player.tickCount), 0.25);
+        boolean curve = Math.abs(along) < 0.7;
+        mc.options.keyRight.setDown(curve && st > 0);
+        mc.options.keyLeft.setDown(curve && st < 0);
     }
 
     /**
@@ -384,6 +388,7 @@ public class CombatFollowController {
         double fwdX = -Math.sin(r), fwdZ = Math.cos(r);
         double forward = (mx * fwdX + mz * fwdZ) / d;
         double right = (mx * -fwdZ + mz * fwdX) / d;
+        fadeTicks = 0;
         mc.options.keyUp.setDown(forward > 0.35);
         mc.options.keyDown.setDown(forward < -0.35);
         mc.options.keyRight.setDown(right > 0.35);
@@ -400,16 +405,31 @@ public class CombatFollowController {
     public void releaseDirectKeys() {
         mode = FollowMode.NONE;
         currentTarget = null;
-        if (mc.options != null) {
-            mc.options.keyUp.setDown(false);
-            mc.options.keyDown.setDown(false);
-            mc.options.keyLeft.setDown(false);
-            mc.options.keyRight.setDown(false);
-            mc.options.keyJump.setDown(false);
-            releaseSprint();
-        }
         directPursuitActive = false;
         maintainingDistance = false;
+        // S63: fade combat keys into travel instead of a hard all-off reset
+        fadeTicks = TRAVEL_FADE_TICKS;
+    }
+
+    private void fadeTravelKeys() {
+        if (mc.options == null) {
+            fadeTicks = 0;
+            return;
+        }
+        if (fadeTicks == TRAVEL_FADE_TICKS) releaseSprint();
+        if (fadeTicks <= 3) {
+            mc.options.keyLeft.setDown(false);
+            mc.options.keyRight.setDown(false);
+        }
+        if (fadeTicks <= 2) {
+            mc.options.keyUp.setDown(false);
+            mc.options.keyDown.setDown(false);
+            mc.options.keyJump.setDown(false);
+        }
+        if (fadeTicks <= 1) {
+            releaseSprint();
+        }
+        fadeTicks--;
     }
 
     public void follow(Entity target, double distance) {
@@ -506,10 +526,13 @@ public class CombatFollowController {
         ticksSinceLastRestart = 0;
         directPursuitActive = false;
         maintainingDistance = false;
+        fadeTicks = 0;
 
         if (mc.options != null) {
             mc.options.keyUp.setDown(false);
             mc.options.keyDown.setDown(false);
+            mc.options.keyLeft.setDown(false);
+            mc.options.keyRight.setDown(false);
             mc.options.keyJump.setDown(false);
             releaseSprint();
         }

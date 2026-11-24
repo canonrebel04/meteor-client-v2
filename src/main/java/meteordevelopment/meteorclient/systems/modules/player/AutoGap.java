@@ -15,6 +15,7 @@ import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.combat.CombatPacer;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.combat.AnchorAura;
 import meteordevelopment.meteorclient.systems.modules.combat.BedAura;
@@ -135,6 +136,7 @@ public class AutoGap extends Module {
 
     private boolean eating;
     private int slot, prevSlot;
+    private final CombatPacer pacer = CombatPacer.create();
 
     private final List<Class<? extends Module>> wasAura = new ReferenceArrayList<>();
     private boolean wasBaritone;
@@ -220,10 +222,11 @@ public class AutoGap extends Module {
 
     private void eat() {
         changeSlot(slot);
+        eating = true;
+        // S58: wait until the hotbar scroll arrives at the gap before using it
+        if (mc.player.getInventory().getSelectedSlot() != slot) return;
         setPressed(true);
         if (!mc.player.isUsingItem()) Utils.rightClick();
-
-        eating = true;
     }
 
     private void stopEating() {
@@ -252,7 +255,9 @@ public class AutoGap extends Module {
     }
 
     private void changeSlot(int slot) {
-        InvUtils.swap(slot, false);
+        int current = mc.player.getInventory().getSelectedSlot();
+        int next = pacer.nextSlot(current, slot);
+        InvUtils.swap(next, false);
         this.slot = slot;
     }
 

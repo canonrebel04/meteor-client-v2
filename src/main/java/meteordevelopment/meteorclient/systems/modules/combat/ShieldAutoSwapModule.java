@@ -10,6 +10,7 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.systems.modules.combat.tactics.CombatSmooth;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.orbit.EventHandler;
@@ -31,6 +32,8 @@ public class ShieldAutoSwapModule extends Module {
     private ItemStack previousItem = ItemStack.EMPTY;
     private int swapTimer;
     private int swapCooldown = 0;
+    private int raiseWait;
+    private long reactionN;
 
     public ShieldAutoSwapModule() {
         super(Categories.Combat, "shield-auto-swap", "Automatically swaps to shield when taking damage and swaps back when attacking.", "auto-shield", "shield-swap");
@@ -41,6 +44,7 @@ public class ShieldAutoSwapModule extends Module {
         previousItem = ItemStack.EMPTY;
         swapTimer = 0;
         swapCooldown = 0;
+        raiseWait = 0;
     }
 
     @Override
@@ -48,6 +52,7 @@ public class ShieldAutoSwapModule extends Module {
         previousItem = ItemStack.EMPTY;
         swapTimer = 0;
         swapCooldown = 0;
+        raiseWait = 0;
     }
 
     @EventHandler
@@ -63,6 +68,11 @@ public class ShieldAutoSwapModule extends Module {
         boolean hasShield = mc.player.getOffhandItem().getItem() == Items.SHIELD;
 
         if (takingDamage && !hasShield) {
+            if (raiseWait <= 0) {
+                raiseWait = CombatSmooth.shieldReactionTicks(System.identityHashCode(this), reactionN++);
+            }
+            raiseWait--;
+            if (raiseWait > 0) return;
             FindItemResult shield = InvUtils.find(itemStack -> itemStack.getItem() == Items.SHIELD);
             if (shield.found()) {
                 previousItem = mc.player.getOffhandItem().copy();
@@ -70,9 +80,12 @@ public class ShieldAutoSwapModule extends Module {
                 swapCooldown = 4;
             }
             swapTimer = 0;
+            raiseWait = 0;
         } else if (!takingDamage && hasShield) {
+            raiseWait = 0;
             swapTimer++;
-            if (swapTimer >= Math.max(1, swapDelay.get())) {
+            int lower = Math.max(Math.max(1, swapDelay.get()), CombatSmooth.shieldLowerTicks(System.identityHashCode(this), reactionN));
+            if (swapTimer >= lower) {
                 if (previousItem != null && !previousItem.isEmpty()) {
                     FindItemResult prev = InvUtils.find(itemStack -> itemStack.getItem() == previousItem.getItem());
                     if (prev.found()) {

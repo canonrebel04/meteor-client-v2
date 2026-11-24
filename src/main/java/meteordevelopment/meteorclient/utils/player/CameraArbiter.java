@@ -145,6 +145,11 @@ public final class CameraArbiter {
         return config != null ? config.lookProfile.get() : SmoothProfile.LegitSmooth;
     }
 
+    /** Drops the current camera claim immediately (death / respawn fade). */
+    public static void forceRelease() {
+        release();
+    }
+
     private static void release() {
         YAW.invalidate();
         PITCH.invalidate();

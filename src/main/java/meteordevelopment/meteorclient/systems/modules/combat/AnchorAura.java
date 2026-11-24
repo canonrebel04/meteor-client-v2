@@ -19,7 +19,10 @@ import meteordevelopment.meteorclient.utils.entity.TargetUtils;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
+import meteordevelopment.meteorclient.systems.modules.combat.tactics.CombatSmooth;
+import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.meteorclient.utils.player.Rotations;
+import net.minecraft.util.Mth;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.meteorclient.utils.world.BlockIterator;
 import meteordevelopment.meteorclient.utils.world.BlockUtils;
@@ -98,6 +101,14 @@ public class AnchorAura extends Module {
         .name("rotate")
         .description("Rotates server-side towards the anchors being placed/broken.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> cameraAim = sgGeneral.add(new BoolSetting.Builder()
+        .name("camera-aim")
+        .description("Turn the real camera through CameraArbiter (Legit-Smooth) instead of silent rotation packets.")
+        .defaultValue(true)
+        .visible(rotate::get)
         .build()
     );
 
@@ -368,7 +379,9 @@ public class AnchorAura extends Module {
         renderBlockPos = bestBreakPos;
 
         if (rotate.get()) {
-            Rotations.rotate(Rotations.getYaw(bestBreakPos), Rotations.getPitch(bestBreakPos), 40, () -> doInteract(glowStone));
+            double yaw = Rotations.getYaw(bestBreakPos);
+            double pitch = Rotations.getPitch(bestBreakPos);
+            if (!aim(yaw, pitch, 40, () -> doInteract(glowStone))) return;
         } else {
             doInteract(glowStone);
         }
@@ -446,5 +459,22 @@ public class AnchorAura extends Module {
     @Override
     public String getInfoString() {
         return EntityUtils.getName(target);
+    }
+
+    private boolean aim(double yaw, double pitch, int priority, Runnable action) {
+        if (cameraAim.get()) {
+            CameraArbiter.claim(this, CameraArbiter.PRIORITY_COMBAT_AIM, (float) yaw, (float) pitch, true);
+            if (action == null) return true;
+            if (mc.player == null) return false;
+            float dy = Math.abs(Mth.wrapDegrees(mc.player.getYRot() - (float) yaw));
+            float dp = Math.abs(mc.player.getXRot() - (float) pitch);
+            if (CombatSmooth.aimSettled(dy, dp, 8, 10)) {
+                action.run();
+                return true;
+            }
+            return false;
+        }
+        Rotations.rotate(yaw, pitch, priority, action);
+        return true;
     }
 }

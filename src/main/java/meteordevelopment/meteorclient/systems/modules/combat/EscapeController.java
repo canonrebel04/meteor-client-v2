@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.systems.modules.combat;
 
 import meteordevelopment.meteorclient.systems.modules.combat.model.*;
+import meteordevelopment.meteorclient.systems.modules.combat.tactics.CombatSmooth;
 import meteordevelopment.meteorclient.utils.player.CameraArbiter;
 import meteordevelopment.meteorclient.utils.player.FindItemResult;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
@@ -45,6 +46,9 @@ public final class EscapeController {
     private int escapeCooldown;
     private int elytraFireworkCooldown;
     private int windChargeStage;
+    private boolean pearlPending;
+    private int pearlSettleLeft;
+    private float pearlYaw, pearlPitch;
 
     public void reset() {
         fleeDest = null;
@@ -53,6 +57,8 @@ public final class EscapeController {
         lastWhy = null;
         pursuit.reset();
         windChargeStage = 0;
+        pearlPending = false;
+        pearlSettleLeft = 0;
     }
 
     public PursuitTracker pursuit() {
@@ -201,6 +207,15 @@ public final class EscapeController {
             windChargeStage--;
             if (windChargeStage == 0) useHotbarItem(Items.WIND_CHARGE, mc.player.getYRot(), 90f);
         }
+        if (pearlPending && mc.player != null) {
+            CameraArbiter.claim(this, CameraArbiter.PRIORITY_COMBAT_AIM, pearlYaw, pearlPitch, true);
+            if (pearlSettleLeft > 0) {
+                pearlSettleLeft--;
+            } else {
+                pearlPending = false;
+                throwSettledPearl();
+            }
+        }
     }
 
     /** Pearl escape (C44): solve a landing away from the pursuer and throw. */
@@ -219,7 +234,13 @@ public final class EscapeController {
             return false;
         });
         if (s == null) return false;
-        if (!useHotbarItem(Items.ENDER_PEARL, s.yaw(), s.pitch())) return false;
+        if (pearlPending) return true;
+        pearlYaw = s.yaw();
+        pearlPitch = s.pitch();
+        float yawErr = Math.abs(Mth.wrapDegrees(mc.player.getYRot() - pearlYaw));
+        pearlSettleLeft = CombatSmooth.aimSettleTicks(yawErr);
+        pearlPending = true;
+        CameraArbiter.claim(this, CameraArbiter.PRIORITY_COMBAT_AIM, pearlYaw, pearlPitch, true);
         escapeCooldown = 40;
         return true;
     }
@@ -264,6 +285,22 @@ public final class EscapeController {
             return false;
         }
         return useHotbarItem(Items.WATER_BUCKET, mc.player.getYRot(), 90f);
+    }
+
+    /** Throw after the smoothed look has settled (S59). Does not snap the camera. */
+    private boolean throwSettledPearl() {
+        if (mc.player == null || mc.gameMode == null) return false;
+        FindItemResult r = InvUtils.findInHotbar(Items.ENDER_PEARL);
+        if (!r.found()) return false;
+        CameraArbiter.claim(this, CameraArbiter.PRIORITY_COMBAT_AIM, pearlYaw, pearlPitch, true);
+        if (r.isOffhand()) {
+            mc.gameMode.useItem(mc.player, InteractionHand.OFF_HAND);
+            return true;
+        }
+        boolean swapped = !r.isMainHand() && InvUtils.swap(r.slot(), true);
+        mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
+        if (swapped) InvUtils.swapBack();
+        return true;
     }
 
     /** Urgent (unsmoothed) camera claim, swap to the item, use it, swap back. */

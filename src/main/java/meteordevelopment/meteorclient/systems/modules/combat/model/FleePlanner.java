@@ -5,6 +5,8 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat.model;
 
+import meteordevelopment.meteorclient.systems.modules.combat.tactics.CombatSmooth;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -66,6 +68,12 @@ public final class FleePlanner {
         if (c.escapeSpace() < deadEndThreshold) s -= escapeSpaceWeight * (1.0 + (deadEndThreshold - c.escapeSpace()) / 4.0);
         s -= runCostWeight * run;
         if (c.heightDelta() < -4) s -= 4; // big drops cost health
+        if (!pursuers.isEmpty()) {
+            Pursuer p = pursuers.get(0);
+            double awayDeg = Math.toDegrees(Math.atan2(meZ - p.z(), meX - p.x()));
+            double candDeg = Math.toDegrees(Math.atan2(c.z() - meZ, c.x() - meX));
+            s += CombatSmooth.retreatArcBonus(awayDeg, candDeg);
+        }
         String why = String.format(java.util.Locale.ROOT, "margin=%.1f los=%s cover=%d space=%d run=%.1f",
             minMargin, c.losBlocked() ? "broken" : "open", c.coverBlocks(), c.escapeSpace(), run);
         return new Scored(c, s, why);
