@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.pathing.PathManagers;
 import meteordevelopment.meteorclient.systems.modules.combat.model.*;
 import meteordevelopment.meteorclient.systems.modules.combat.tactics.CombatSmooth;
 import meteordevelopment.meteorclient.utils.player.CameraArbiter;
@@ -49,6 +50,9 @@ public final class EscapeController {
     private boolean pearlPending;
     private int pearlSettleLeft;
     private float pearlYaw, pearlPitch;
+    private @Nullable BlockPos clutchWater;
+    private int clutchPickupWait;
+    private int clutchPickupTries;
 
     public void reset() {
         fleeDest = null;
@@ -59,6 +63,9 @@ public final class EscapeController {
         windChargeStage = 0;
         pearlPending = false;
         pearlSettleLeft = 0;
+        clutchWater = null;
+        clutchPickupWait = 0;
+        clutchPickupTries = 0;
     }
 
     public PursuitTracker pursuit() {
@@ -216,6 +223,7 @@ public final class EscapeController {
                 throwSettledPearl();
             }
         }
+        pickupClutchWater();
     }
 
     /** Pearl escape (C44): solve a landing away from the pursuer and throw. */
@@ -284,7 +292,47 @@ public final class EscapeController {
             CameraArbiter.claim(this, CameraArbiter.PRIORITY_URGENT, mc.player.getYRot(), 90f, false);
             return false;
         }
-        return useHotbarItem(Items.WATER_BUCKET, mc.player.getYRot(), 90f);
+        boolean placed = useHotbarItem(Items.WATER_BUCKET, mc.player.getYRot(), 90f);
+        if (placed) {
+            clutchWater = mc.player.blockPosition();
+            clutchPickupWait = FallClutch.pickupDelayTicks();
+            clutchPickupTries = 0;
+        }
+        return placed;
+    }
+
+    /**
+     * After a water-bucket clutch, pick the source back up with an empty bucket once we have landed.
+     * Does not claim the camera while Baritone is pathing, so pathing yaw is left alone.
+     */
+    private void pickupClutchWater() {
+        if (clutchWater == null || mc.player == null || mc.level == null) return;
+        if (clutchPickupWait > 0) {
+            clutchPickupWait--;
+            return;
+        }
+        if (!mc.player.onGround() && mc.player.getDeltaMovement().y < -0.08) return;
+        if (PathManagers.get().isPathing()) {
+            if (++clutchPickupTries > 40) clutchWater = null;
+            return;
+        }
+        BlockPos water = clutchWaterSource();
+        if (water == null || !InvUtils.findInHotbar(Items.BUCKET).found()) {
+            clutchWater = null;
+            return;
+        }
+        boolean used = useHotbarItem(Items.BUCKET, mc.player.getYRot(), 90f);
+        if (used || ++clutchPickupTries > 10) clutchWater = null;
+    }
+
+    private @Nullable BlockPos clutchWaterSource() {
+        BlockPos feet = mc.player.blockPosition();
+        for (BlockPos p : new BlockPos[]{feet, feet.below(), clutchWater, clutchWater.below(), clutchWater.above()}) {
+            if (p == null) continue;
+            var fluid = mc.level.getFluidState(p);
+            if (!fluid.isEmpty() && fluid.isSource() && fluid.is(FluidTags.WATER)) return p;
+        }
+        return null;
     }
 
     /** Throw after the smoothed look has settled (S59). Does not snap the camera. */

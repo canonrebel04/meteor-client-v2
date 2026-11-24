@@ -560,6 +560,13 @@ public class CombatBrainModule extends Module {
         .build()
     );
 
+    final Setting<Boolean> useBuffPotions = sgAutomator.add(new BoolSetting.Builder()
+        .name("buff-potions")
+        .description("Drink strength and speed potions when the defense plan asks for them (C54). Off by default.")
+        .defaultValue(false)
+        .build()
+    );
+
     final Setting<Boolean> wardenCounter = sgAutomator.add(new BoolSetting.Builder()
         .name("warden-counter")
         .description("Auto-drink Resistance potion and stealthily sneak when a Warden is nearby.")

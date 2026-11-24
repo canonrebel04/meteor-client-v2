@@ -80,6 +80,7 @@ class EscapeModelsTest {
         assertFalse(FallClutch.needed(1, 2, 0, 20, 2));
         assertTrue(FallClutch.placeNow(2.0, 1.0));
         assertFalse(FallClutch.placeNow(10, 1.0));
+        assertEquals(8, FallClutch.pickupDelayTicks());
     }
 
     private static EscapeSelector.Situation sit(boolean cornered, boolean hole, double hp) {

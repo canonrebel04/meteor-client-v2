@@ -100,6 +100,14 @@ public final class SpecialWeapons {
         return Utility.NONE;
     }
 
+    /**
+     * Ticks after casting before the second use (retract) so the hook can reach the target.
+     * About 2.5 ticks per block, clamped to a close-range PvP window.
+     */
+    public static int rodRetractTicks(double distance) {
+        return (int) Math.max(6, Math.min(18, Math.round(distance * 2.5 + 4)));
+    }
+
     public enum FireUse { NONE, FLINT_AND_STEEL, LAVA_BUCKET }
 
     /** C68 fire/lava (opt-in, never near us or our base): only on a target in a tunnel or on flammable ground. */

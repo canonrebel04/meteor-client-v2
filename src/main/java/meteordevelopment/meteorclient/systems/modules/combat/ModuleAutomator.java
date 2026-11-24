@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.combat;
 
+import meteordevelopment.meteorclient.systems.modules.combat.model.ArmorPolicy;
 import meteordevelopment.meteorclient.systems.modules.combat.model.DefenseDirector;
 import meteordevelopment.meteorclient.systems.modules.combat.model.PotionPlanner;
 import meteordevelopment.meteorclient.systems.modules.combat.model.StatusResponse;
@@ -95,6 +96,7 @@ public class ModuleAutomator {
         else evalNoTotemRule();
         evalWitherMilkRule();
         evalFireResistanceRule(target);
+        evalBuffPotionRule();
         evalWardenRule(target);
         evalNoFallClutchRule();
         evalCrystalRule();
@@ -320,6 +322,13 @@ public class ModuleAutomator {
                 case CHESTPLATE -> overrideBool(autoArmor, "ignore-elytra", false);
                 case ELYTRA -> overrideBool(autoArmor, "ignore-elytra", true);
                 default -> restoreSetting(autoArmor, "ignore-elytra");
+            }
+            double dist = target != null ? mc.player.distanceTo(target) : 99;
+            // Anti-break is default off; only enable it out of melee so we don't unequip in a trade.
+            if (plan.runAutoArmor() && ArmorPolicy.replaceBroken(0, 10, true, dist)) {
+                overrideBool(autoArmor, "anti-break", true);
+            } else {
+                restoreSetting(autoArmor, "anti-break");
             }
         }
         if (plan.runAutoArmor()) {
@@ -705,6 +714,50 @@ public class ModuleAutomator {
                     InvUtils.move().from(potionSlot.slot()).toOffhand();
                 }
             }
+        }
+    }
+
+    /** C54 leftover: drink planned strength/speed when the user has opted in. Drinkable potions only (no camera). */
+    private void evalBuffPotionRule() {
+        if (!brain.useBuffPotions.get() || mc.player == null || brain.offhandLocked()) return;
+        DefenseDirector.Plan plan = brain.defensePlan();
+        if (plan == null || plan.potions() == null || plan.potions().isEmpty()) return;
+        // Don't fight fire-res / milk for the offhand.
+        if (activeRuleNames.contains("FireResPotion") || activeRuleNames.contains("WitherMilk")
+            || activeRuleNames.contains("WardenResistance")) return;
+        Holder<MobEffect> want = null;
+        String rule = null;
+        if (plan.potions().contains(PotionPlanner.Buff.STRENGTH) && !mc.player.hasEffect(MobEffects.STRENGTH)) {
+            want = MobEffects.STRENGTH;
+            rule = "StrengthPotion";
+        } else if (plan.potions().contains(PotionPlanner.Buff.SPEED) && !mc.player.hasEffect(MobEffects.SPEED)) {
+            want = MobEffects.SPEED;
+            rule = "SpeedPotion";
+        }
+        if (want == null) return;
+        FindItemResult potion = findDrinkablePotion(want);
+        if (!potion.found()) return;
+        activeRuleNames.add(rule);
+        drinkPotion(potion);
+    }
+
+    private FindItemResult findDrinkablePotion(Holder<MobEffect> effect) {
+        return InvUtils.find(stack -> {
+            if (!stack.is(Items.POTION)) return false;
+            PotionContents contents = stack.get(DataComponents.POTION_CONTENTS);
+            if (contents == null) return false;
+            for (MobEffectInstance inst : contents.getAllEffects()) {
+                if (inst.getEffect().is(effect)) return true;
+            }
+            return false;
+        });
+    }
+
+    private void drinkPotion(FindItemResult potion) {
+        if (mc.player.getOffhandItem().is(Items.POTION)) {
+            mc.options.keyUse.setDown(true);
+        } else {
+            InvUtils.move().from(potion.slot()).toOffhand();
         }
     }
 

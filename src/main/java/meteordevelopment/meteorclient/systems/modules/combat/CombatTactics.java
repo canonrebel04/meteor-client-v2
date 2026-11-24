@@ -90,6 +90,9 @@ public final class CombatTactics implements KillAura.Advisor {
     private int restoreSlot = -1;
     private final Map<UUID, Integer> intruderTicks = new HashMap<>();
     private String lastAction = "";
+    private long rodRetractAt = -1;
+    private int rodSlot = -1;
+    private double rodDistance = 8;
 
     /** A look-then-act action: turn the camera to {@code at}, select {@code slot}, then run {@code act}. */
     private record PendingUse(Vec3 at, int slot, Runnable act, long deadline, String what, @Nullable BlockPos blockHit) {
@@ -111,6 +114,8 @@ public final class CombatTactics implements KillAura.Advisor {
         pending = null;
         explosiveThreat = null;
         airborneTicks = 0;
+        rodRetractAt = -1;
+        rodSlot = -1;
         restoreModules();
         intruderTicks.clear();
         if (tapHeld && mc.options != null) {
@@ -135,6 +140,7 @@ public final class CombatTactics implements KillAura.Advisor {
         if (jumpRelease > 0 && --jumpRelease == 0 && mc.options != null) mc.options.keyJump.setDown(false);
 
         tickPending();
+        tickRodRetract();
         tickTaps();
         scanExplosives();
         if (cfg.surface()) surface();
@@ -604,7 +610,10 @@ public final class CombatTactics implements KillAura.Advisor {
                 harm.found(), target.hasEffect(MobEffects.WEAKNESS), target.hasEffect(MobEffects.SLOWNESS), target.isInvertedHealAndHarm());
             switch (u) {
                 case SNOWBALL_POKE -> throwAt(target, snow.slot(), Ballistics.Projectile.SNOWBALL, "snowball poke");
-                case ROD_KNOCK, ROD_PULL -> throwAt(target, rod.slot(), Ballistics.Projectile.SNOWBALL, "rod");
+                case ROD_KNOCK, ROD_PULL -> {
+                    rodDistance = d;
+                    throwAt(target, rod.slot(), Ballistics.Projectile.SNOWBALL, "rod");
+                }
                 case SPLASH_WEAKNESS -> throwAt(target, weak.slot(), Ballistics.Projectile.SPLASH_POTION, "splash weakness");
                 case SPLASH_SLOWNESS -> throwAt(target, slow.slot(), Ballistics.Projectile.SPLASH_POTION, "splash slowness");
                 case SPLASH_HARMING -> throwAt(target, harm.slot(), Ballistics.Projectile.SPLASH_POTION, "splash harming");
@@ -962,6 +971,33 @@ public final class CombatTactics implements KillAura.Advisor {
         p.act().run();
         pending = null;
         used(p.what());
+        if ("rod".equals(p.what())) {
+            rodRetractAt = tick + SpecialWeapons.rodRetractTicks(rodDistance);
+            rodSlot = p.slot();
+        }
+    }
+
+    /** Second right-click after the hook has had time to reach the target (C66 leftover). */
+    private void tickRodRetract() {
+        if (rodRetractAt < 0 || tick < rodRetractAt) return;
+        if (pending != null) return;
+        rodRetractAt = -1;
+        if (mc.gameMode == null) return;
+        boolean off = mc.player.getOffhandItem().is(Items.FISHING_ROD);
+        boolean main = mc.player.getMainHandItem().is(Items.FISHING_ROD);
+        if (off) {
+            mc.gameMode.useItem(mc.player, InteractionHand.OFF_HAND);
+            return;
+        }
+        if (main) {
+            mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
+            return;
+        }
+        if (rodSlot >= 0) {
+            InvUtils.swap(rodSlot, true);
+            mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
+            InvUtils.swapBack();
+        }
     }
 
     /** Right-click the block under the crosshair (door, floor for placement, fire). */

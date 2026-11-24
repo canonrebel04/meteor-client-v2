@@ -229,6 +229,9 @@ class MeleeTacticsTest {
         assertEquals(SpecialWeapons.Utility.NONE, SpecialWeapons.utility(false, 6, 1, true, true, true, true, true, true, false, false, false));
         assertEquals(SpecialWeapons.Utility.SNOWBALL_POKE, SpecialWeapons.utility(true, 6, 1, true, true, true, true, true, true, false, false, false));
         assertEquals(SpecialWeapons.Utility.SPLASH_SLOWNESS, SpecialWeapons.utility(true, 6, 5, false, false, false, true, true, true, false, false, true));
+        assertEquals(6, SpecialWeapons.rodRetractTicks(0));
+        assertEquals(9, SpecialWeapons.rodRetractTicks(2));
+        assertEquals(18, SpecialWeapons.rodRetractTicks(20));
         assertEquals(SpecialWeapons.FireUse.NONE, SpecialWeapons.fire(false, true, true, 3, false, true, false, true));
         assertEquals(SpecialWeapons.FireUse.NONE, SpecialWeapons.fire(true, true, true, 3, false, true, true, true), "never near our flammables");
     }

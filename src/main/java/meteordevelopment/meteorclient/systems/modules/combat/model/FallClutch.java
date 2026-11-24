@@ -33,4 +33,9 @@ public final class FallClutch {
         double window = 2.5 + Math.abs(verticalSpeed);
         return blocksToGround >= 0.5 && blocksToGround <= Math.min(4.5, window);
     }
+
+    /** Ticks to wait after placing before picking the water back up (land and let the source settle). */
+    public static int pickupDelayTicks() {
+        return 8;
+    }
 }
